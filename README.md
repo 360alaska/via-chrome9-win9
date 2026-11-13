@@ -44,11 +44,13 @@ The last three are close relatives: they share the newer 2D engine and the same 
 | Peak fill rate | about 200 Mpixels/s | about 500 | similar (not published; 250 MHz engine clock) | about 500 (not published) | similar (not published) |
 | Shared memory, peak | DDR2-533, about 4.3 GB/s (unverified) | DDR2-667, about 5.3 GB/s | DDR2-667, about 5.3 GB/s | DDR2-800, about 6.4 GB/s | DDR3-1066, about 8.5 GB/s |
 | Video decode | MPEG-2 | MPEG-2, partial H.264 | MPEG-2, MPEG-4, WMV9, VC-1 | H.264, VC-1, MPEG-2/4 | ChromotionHD 2.0 |
+| Estimated 3D speed, 32-bit colour | 1.0x (baseline) | about 1.7x | about 1.7x | about 2.0x | about 2.5x |
+| Estimated 3D speed, 16-bit colour | 1.0x (baseline) | about 2.5x | about 2.5x | about 2.5x | about 2.5x |
 
 What that means for Windows 98 games:
 
 - **The big step is from UniChrome to any Chrome9 chip:** about 2.5 times the fill rate, plus hardware vertex processing.
-- **Among the Chrome9 chips the 3D core is essentially the same,** so the difference is memory speed. In 32-bit colour the estimate is roughly CN896 and VX800 1.7x (the same memory speed), VX855 2.0x and VX900 2.5x a CX700. In 16-bit colour memory stops being the limit and all four land near 2.5x.
+- **Among the Chrome9 chips the 3D core is essentially the same,** so the difference is memory speed: it sets the 32-bit estimates in the table, and in 16-bit colour it stops being the limit.
 - **The processor often matters more than the graphics chip.** A VIA Nano is roughly 1.5 to 2 times a C7 or Eden at the same clock, and games of this era lean heavily on the processor.
 
 These are estimates to set expectations. The measured figures are in the Benchmarks section.
