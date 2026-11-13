@@ -13,8 +13,6 @@ Current build: **.597**
 | VX800 / VX820 | Chrome9 HC3 | 1106:1122 | 2D, DirectDraw, Direct3D, OpenGL, video overlay |
 | VX855 / VX875 | Chrome9 HCM | 1106:5122 | 2D, DirectDraw, Direct3D, OpenGL, video overlay |
 
-**Not supported: VX900 (Chrome9 HD, 1106:7122).** Windows 98 itself does not start on either VX900 board tried (a Gigabyte M7V90PI and an HP board), so nothing could be tested and the INF does not list it.
-
 ## Where these chips sit in VIA's line-up
 
 ![VIA integrated graphics lineage: the UniChrome and Chrome9 families, showing which chips have a Windows 98 driver from VIA and which this driver covers](chip-support.png)
