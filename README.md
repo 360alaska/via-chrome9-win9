@@ -30,7 +30,7 @@ VIA's integrated graphics come in two families. This driver covers two members o
 1. Chrome9 HC: CN896, P4M900. A cousin of the chips below: the same 3D core, but an older 2D engine with a different register layout.
 2. Chrome9 HC3: VX800, VX820. **Supported.**
 3. Chrome9 HCM: VX855, VX875. **Supported.**
-4. Chrome9 HD: VX900. Not supported yet.
+4. Chrome9 HD: VX900. Not supported yet: Windows 98 itself does not boot on the VX900. Tested on an HP t510 and a Gigabyte M7V90PI board.
 
 The last three are close relatives: they share the newer 2D engine and the same display core, which is why one set of driver files serves the VX800 and the VX855. As platforms, the CN896 followed the UniChrome Pro boards and the VX800 followed the CX700 and VX700.
 
