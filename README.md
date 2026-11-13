@@ -4,6 +4,8 @@ A from-scratch Windows 98 display driver for the VIA VX800 and VX855 integrated 
 
 Current build: **.597**
 
+**Download:** [`VIA_Chrome9_597.zip`](downloads/VIA_Chrome9_597.zip) (the driver) and [`VIA_Chrome9_597_tools.zip`](downloads/VIA_Chrome9_597_tools.zip) (optional test tools).
+
 **Support the project:** if this driver is useful to you, you can [donate through PayPal](https://www.paypal.com/donate/?hosted_button_id=45HAEA4K4KTXU).
 
 ## Supported hardware
@@ -94,7 +96,7 @@ To update an existing install, replace the same five files and restart. All five
 
 ## Checking an install
 
-The test set is a separate download on the release page (`VIA_Chrome9_597_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
+The test set is a separate download (`downloads/VIA_Chrome9_597_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
 
 | Tool | What it checks |
 |---|---|
