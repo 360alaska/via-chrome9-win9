@@ -1,0 +1,370 @@
+{
+  "scope": "Focused D3D regression probes of real portable C and linked callbacks.\n\nSynthetic services do not rasterize 3D or establish Win98 runtime acceptance.\nThe output records observed/expected values so the same probes can capture\nthe uncorrected and corrected source without editing the test expectations.\n",
+  "passed": 29,
+  "total": 29,
+  "checks": [
+    {
+      "name": "color-only clear flags 1 ignores unused NaN depth",
+      "observed": [
+        0,
+        1,
+        0
+      ],
+      "expected": [
+        0,
+        1,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "color-only clear flags 9 ignores unused NaN depth",
+      "observed": [
+        0,
+        1,
+        0
+      ],
+      "expected": [
+        0,
+        1,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "a depth clear without a depth surface clears the colour only (v10.372, as XP; the NaN depth is unused)",
+      "observed": [
+        0,
+        1,
+        1
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "name": "first native result 1 maps its error and loss state",
+      "observed": [
+        2147942487,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "first native result 2 maps its error and loss state",
+      "observed": [
+        2147500033,
+        0
+      ],
+      "expected": [
+        2147500033,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "first native result 3 maps its error and loss state",
+      "observed": [
+        2289435164,
+        0
+      ],
+      "expected": [
+        2289435164,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "first native result 4 maps its error and loss state",
+      "observed": [
+        2289435074,
+        1
+      ],
+      "expected": [
+        2289435074,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "name": "first native result 5 maps its error and loss state",
+      "observed": [
+        2289435074,
+        1
+      ],
+      "expected": [
+        2289435074,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "name": "busy after progress: two triangles in one token",
+      "observed": [
+        2289435074,
+        1,
+        2289435074,
+        2
+      ],
+      "expected": [
+        2289435074,
+        1,
+        2289435074,
+        2
+      ],
+      "passed": true
+    },
+    {
+      "name": "busy after progress: two consecutive tokens",
+      "observed": [
+        2289435074,
+        1,
+        2289435074,
+        2
+      ],
+      "expected": [
+        2289435074,
+        1,
+        2289435074,
+        2
+      ],
+      "passed": true
+    },
+    {
+      "name": "DP2 target binding rejects undersized depth",
+      "observed": [
+        2147942487,
+        0,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "DP2 target binding rejects overlapping buffers",
+      "observed": [
+        2147942487,
+        0,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "first registration of an unchanged descriptor preserves the context",
+      "observed": [
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "first registration relocation loses the old direct context",
+      "observed": [
+        0,
+        2289435074
+      ],
+      "expected": [
+        0,
+        2289435074
+      ],
+      "passed": true
+    },
+    {
+      "name": "ContextCreate rejects undersized depth",
+      "observed": [
+        0,
+        2147942487
+      ],
+      "expected": [
+        0,
+        2147942487
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy SetRenderTarget rejects undersized depth",
+      "observed": [
+        2147942487,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "ContextCreate rejects overlap",
+      "observed": [
+        0,
+        2147942487
+      ],
+      "expected": [
+        0,
+        2147942487
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy SetRenderTarget rejects overlap",
+      "observed": [
+        2147942487,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy target change rejects a stale mode generation",
+      "observed": 2289435074,
+      "expected": 2289435074,
+      "passed": true
+    },
+    {
+      "name": "ContextCreate rejects a primary alias",
+      "observed": [
+        0,
+        2147942487
+      ],
+      "expected": [
+        0,
+        2147942487
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy target change rejects a primary alias",
+      "observed": [
+        2147942487,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "ContextCreate rejects native-reserved memory",
+      "observed": [
+        0,
+        2147942487
+      ],
+      "expected": [
+        0,
+        2147942487
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy target change rejects native-reserved memory",
+      "observed": [
+        2147942487,
+        0
+      ],
+      "expected": [
+        2147942487,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "surface-destruction hook is retained when D3D is advertised",
+      "observed": true,
+      "expected": true,
+      "passed": true
+    },
+    {
+      "name": "legacy Clear contains native loss",
+      "observed": [
+        2289435074,
+        2289435074
+      ],
+      "expected": [
+        2289435074,
+        2289435074
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy Clear contains busy before progress",
+      "observed": [
+        2289435164,
+        0
+      ],
+      "expected": [
+        2289435164,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy Clear contains busy after a first rectangle",
+      "observed": [
+        2289435074,
+        2289435074
+      ],
+      "expected": [
+        2289435074,
+        2289435074
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy Clear contains a short busy, waited out",
+      "observed": [
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "name": "legacy Clear contains a short busy after a first rectangle, waited out",
+      "observed": [
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0
+      ],
+      "passed": true
+    }
+  ],
+  "probe_sha256": "b991925fa0a2b4c715e454563aef6973f66929d380fbf646c5703b7552fb06aa",
+  "production_source_sha256": {
+    "src/vx_d3d_core.c": "4c8c3cb4218cb8e20cf5c0f595a52ad96bb186ba32342ce7a40ecb48201d66d3",
+    "src/vx_d3d_core.h": "6fb214f3ab4d526ba0fbf574ddd29aa320460a367fd59c3cd349610032c550fe",
+    "src/vx_d3d_hal.c": "2bd4751702d9fcc715aeb7e019af9763fb032e4b1db1bed076f1f44c8f06ca2b",
+    "src/vx_d3d_legacy.inc": "4f3187ff8d788315ee85bcd1464c721a38954520bad41b21ab658a28fb319cf6"
+  },
+  "tested_hal_sha256": "69fb14c44624cbabc23afcb1eaffdba2e76360468a1dd04298cb9b44ea90711d",
+  "tested_host_library_sha256": "d93be3506490dfa40fcc8a8343d92afb2f27b9bb9963135acef0eba60348713f"
+}

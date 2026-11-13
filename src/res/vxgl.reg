@@ -1,0 +1,6 @@
+REGEDIT4
+
+; VX855 OpenGL ICD (v10.239): opengl32.dll finds VXGL.DLL through this value; the display driver names it VX855GL.
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\OpenGLdrivers]
+"VX855GL"="VXGL.DLL"
+

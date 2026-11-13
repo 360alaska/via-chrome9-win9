@@ -1,0 +1,15 @@
+build/
+driver/
+__pycache__/
+*.pyc
+*.o
+*.so
+*.obj
+*.err
+verification/BUILD.LOG
+verification/*.map
+verification/M2_TEST_RUN.json
+tests/ref_src/
+tests/ixcheck_packets.bin*
+g.rec
+tests/tnl_544.bin
