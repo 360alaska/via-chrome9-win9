@@ -37,20 +37,18 @@ The last three are close relatives: they share the newer 2D engine and the same 
 
 **How the chips compare on paper.** These figures come from published specifications and a simple model, not from measurements, and the source notes mark several as unverified. The memory figures are theoretical peaks, shared with the processor.
 
-| | CX700 | CN896 | VX855 | VX900 |
-|---|---|---|---|---|
-| Graphics core | UniChrome Pro II | Chrome9 HC | Chrome9 HCM | Chrome9 HD |
-| 3D class | DirectX 7, no hardware T&L | DirectX 9, shader model 2.0 | DirectX 9, shader model 2.0 | DirectX 9, shader model 2.0 |
-| Peak fill rate | about 200 Mpixels/s | about 500 | about 500 (not published) | similar (not published) |
-| Shared memory, peak | DDR2-533, about 4.3 GB/s (unverified) | DDR2-667, about 5.3 GB/s | DDR2-800, about 6.4 GB/s | DDR3-1066, about 8.5 GB/s |
-| Video decode | MPEG-2 | MPEG-2, partial H.264 | H.264, VC-1, MPEG-2/4 | ChromotionHD 2.0 |
-
-The VX800 is not in those notes; in the lineage it sits between the CN896 and the VX855.
+| | CX700 | CN896 | VX800 | VX855 | VX900 |
+|---|---|---|---|---|---|
+| Graphics core | UniChrome Pro II | Chrome9 HC | Chrome9 HC3 | Chrome9 HCM | Chrome9 HD |
+| 3D class | DirectX 7, no hardware T&L | DirectX 9, shader model 2.0 | DirectX 9, shader model 2.0 | DirectX 9, shader model 2.0 | DirectX 9, shader model 2.0 |
+| Peak fill rate | about 200 Mpixels/s | about 500 | similar (not published; 250 MHz engine clock) | about 500 (not published) | similar (not published) |
+| Shared memory, peak | DDR2-533, about 4.3 GB/s (unverified) | DDR2-667, about 5.3 GB/s | DDR2-667, about 5.3 GB/s | DDR2-800, about 6.4 GB/s | DDR3-1066, about 8.5 GB/s |
+| Video decode | MPEG-2 | MPEG-2, partial H.264 | MPEG-2, MPEG-4, WMV9, VC-1 | H.264, VC-1, MPEG-2/4 | ChromotionHD 2.0 |
 
 What that means for Windows 98 games:
 
 - **The big step is from UniChrome to any Chrome9 chip:** about 2.5 times the fill rate, plus hardware vertex processing.
-- **Among the Chrome9 chips the 3D core is essentially the same,** so the difference is memory speed. In 32-bit colour the estimate is roughly CN896 1.7x, VX855 2.0x and VX900 2.5x a CX700. In 16-bit colour memory stops being the limit and all three land near 2.5x.
+- **Among the Chrome9 chips the 3D core is essentially the same,** so the difference is memory speed. In 32-bit colour the estimate is roughly CN896 and VX800 1.7x (the same memory speed), VX855 2.0x and VX900 2.5x a CX700. In 16-bit colour memory stops being the limit and all four land near 2.5x.
 - **The processor often matters more than the graphics chip.** A VIA Nano is roughly 1.5 to 2 times a C7 or Eden at the same clock, and games of this era lean heavily on the processor.
 
 These are estimates to set expectations. The measured figures are in the Benchmarks section.
