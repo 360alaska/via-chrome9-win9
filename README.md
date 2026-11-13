@@ -116,7 +116,7 @@ The driver needs none. Two kinds of registry values exist under `HKEY_LOCAL_MACH
 
 WinTune 98 results at 640x480, 16-bit, in millions of pixels per second (higher is better):
 
-![WinTune results](wintune.png)
+![WinTune results](benchmarks.png)
 
 | Machine and driver | Video (2D) | Direct3D | OpenGL |
 |---|---|---|---|
