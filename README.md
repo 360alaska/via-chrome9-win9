@@ -127,8 +127,6 @@ WinTune 98 results at 640x480, 16-bit, in millions of pixels per second (higher 
 
 The VIA rows run from the oldest Chrome9 chip to the newest; the Intel machine is listed last for reference.
 
-The VX855 figures are WinTune's average of two passes (video 120 +/- 14, OpenGL 150 +/- 2.4, Direct3D 417 +/- 0.3); the other rows are single results.
-
 How to read this: these are four different computers with different processors, and WinTune's video scores depend on the processor as well as the graphics chip and driver. Against VIA's own driver on the older CN896, both boards on this driver are ahead in all three tests. The Intel machine has the highest 2D score. In Direct3D both boards on this driver are well ahead of it. In OpenGL the VX855 is ahead of it and the VX800 behind. So the table shows roughly where this driver stands beside the chip makers' own Windows 98 drivers for neighbouring hardware; it is not a controlled comparison, and there is no vendor driver for the VX800 or VX855 to compare against directly.
 
 ## Known limits
