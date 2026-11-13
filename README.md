@@ -35,7 +35,7 @@ VIA's integrated graphics come in two families. This driver covers two members o
 
 The last three are close relatives: they share the newer 2D engine and the same display core, which is why one set of driver files serves the VX800 and the VX855. As platforms, the CN896 followed the UniChrome Pro boards and the VX800 followed the CX700 and VX700.
 
-**How the chips compare on paper.** The upper rows come from published specifications, and several are unverified; the lower rows are measured results. The memory figures are theoretical peaks, shared with the processor.
+**How the chips compare.** The upper rows come from published specifications, and several are unverified; the lower rows are measured results. The memory figures are theoretical peaks, shared with the processor.
 
 | | CX700 | CN896 | VX800 | VX855 | VX900 |
 |---|---|---|---|---|---|
@@ -53,7 +53,7 @@ The last three rows are measurements, not specifications. The 3DMark figures are
 What that means for Windows 98 games:
 
 - **The big step is from UniChrome to any Chrome9 chip:** about 2.5 times the fill rate, plus hardware vertex processing.
-- **The Chrome9 chips are the same class on paper but not the same speed.** Published 3DMark results put the VX900 at more than twice the CN896, and on this driver the VX855 scores about 1.8 times the VX800 in WinTune's Direct3D and OpenGL tests. Newer is faster at each step.
+- **The Chrome9 chips are the same class on paper but not the same speed.** Published 3DMark results put the VX900 at more than twice the CN896, and on this driver the VX855 scores about 1.8 times the VX800 in WinTune's Direct3D and OpenGL tests.
 - **The processor often matters more than the graphics chip.** A VIA Nano is roughly 1.5 to 2 times a C7 or Eden at the same clock, and games of this era lean heavily on the processor.
 
 The specification rows are there to set expectations. This driver's own measured figures are in the Benchmarks section.
