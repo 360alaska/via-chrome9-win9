@@ -16,6 +16,8 @@ Current build: **.597**
 
 ## Where these chips sit in VIA's line-up
 
+![VIA integrated graphics lineage: the UniChrome and Chrome9 families, with the supported VX800 and VX855 highlighted](lineage.png)
+
 VIA's integrated graphics come in two families. This driver covers two members of the newer one.
 
 **UniChrome family** (DirectX 7 class, older 2D engine), oldest first:
