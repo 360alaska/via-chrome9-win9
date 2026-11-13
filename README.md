@@ -35,7 +35,7 @@ VIA's integrated graphics come in two families. This driver covers two members o
 
 The last three are close relatives: they share the newer 2D engine and the same display core, which is why one set of driver files serves the VX800 and the VX855. As platforms, the CN896 followed the UniChrome Pro boards and the VX800 followed the CX700 and VX700.
 
-**How the chips compare on paper.** These figures come from published specifications and a simple model, not from measurements, and the source notes mark several as unverified. The memory figures are theoretical peaks, shared with the processor.
+**How the chips compare on paper.** The upper rows come from published specifications, and several are unverified; the lower rows are measured results. The memory figures are theoretical peaks, shared with the processor.
 
 | | CX700 | CN896 | VX800 | VX855 | VX900 |
 |---|---|---|---|---|---|
@@ -44,16 +44,19 @@ The last three are close relatives: they share the newer 2D engine and the same 
 | Peak fill rate | about 200 Mpixels/s | about 500 | similar (not published; 250 MHz engine clock) | about 500 (not published) | similar (not published) |
 | Shared memory, peak | DDR2-533, about 4.3 GB/s (unverified) | DDR2-667, about 5.3 GB/s | DDR2-667, about 5.3 GB/s | DDR2-800, about 6.4 GB/s | DDR3-1066, about 8.5 GB/s |
 | Video decode | MPEG-2 | MPEG-2, partial H.264 | MPEG-2, MPEG-4, WMV9, VC-1 | H.264, VC-1, MPEG-2/4 | ChromotionHD 2.0 |
-| Estimated 3D speed, 32-bit colour | 1.0x (baseline) | about 1.7x | about 1.7x | about 2.0x | about 2.5x |
-| Estimated 3D speed, 16-bit colour | 1.0x (baseline) | about 2.5x | about 2.5x | about 2.5x | about 2.5x |
+| 3DMark05, published results | needs DirectX 9 hardware | about 300 to 350 | none found | none found | about 700 to 760 |
+| 3DMark06, published results | needs DirectX 9 hardware | about 100 to 125 | none found | none found | about 290 to 300 |
+| WinTune Direct3D, Windows 98, 640x480 16-bit | not tested | 90.9 (VIA's driver) | 233.9 (this driver) | 417 (this driver) | not tested |
+
+The last three rows are measurements, not specifications. The 3DMark figures are typical stock results from the HWBOT database, run under Windows XP or later on different processors (the CN896 results mostly on much faster desktop processors than the VX900 ones). The WinTune row is from the Benchmarks section below: three different boards, and VIA's driver on the CN896.
 
 What that means for Windows 98 games:
 
 - **The big step is from UniChrome to any Chrome9 chip:** about 2.5 times the fill rate, plus hardware vertex processing.
-- **Among the Chrome9 chips the 3D core is essentially the same,** so the difference is memory speed: it sets the 32-bit estimates in the table, and in 16-bit colour it stops being the limit.
+- **The Chrome9 chips are the same class on paper but not the same speed.** Published 3DMark results put the VX900 at more than twice the CN896, and on this driver the VX855 scores about 1.8 times the VX800 in WinTune's Direct3D and OpenGL tests. Newer is faster at each step.
 - **The processor often matters more than the graphics chip.** A VIA Nano is roughly 1.5 to 2 times a C7 or Eden at the same clock, and games of this era lean heavily on the processor.
 
-These are estimates to set expectations. The measured figures are in the Benchmarks section.
+The specification rows are there to set expectations. This driver's own measured figures are in the Benchmarks section.
 
 **Other chips.** The CN896 and P4M900 are not supported. A port would be possible, since the 3D core and most display registers carry over, but it needs a second 2D register layout, an older pixel-clock encoding and per-chip display FIFO values. VIA's own Windows 98 driver exists for that chip, and it is the one measured in the benchmarks.
 
