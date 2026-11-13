@@ -8,11 +8,12 @@ Current build: **.597**
 
 ## Supported hardware
 
-| Chipset | Graphics | PCI ID | State |
+| Chipset | Graphics | PCI ID | What works |
 |---|---|---|---|
-| VX855 / VX875 | Chrome9 HCM | 1106:5122 | Supported: 2D, DirectDraw, Direct3D, OpenGL, video overlay |
-| VX800 / VX820 | Chrome9 HC3 | 1106:1122 | Supported: 2D, DirectDraw, Direct3D, OpenGL, video overlay |
-| VX900 | Chrome9 HD | 1106:7122 | Not supported. Windows 98 itself does not start on either VX900 board tried (a Gigabyte M7V90PI and an HP board), so nothing is tested there and the INF does not list it. |
+| VX800 / VX820 | Chrome9 HC3 | 1106:1122 | 2D, DirectDraw, Direct3D, OpenGL, video overlay |
+| VX855 / VX875 | Chrome9 HCM | 1106:5122 | 2D, DirectDraw, Direct3D, OpenGL, video overlay |
+
+**Not supported: VX900 (Chrome9 HD, 1106:7122).** Windows 98 itself does not start on either VX900 board tried (a Gigabyte M7V90PI and an HP board), so nothing could be tested and the INF does not list it.
 
 ## Where these chips sit in VIA's line-up
 
