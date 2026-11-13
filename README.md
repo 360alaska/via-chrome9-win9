@@ -47,8 +47,9 @@ The last three are close relatives: they share the newer 2D engine and the same 
 | 3DMark05, published results | needs DirectX 9 hardware | about 300 to 350 | none found | none found | about 700 to 760 |
 | 3DMark06, published results | needs DirectX 9 hardware | about 100 to 125 | none found | none found | about 290 to 300 |
 | WinTune Direct3D, Windows 98, 640x480 16-bit | not tested | 90.9 (VIA's driver) | 233.9 (this driver) | 417 (this driver) | not tested |
+| **3D uplift over the chip before it** | baseline | **about +150%** (fill rate on paper) | **about +157%** (WinTune Direct3D) | **about +78%** (WinTune Direct3D) | not measured against the VX855; about +120% over the CN896 (3DMark05) |
 
-The last three rows are measurements, not specifications. The 3DMark figures are typical stock results from the HWBOT database, run under Windows XP or later on different processors (the CN896 results mostly on much faster desktop processors than the VX900 ones). The WinTune row is from the Benchmarks section below: three different boards, and VIA's driver on the CN896.
+The 3DMark and WinTune rows are measurements, not specifications, and the uplift row is worked out from them: each chip against the one in the column to its left. The CN896-to-VX800 step compares VIA's driver with this one on different boards, so part of that gain is the driver, not the chip. The 3DMark figures are typical stock results from the HWBOT database, run under Windows XP or later on different processors (the CN896 results mostly on much faster desktop processors than the VX900 ones). The WinTune row is from the Benchmarks section below: three different boards, and VIA's driver on the CN896.
 
 What that means for Windows 98 games:
 
