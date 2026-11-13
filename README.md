@@ -141,7 +141,6 @@ How to read this: these are four different computers with different processors, 
 - Blits from an 8-bit DIB section with a ROP are drawn by Windows, not the engine.
 - The video overlay has not been tested at 256 colours on the VX800.
 - The second display output is not set up by the driver. In testing it mirrors the first display on its own; an independent second display (extended desktop) is not supported.
-- VX900: see Supported hardware.
 
 ## Building from source
 
