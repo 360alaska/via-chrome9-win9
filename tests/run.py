@@ -71,6 +71,9 @@ def main():
   run('stack frames under one page (HAL DLL built without probes)',[sys.executable,'tests/check_stack_frames.py']) # v10.237
   run('the built VXGL.DLL with a lost queue and a back buffer that cannot be filled or locked (.573, peer review), and unknown WGL attributes (.575)',[sys.executable,'tests/gl_icd_failures.py'])
   run('the device profile: the three Chrome9 devices, their BARs and what is refused (.579)',[sys.executable,'tests/chip_profile.py'])
+  run('the VX900 2D probe against the M1 model, the engine in use and not (.599)',[sys.executable,'tests/vx900_probe.py'])
+  run('the tool-driven triangle test of the 3D lab (.604)',[sys.executable,'tests/vx900_tri.py'])
+  run('the VX900 vertex input in the 3D layer (.605)',[sys.executable,'tests/vx900_d3d.py'])
   run('the built VXDDRAW.DLL with packets held and the callback lock not to be had: Lock, Blt and Flip answer still drawing (.575, peer review)',[sys.executable,'tests/hold_timeout.py'])
   if a.asan:run('OpenGL ICD on the host: Mesa, back end and core against swrast',[sys.executable,'tests/gl_host.py']) # v10.239
  finally:

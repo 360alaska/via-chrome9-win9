@@ -33,7 +33,7 @@ def main():
         required = 0x10 | 0x400 | 0x1 | 0x40
         assert caps & required == required  # MS-mandated legacy bits.
         assert caps & 0x8000  # v10.164: DRAWPRIMITIVES2EX, required by DDRAW.DLL 4.09 with CreateSurfaceEx.
-        assert caps & 0x200 and not caps & (0x20 | 0x80 | 0x10000 | 0x100)  # v10.169: TEXTUREVIDEOMEMORY
+        assert caps & 0x200 and caps & 0x10000 and not caps & (0x20 | 0x80 | 0x100)  # .601: HWTRANSFORMANDLIGHT on by default;  # v10.169: TEXTUREVIDEOMEMORY
         tri_tex = h.word(global_data + 4 + 100 + 32)  # hwCaps.dpcTriCaps.dwTextureCaps
         assert tri_tex & 0x7 == 0x7 and tri_tex & 0x4000 and h.word(global_data + 4 + 44 + 32) == tri_tex  # v10.456: ACCEL_D3D_MIPCAP's D3DPTEXTURECAPS_MIPMAP (lines copy the triangle caps)
         # No execute/TL video memory or HWTL claim.

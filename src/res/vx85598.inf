@@ -1,9 +1,9 @@
-; VIA Chrome9 (VX800 / VX820 / VX855 / VX875) display driver for Windows 98; the display driver's skeleton is from VMDisp9x (MIT).
+; VIA Chrome9 (VX800 / VX820 / VX855 / VX875 / VX900) display driver for Windows 98; the display driver's skeleton is from VMDisp9x (MIT).
 [Version]
 Signature="$CHICAGO$"
 Class=DISPLAY
 Provider=%Provider%
-DriverVer=11/11/2026,10.597.0.0
+DriverVer=11/13/2026,10.637.0.0
 
 [Manufacturer]
 %Mfg%=VXModels
@@ -12,6 +12,7 @@ DriverVer=11/11/2026,10.597.0.0
 ; .579: one driver for the Chrome9 graphics of the VX chipsets
 %DeviceHC3%=VXInstall,PCI\VEN_1106&DEV_1122
 %DeviceHCM%=VXInstall,PCI\VEN_1106&DEV_5122
+%DeviceHD%=VXInstall,PCI\VEN_1106&DEV_7122
 
 [DestinationDirs]
 VXCopy=11
@@ -108,3 +109,4 @@ Provider="360ALASKA"
 Mfg="VIA"
 DeviceHC3="VIA Chrome9 HC3 (VX800 / VX820)"
 DeviceHCM="VIA Chrome9 HCM (VX855 / VX875)"
+DeviceHD="VIA Chrome9 HD (VX900)"

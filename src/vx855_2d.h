@@ -128,7 +128,6 @@ typedef struct {
 #define VXO_M_BOB 512UL
 #define VXO_M_ALPHA 1024UL
 #define VXO_M_PROBE 2048UL
-#define VXO_M_KEYRAW 4096UL /* .585: at 16 bits the destination key is the 5-6-5 pixel value itself (OpenChrome writes the pixel value at every depth) */
 #define VXO_R_RESULT 0 /* 0 done, 1 refused (VXO_R_REASON), 2 done but nothing visible (fully clipped) */
 #define VXO_R_REASON 1
 #define VXO_R_ON 2

@@ -483,10 +483,12 @@ int vxgl_destroy_context(vxgl_ctx *c) {
  vxgl_log("context %p: %lu triangles, %lu lines, %lu points by the engine; %lu primitives by software; %lu packets; %lu clears; %lu fallbacks; %lu swaps\n",
   (void*)c,(unsigned long)c->stats[0],(unsigned long)c->stats[1],(unsigned long)c->stats[2],(unsigned long)c->stats[3],(unsigned long)c->stats[4],
   (unsigned long)c->stats[5],(unsigned long)c->stats[6],(unsigned long)c->stats[7]);
+ {extern uint32_t vxgl_aa_stat[4];if(vxgl_aa_stat[0]||vxgl_aa_stat[2])vxgl_log("smooth lines (.636): %lu drawn whole (no blending: the coverage changes nothing) as %lu quads or rectangles; %lu with their coverage as %lu rectangles\n",
+  (unsigned long)vxgl_aa_stat[0],(unsigned long)vxgl_aa_stat[1],(unsigned long)vxgl_aa_stat[2],(unsigned long)vxgl_aa_stat[3]);}
  if(c->stats[3]){static const char *const bn[17]={"texture","engine state","logic op","colour mask","blend","stipple","draw buffer","render mode","no video memory buffers","programs",
    "ACCEL_OPENGL_HW 0","textured lines or points or q","occlusion query","polygon stipple with lines or points","points or lines condition","depth notice","depth bounds"};
   static const char *const wn[11]={"polygon stipple off","smooth points","smooth lines","smooth polygons","alpha test with smoothing","line stipple","attenuated points or sprites","wide line","point size","texture state","coverage alpha"};
-  char l[900];int k,n=0;l[0]=0; /* v10.500 (Fable's list: every software draw a bug to find): the context's draws in software by fallback bit and by the state behind it */
+  char l[900];int k,n=0;l[0]=0; /* v10.500 (every software draw a bug to find): the context's draws in software by fallback bit and by the state behind it */
   for(k=0;k<17;k++)if(c->fb_draws[k]&&n<(int)sizeof(l)-80)n+=_snprintf(l+n,sizeof(l)-1-n,"%s%s %lu",n?", ":"",bn[k],(unsigned long)c->fb_draws[k]);
   for(k=0;k<11;k++)if(c->fb_why_draws[k]&&n<(int)sizeof(l)-80)n+=_snprintf(l+n,sizeof(l)-1-n,"%s(%s) %lu",n?", ":"",wn[k],(unsigned long)c->fb_why_draws[k]);
   l[sizeof(l)-1]=0;vxgl_log("context %p: draws in software by reason: %s\n",(void*)c,l);}

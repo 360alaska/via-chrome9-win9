@@ -1,6 +1,6 @@
 {
   "scope": "Execute the linked VxD native submission path with synthetic MMIO/services.\nTrace checks do not model rasterization or prove physical GPU behavior.\n",
-  "passed": 203,
+  "passed": 205,
   "cases": [
     "linked VxD query reports mapped aperture, ready display and mode generation",
     "linked VxD emits the proven CPU-port triangle and pixel-program configuration",
@@ -183,6 +183,8 @@
     ".528 ACCEL_D3D_TEXRUNS: one packet with two texture runs through the built VxD and XP's ring: its 171 indices drawn with the same texture and sampler registers and vertex words as the three packets made without runs; ACCEL_D3D_SEQSKIP: the batch call leaves SR10, SR1A and SR1E as found, two writes left out with them set",
     ".529 ACCEL_D3D_IX384: the 17x17 grid by index (289 vertices, 512 triangles) through the built VxD and XP's ring as one packet in two vertex-area slots side by side, or two packets at 192: its 1536 indices drawn with the same registers and vertex words; a two-slot packet at the end of the slots starts again at slot 0, drawn twice the same",
     "v10.470 INDEXED: 5 indexed packets through XP's ring: their vertices written once into slots of the vertex area, their indices fetched after 04/20 = 3 in 5 bursts; v10.473: their copy-in and validation counted apart, a retire for a CPU access counted under the cause its caller set; v10.476: TEXDBG reads leave the state cache, a switch starts it over",
+    ".627 INDEXED on the VX900: 5 packets drawn by index: vertices at a KB boundary in their slots, descriptors with offsets, five table words under 30030000, 04/20 = 1 in 5 bursts, no 04/21-22, the descriptors without offsets again after",
+    ".628 the seam cover: each index burst of an opaque depth-writing packet sent a second time with the screen offset moved by 1/16 and 2/16 pixel and put back (VX855 04/41, 04/44; VX900 constant 0); other packets once",
     "v10.470 INDEXED: no vertex area: every indexed packet drawn with its indices expanded inline",
     ".564: with three slots, 4 packets of 1920 indices: each after the first drawn by index after a wait for the work in flight (3 waits), none expanded, none through the registers",
     "v10.470 INDEXED: with 4 slots and no fence coming, a slot is not given again while its group is in flight or is the group being built (7, then 4 + 1 refused): those packets drawn expanded",

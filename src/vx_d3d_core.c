@@ -1044,6 +1044,53 @@ int vx_d3d_state_adopt(vx_d3d_context *c,uint32_t id,uint32_t value) {if(!c||c->
  * CLIPPLANEENABLE, SOFTWAREVERTEXPROCESSING (151-153), POINTSCALE_A/B/C (158-160), MULTISAMPLEANTIALIAS/MASK (161, 162), PATCHEDGESTYLE,
  * PATCHSEGMENTS, DEBUGMONITORTOKEN (163-165), INDEXEDVERTEXBLENDENABLE (167), TWEENFACTOR (170), POSITIONORDER, NORMALORDER (172, 173).
  * The runtime does the vertex processing on this HAL; the core reads none of these (any id it reads must not be listed here). */
+/* .600 (NC20 report on .599: every DirectX 5 and older program without bilinear filtering and without transparency: Final Reality, PC Player
+ * D3D Bench, Tomb Raider 2 and 3, Hellbender; DirectX 6.1 and newer fine). The texture state of the interfaces before DirectX 6 is render
+ * states: TEXTUREADDRESS (3), TEXTUREMAG (17), TEXTUREMIN (18), TEXTUREMAPBLEND (21), BORDERCOLOR (43), TEXTUREADDRESSU / V (44, 45),
+ * MIPMAPLODBIAS (46), ANISOTROPY (49). The runtime hands them to a DrawPrimitives2 driver as they are (v10.178 took it that the runtime
+ * turned them into stage 0's states: nothing here read them, so such a program drew point-sampled, wrapped and with stage 0's default
+ * operations whatever it asked for). Each is now written through to stage 0:
+ *  - TEXTUREMAG: D3DFILTER_LINEAR (2) -> MAGFILTER LINEAR, anything else POINT;
+ *  - TEXTUREMIN: 1 NEAREST, 2 LINEAR, 3 MIPNEAREST, 4 MIPLINEAR, 5 LINEARMIPNEAREST, 6 LINEARMIPLINEAR -> MINFILTER point or linear and
+ *    MIPFILTER none, point or linear;
+ *  - TEXTUREMAPBLEND: 1 DECAL and 7 COPY: colour and alpha the texture's; 2 MODULATE: colour texture x diffuse, alpha the texture's when
+ *    its format has alpha, else the diffuse's (the legacy rule); 3 DECALALPHA: colour blended by the texture's alpha, alpha the diffuse's;
+ *    4 MODULATEALPHA: both modulated; 5 DECALMASK as DECAL, 6 MODULATEMASK as MODULATE; 8 ADD: colour added, alpha the diffuse's.
+ *    MODULATE's choice follows the texture: it is made again when the texture changes, as long as TEXTUREMAPBLEND had the last word
+ *    (rs[VX_D3D_RS_LEGACY_TB]: cleared when stage 0's operations or arguments are set as stage states).
+ * Direct3D 7 and 8 have no such render states and send none. vx_d3d_rs_seen: one bit for each render state id ever received;
+ * vx_d3d_legacy_stat: [0] legacy states written through, [1-4] the last TEXTUREMAG, TEXTUREMIN, TEXTUREMAPBLEND, TEXTUREADDRESS,
+ * [5] MODULATE given the diffuse's alpha, [6] the texture's. */
+uint32_t vx_d3d_rs_seen[8],vx_d3d_legacy_stat[8];
+static void ltss(vx_d3d_context *c,vx_d3d_state *s,uint32_t id,uint32_t v) {s->tss[0][id]=v;if(c->recording)c->blocks[c->recording-1].tss_mask[0]|=1UL<<id;}
+static void legacy_blend(vx_d3d_context *c,vx_d3d_state *s,const vx_d3d_services *sv) {
+ uint32_t m=s->rs[21],cop=4,aop=2;
+ if(m==1||m==5||m==7){cop=2;aop=2;}
+ else if(m==3){cop=13;aop=3;}
+ else if(m==4){cop=4;aop=4;}
+ else if(m==8){cop=7;aop=3;}
+ else { /* MODULATE (2), MODULATEMASK (6), and any other value as the default */
+  vx3dn_surface ts;int alpha=0;
+  if(s->tss[0][0]&&sv&&sv->resolve&&sv->resolve(sv->context,s->tss[0][0],&ts))alpha=ts.format==VX3DN_TEX_ARGB8888||ts.format==VX3DN_TEX_ARGB1555||ts.format==VX3DN_TEX_ARGB4444||ts.format==VX3DN_TEX_DXT1||ts.format==VX3DN_TEX_DXT3||ts.format==VX3DN_TEX_DXT5;
+  cop=4;aop=alpha?2:3;vx_d3d_legacy_stat[alpha?6:5]++;
+ }
+ ltss(c,s,1,cop);ltss(c,s,2,2);ltss(c,s,3,1);ltss(c,s,4,aop);ltss(c,s,5,2);ltss(c,s,6,1);
+}
+static void legacy_rs(vx_d3d_context *c,vx_d3d_state *s,uint32_t id,uint32_t v,const vx_d3d_services *sv) {
+ switch(id) {
+  case 3:ltss(c,s,12,v);ltss(c,s,13,v);ltss(c,s,14,v);vx_d3d_legacy_stat[4]=v;break;
+  case 17:ltss(c,s,16,v==2?2UL:1UL);vx_d3d_legacy_stat[1]=v;break;
+  case 18:ltss(c,s,17,(v==2||v==4||v==6)?2UL:1UL);ltss(c,s,18,(v==3||v==4)?2UL:(v==5||v==6)?3UL:1UL);vx_d3d_legacy_stat[2]=v;break;
+  case 21:s->rs[VX_D3D_RS_LEGACY_TB]=1;legacy_blend(c,s,sv);vx_d3d_legacy_stat[3]=v;break;
+  case 43:ltss(c,s,15,v);break;
+  case 44:ltss(c,s,13,v);break;
+  case 45:ltss(c,s,14,v);break;
+  case 46:ltss(c,s,19,v);break;
+  case 49:ltss(c,s,21,v);break;
+  default:return;
+ }
+ vx_d3d_legacy_stat[0]++;
+}
 static int rs_inert(uint32_t id) {return (id>=128&&id<=148)||(id>=151&&id<=153)||(id>=158&&id<=165)||id==167||id==170||id==172||id==173;}
 static int state_same(const vx_d3d_context *c,uint32_t op,const uint8_t *p,uint32_t n) {
  uint32_t j;const vx_d3d_state *st=&c->state;
@@ -2339,6 +2386,32 @@ uint32_t vx_d3d_gl_clear(vx_d3d_context *c,const vx_d3d_services *sv,uint32_t fl
  if(r->left<0||r->top<0||r->right>(int32_t)c->target.width||r->bottom>(int32_t)c->target.height)return VX_D3D_INVALID;
  q.clip=*r;return submit(sv,&q,c,&completed);
 }
+/* .628: a textured rectangle by the 3D engine, for DirectDraw's stretching Blt (vx_ddraw.c; board, VXDX7 --ss v2.93 on .627: a 1280 x 960
+ * to 640 x 480 Blt took 35.8 ms on the CPU (VX900; 62 ms on the VX855) and kept one pixel of four; the same shrink as a quad textured
+ * with the source took 1.2 to 1.7 ms). dst = the destination surface, dr the rectangle in it, tex = the source as a texture (its pitch
+ * the format's), uv = u0 v0 u1 v1 at the rectangle's left/top and right/bottom edges, linear = bilinear (else the nearest texel). Drawn by
+ * a context of its own with the default state: no depth, no blending, the texture's colour as it is, clamped. 0 = drawn. */
+uint32_t vx_d3d_quad_stat[3];static const vx3dn_surface *quad_tex;
+static int quad_tex_resolve(void *ctx,uint32_t h,vx3dn_surface *o) {(void)ctx;(void)h;if(!quad_tex)return 0;*o=*quad_tex;return 1;}
+uint32_t vx_d3d_quad(const vx3dn_surface *dst,const vx3dn_rect *dr,const vx3dn_surface *tex,const float *uv,int linear,const vx_d3d_services *sv,uint32_t gen) {
+ static vx_d3d_context qc;static float vb[4][8];static const uint32_t ia[3]={0,1,2},ib[3]={1,3,2};
+ vx_d3d_services s2;vx_d3d_input in;uint32_t done=0,rc,k;
+ if(!dst||!dr||!tex||!uv||!sv||dr->right<=dr->left||dr->bottom<=dr->top)return VX_D3D_INVALID;
+ vx_d3d_init(&qc,dst,0,gen);
+ qc.state.viewport=*dr;qc.state.rs[7]=0;qc.state.rs[14]=0;qc.state.rs[22]=1;qc.state.rs[23]=8;qc.state.rs[137]=0;
+ qc.state.tss[0][0]=1;qc.state.rs[1]=1;qc.state.tss[0][1]=2;qc.state.tss[0][2]=2;qc.state.tss[0][4]=2;qc.state.tss[0][5]=2;
+ qc.state.tss[0][12]=qc.state.tss[0][13]=qc.state.tss[0][14]=3;qc.state.tss[0][16]=linear?2:1;qc.state.tss[0][17]=linear?2:1;qc.state.tss[0][18]=1;
+ for(k=0;k<4;k++){uint32_t *d=(uint32_t*)(void*)vb[k];vb[k][0]=(float)((k&1)?dr->right:dr->left);vb[k][1]=(float)((k&2)?dr->bottom:dr->top);vb[k][2]=0.5F;vb[k][3]=1.0F;
+  d[4]=0xFFFFFFFFUL;d[5]=0;vb[k][6]=(k&1)?uv[2]:uv[0];vb[k][7]=(k&2)?uv[3]:uv[1];}
+ memset(&in,0,sizeof(in));in.vertices=(const uint8_t*)(const void*)vb;in.vertex_bytes=sizeof(vb);in.vertex_count=4;in.vertex_stride=32;in.fvf=0x1C4UL;
+ s2=*sv;s2.resolve=quad_tex_resolve;s2.unknown=0;s2.bind_vertices=0;s2.colorkey=0;s2.mips=0;s2.faces=0;s2.volume=0;s2.target=0;s2.target_done=0;
+ quad_tex=tex;template_reset();
+ rc=primitive(&qc,&in,&s2,ia,3,&done);if(!rc)rc=primitive(&qc,&in,&s2,ib,3,&done);
+ if(!rc&&(tc.err||tc.skip)){rc=tc.err?tc.err:VX_D3D_CONFLICTINGSTATE;vx_d3d_quad_stat[2]=tc.err?tc.err:tc.skip;}
+ if(!rc)rc=vx_d3d_flush(&qc,&s2,&done);if(!rc)rc=cq_flush(&s2,&qc,&done);
+ quad_tex=0;template_reset();vx_d3d_quad_stat[rc?1:0]++;
+ return rc;
+}
 static void indices(uint32_t op,const uint8_t *p,uint32_t base,uint32_t i,uint32_t *a,uint32_t *b,uint32_t *c) {
  if(op==18) {*a=base+i*3;*b=*a+1;*c=*a+2;}
  else if(op==19) {*a=base+i;*b=base+i+1;*c=base+i+2;if(i&1){uint32_t t=*b;*b=*c;*c=t;}}
@@ -2789,12 +2862,14 @@ static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
    uint32_t id=u32(p+j*8),value=u32(p+j*8+4);
    if(id>=256){rc=VX_D3D_INVALID;goto fail;}
    if(id==VX_D3D_RS_LOGICOP)continue; /* v10.295: the ICD's, not a Direct3D state */
+   if(id==VX_D3D_RS_LEGACY_TB)continue; /* .600: the core's own */
    if(vx_d3d_rs_hook)vx_d3d_rs_hook(id,value,start); /* v10.420 */
    state(c)->rs[id]=value;
    if(c->recording)c->blocks[c->recording-1].rs_mask[id/32]|=1UL<<(id%32);
    /* v10.185: D3DRENDERSTATE_TEXTUREHANDLE (1) is stage 0's D3DTSS_TEXTUREMAP under another name (DDK: setting one sets the other); for a
     * DirectX 7 driver the value is a CreateSurfaceEx handle. It was refused as unsupported, which left out every textured DirectX 3/5 draw. */
-   if(id==1){state(c)->tss[0][0]=value;if(c->recording)c->blocks[c->recording-1].tss_mask[0]|=1UL;}
+   if(id==1){state(c)->tss[0][0]=value;if(c->recording)c->blocks[c->recording-1].tss_mask[0]|=1UL;if(state(c)->rs[VX_D3D_RS_LEGACY_TB])legacy_blend(c,state(c),sv);}
+   vx_d3d_rs_seen[id>>5]|=1UL<<(id&31);legacy_rs(c,state(c),id,value,sv); /* .600 */
    if((in->flags&2)&&in->render_states&&id<in->render_state_count)in->render_states[id]=value;
   } else if(op==25)for(j=0;j<n;j++) {
    uint32_t stage=u16(p+j*8),id=u16(p+j*8+2);
@@ -2803,7 +2878,8 @@ static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
     vx_d3d_addr_ring[k2][0]=(vx_d3d_dp2_calls<<16)|id;vx_d3d_addr_ring[k2][1]=u32(p+j*8+4);vx_d3d_addr_count++;} /* v10.174/175: what the runtime sends for ADDRESS/U/V, in order */
    state(c)->tss[stage][id]=u32(p+j*8+4);
    if(c->recording)c->blocks[c->recording-1].tss_mask[stage]|=1UL<<id;
-   if(!stage&&!id){state(c)->rs[1]=state(c)->tss[0][0];if(c->recording)c->blocks[c->recording-1].rs_mask[0]|=2UL;} /* v10.185: the same texture as TEXTUREHANDLE */
+   if(!stage&&!id){state(c)->rs[1]=state(c)->tss[0][0];if(c->recording)c->blocks[c->recording-1].rs_mask[0]|=2UL;if(state(c)->rs[VX_D3D_RS_LEGACY_TB])legacy_blend(c,state(c),sv);} /* v10.185: the same texture as TEXTUREHANDLE; .600 */
+   if(!stage&&id>=1&&id<=6)state(c)->rs[VX_D3D_RS_LEGACY_TB]=0; /* .600: stage 0's operations set as stage states */
    /* v10.170: D3DTSS_ADDRESS (12) sets both ADDRESSU (13) and ADDRESSV (14); the runtime passes it through unsplit (board, VXDX7 --texture v10.169:
     * WRAP and MIRROR set this way drew as CLAMP) */
    if(id==12){state(c)->tss[stage][13]=state(c)->tss[stage][14]=state(c)->tss[stage][12];if(c->recording)c->blocks[c->recording-1].tss_mask[stage]|=(1UL<<13)|(1UL<<14);}

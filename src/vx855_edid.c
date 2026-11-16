@@ -90,7 +90,7 @@ void VX_edid_probe(void) {
 int VX_edid_mode_ok(unsigned w,unsigned h) {
  static const unsigned short e1[8][2]={{720,400},{720,400},{640,480},{640,480},{640,480},{640,480},{800,600},{800,600}};
  static const unsigned short e2[8][2]={{800,600},{800,600},{832,624},{1024,768},{1024,768},{1024,768},{1024,768},{1280,1024}};
- const unsigned char *e=vx_edid; unsigned i,d;
+ const unsigned char *e=vx_edid; unsigned i,d; int fits=0;
  if(!vx_edid_ok) return 0;
  for(i=0;i<8;i++) {
   if((e[35]&(0x80>>i)) && e1[i][0]==w && e1[i][1]==h) return 1;
@@ -113,6 +113,7 @@ int VX_edid_mode_ok(unsigned w,unsigned h) {
  if(e[54] || e[55]) {   /* an unlisted size larger than the native panel is never offered */
   unsigned nw=e[56]|((unsigned)(e[58]&0xF0)<<4), nh=e[59]|((unsigned)(e[61]&0xF0)<<4);
   if(w>nw || h>nh) return 0;
+  fits=1;
  }
  for(d=54;d<=108;d+=18) {
   if(!e[d] && !e[d+1] && !e[d+2] && e[d+3]==0xFD) {   /* monitor range limits: assume 60 Hz and typical blanking */
@@ -123,6 +124,11 @@ int VX_edid_mode_ok(unsigned w,unsigned h) {
    return 1;
   }
  }
+ /* .599 (NC20's panel, VXPANEL v1.0: its EDID holds one detailed timing, 1280x800, no established or standard timings and no range
+  * limits, so 800x600 at 32 bits and 1024x768 at 16 and 32 bits were refused as "the monitor does not list it" and Direct3D programs
+  * had no 1024x768): the three sizes every monitor and every panel's scaler shows are taken when they fit the native size and no
+  * range limits said otherwise */
+ if(fits && ((w==640 && h==480) || (w==800 && h==600) || (w==1024 && h==768))) return 1;
  return 0;
 }
 

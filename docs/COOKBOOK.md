@@ -2990,6 +2990,65 @@ XP never runs this chip's ring in video memory: its s3ginv.dll sets register 60 
 
 **Wrap** (s3ginv 0xBBC10): the wrap point is one block before the ring's end (66/67 = 0x13FEF0 for this ring; v10.403's wrap point on the end itself made the fetcher stop after every wrap). Write the batch end and `CCC00003` up to it, 66/67 = that point − 0x10, 64/65 = the ring's start − 0x10, then the next group at the start. Never restart the ring because 444 bit 31 reads clear with nothing in flight: XP never does, and it was harmless (5,576 wraps).
 
+**Wrap on the VX900** (board, .609: 249 wraps, none hung). After its jump the VX900's fetcher does not stop at the ring's start for a pause of start − 0x10; it runs on into the last lap's words unless the next kick is already written. Give it a pause it reaches by reading: with the wrap, write one 256-byte block at the ring's start (`FE020420 0000041C 00300000 CC000000`, then `CCC00004`), set 64/65 = start + 0xF0 and begin the lap's groups at start + 0x100. Before the first wrap let the fetcher read everything kicked, because the block goes over the first lap's first words. 66/67 = the wrap point − 0x40 on this chip (CE's value; XP's VX900 driver has the start block as a branch). Failed approach on the VX900: the plain form above (64/65 = start − 0x10), 7 good wraps in 8. Details are in the VX900 supplement.
+
+**The pause on the VX900.** The VX800 and VX855 compare the fetcher's position with the pause address; the VX900 does not. There the pause holds until the next write of 64/65, whatever its value, and the fetcher only stops at a pause it reads up to. So on the VX900: never write a pause address the fetcher may already be standing at (a kick written a second time sent it on into the last lap's words: board, .609, Quake 2, one hang in 2556 wraps), and never give it a pause behind its position (the wrap rule above). On the older chips a second identical kick is harmless, but write one only when the group's fence has not come.
+
+**One wrap at a time on the VX900.** Do not write a wrap while the fetcher is still in the lap before the writer's. The wrap's pause (start + 0xF0) is then the pause in force when the fetcher comes round, and it stops at the ring's start with a whole lap unread and every engine idle (board, .614 and .615, GTA3: one such hang in 3,975 and in 18,543 wraps). Before a wrap, read the fetcher's position: if it is not in the writer's lap behind the writes, wait for everything kicked, then wrap. Failed approach: writing the pause address again for a fetcher found paused at start + 0x100 (.615); the cause was the second wrap, not a missed pause write.
+
+**Flips on the VX900: from the CPU.** The VX855's flip in the ring (2D 6C = 1, then the regulator's 10/11/12 address words) makes the picture flash on the VX900 (board, .615, GTA3, every flip in the ring; .614 with CPU flips did not). CE flips this chip from the CPU. Wait for the work in flight, then write the start address as on the other chips.
+
+**The blank wait word on the VX900** (board, .619, VXRING vblank, 60 fetched fills a value). A 2D block that writes register 6C = 1 holds the fetcher until the first display unit's vertical blank begins: the fills behind it finished 0.02 to 16.5 ms after the start, every one at scan line 601 of a 600-line mode. 6C = 0 and CE's 00800000 and 00FC0000 do not hold (0.02 ms). 6C = 2 waits for the second unit and never returns when that unit is off: do not send it unless the second unit runs. When the blank begins, MMIO 200 bit 1 reads clear and port 3DA bit 3 is not yet set. To measure a wait word on a new chip: send it in front of a small fill many times at changing points of the frame and look at the spread of the times and the scan line when done.
+
+**One engine reset on an idle VX900 changes no display register** (board, .619, VXREG RESET: SR, CR, MMIO 200-2FC and 120C the same, the pointer right). The pointer fault seen after resets of a hung engine in a game is not explained by the reset alone.
+
+**After a CPU flip on the VX900, wait for the blank in the ring** (board, .623: GTA3, 2,481 flips, 0 draws waited in the CPU, the picture steady; about 1.4 ms a frame gained). When the first colour draw of a frame would wait for the old front to leave the screen, kick one group that holds only a 2D block with 6C = 1, once a flip, and let everything after it queue behind. Kick it at once: a block read after the blank it was meant for holds a whole frame. First look whether the flip has been taken already. Only while the ring runs and the picture is the first display unit's; otherwise the CPU waits. A packet sent by the registers retires the ring first, the block with it.
+
+**The short wait block.** Of CE's nine blocks after a burst, the last alone (6C = 00FC0000, 8 words) kept the VX900's engine from hanging in GTA3 (board, .623, 122 s, no hang; none at all: 583 hangs in 144 s). It cuts a packet's overhead from about 476 to 182 words and lets nearly every large packet through the fetcher.
+
+**Ring size: limits (.626).** The page table holds 16384 entries and the ring takes entry 0x100 onward, with one guard entry before it and four after, so the ring's length is set only by the pages Windows will fix. The driver accepts 256, 512, 1024, 2048 and 4096 KB (`ACCEL_D3D_RINGKB`). Ask `_PageAllocate` for the pages plus one guard page; when it refuses, halve the size and ask again, down to 256 KB, before giving the ring up. Size the array that keeps the pages' table entries for the largest ring. Report the size the ring really has (VXREG prints it for every chip), not the size asked for.
+
+**Ring size: where it stops paying (VX900, GTA3).** 256 KB 49.9 ms a frame, 1024 KB 44.8, 2048 KB 44.3, 4096 KB 45.6. Size the ring to hold about what the CPU queues while the engine draws; beyond that the waits for ring space keep falling but the flip waits for the queued work instead, and the frame time stays the same. 1024 KB is enough.
+
+**VX900: drawing by index from a vertex buffer (.627).** The VX855's 04/21 and 04/22 (buffer base and stride) are not this chip's; do not write them. The recipe, proven on the board with VX93D INDEX:
+
+1. Put the vertices in video memory at an address that is a multiple of 1024 bytes.
+2. Give every vertex input's descriptor (04/01 onward) the input's offset in the vertex, in words, at bits 19:12. For the 10-word vertex: position 0000C2, diffuse 0041D1, specular 0052D1, texture set A 006342, texture set B 008442. For the 8-word vertex set B reads set A's words: 006442.
+3. Write the buffer table: selector 30030000 on 43C, then one data word for each vertex input, all in a row: the buffer's address | the vertex's length in words. Each input reads its own table word (input n reads word n). A word written under its own selector (30030001, 30030004 or 30030008) is not found: that input then reads from the start of video memory.
+4. For each burst: 04/2C = the largest index, 04/2D = 04/2E = 0, 04/20 = 1, 04/23 the mode, 04/24 the count; then the indices on type 0, two 16-bit indices a word, the first in the low half. 04/20 = 3 takes 32-bit indices, one a word.
+5. After the draw: 04/20 = 0, 04/2C = 0, and the descriptors written again without offsets, as vertices in the command were proven with.
+
+The buffer number in a descriptor (bits 23:20) changes where the input reads from in a way not worked out; leave it 0.
+
+**Stretching Blts by the 3D engine (.628 to .630; `ACCEL_STRETCH3D`: 0 the CPU, 1 nearest pixel, 2 bilinear).** A stretch between two video surfaces of the display's format is one textured rectangle: the destination surface as the target, the source as a texture (its pitch must be exactly its width; it need not be a power of two), no depth, no blending, clamped. Pixel p of the destination reads the source at left + (p - dl + 0.5) x sw / dw. For the nearest pixel add a sixteenth of a source pixel: the CPU's stretch takes the later pixel when a centre falls exactly between two (every pixel of a 2:1 shrink), and sampled exactly between, the engine's choice differed in a fifth of the picture. Board (VX855, .629): 1280 x 960 to 640 x 480 took 62 ms on the CPU, 1.1 ms by the engine with the nearest pixel, 1.4 ms bilinear. Take only the plain case (one rectangle, no key, no mirror, no ROP, different surfaces); leave the rest to the CPU.
+
+**The seam cover (.628 to .630; `ACCEL_D3D_SEAM`: 0 off, else x + 256 x y sixteenths of a pixel; 4112 = one pixel right and down).** Maps built from pieces that share an edge but not its vertices (GTA3's) leave pixels undrawn along the edge on every card. For each index burst of an opaque packet drawn from the vertex area (depth test and depth write on, no blending, no stencil): send the same indices a second time with the screen offset moved and the depth test made strict (LESSEQUAL as LESS, GREATEREQUAL as GREATER; 01/13 = (D3DCMP - 1) << 16), then put both back. The copy lands only where it is nearer than what is there: in the gap, and on the pixel beside the surface's edge. The offset: the VX855's 04/41 and 04/44 (the low 24 bits of the X and Y offsets; 786432.0 is 49400000, one in the last place is 1/16 pixel), the VX900's constant 0 under selector 32030000. Only the index words are sent again. It makes every such surface one pixel larger to the right and below, so it is a setting, not the default. Board (VX855, GTA3): one whole pixel covered the gaps better than 1/16 and 2/16.
+
+**The seam cover, as built from .631: the copy goes underneath.** Draw the moved copy first and without depth write (01/01 with bit 2 clear: CE1548 where the draw has CE154C), put the offset and 01/01 back, then draw the burst as always. The surface is then never changed by its own copy, and anything drawn afterwards at that pixel, nearer or farther, replaces the copy: it survives only where nothing else comes, which is the gap. The packet's own depth test is kept for the copy; take only tests that order (LESS, LESSEQUAL, GREATER, GREATEREQUAL), and leave out packets with the polygon stipple (it is a bit of 01/01 too). The strict-test, depth-writing second copy of .630 left a one-pixel rim standing in front of farther things drawn later.
+
+**Board result, VX855, .631 (copy underneath).** The offset registers 04/41 and 04/44 do move the picture: on a slanted T-junction drawn opaque with depth, 83 undrawn pixels in 60 frames with the cover off, none with the value 4112. GTA3 ran with 111,671 packets covered and no hang; the frame rate was the same as without it in the same scenes (vsync on). When testing a cover like this, keep the scan away from the shape's outer edges: a moving shape's left edge inside the scanned box counts as gaps (it did here: 8 columns of 146 rows).
+
+**Board results, VX900, .631, and what .632 fixes in place.**
+
+- *Seam cover.* Constant 0 under selector 32030000 moves the picture on the VX900 as 04/41 and 04/44 do on the VX855: the T-junction test reads 83 undrawn pixels with the cover off and 0 with 4112. In GTA3 the dots are fewer, not gone (the game's own geometry). The cover is not free where fill is the limit: a scene of large opaque triangles went from 8.55 to 17.65 ms a frame, because every opaque pixel is shaded twice. GTA3 itself showed no loss (505 against 631 words a packet, the same frame rate). It stays a setting, off by default.
+- *The wait after a burst on the VX900.* One block is enough: FE000000 1 0 CC000000, register 6C = 00FC0000, two CC000000 pad words (8 words), after every burst of a fetched packet. None at all hangs the engine; CE's whole nine-block form is 72 words and costs half of a small packet. Run without a hang through GTA3 (with driver T&L, 1.08 million packets by index) and the Quake 2 demo at 75 fps. From .632 this is fixed in the code, with no switch.
+- *Stretching Blt by the 3D engine.* With the 1/16 source pixel added to the texture coordinates, nearest-pixel mode gives the CPU's picture exactly (0 of 307,200 pixels differ on a 2:1 shrink) at 0.73 ms against 35.45 ms. It is the default from .632 (`ACCEL_STRETCH3D` 1; 0 gives the CPU back, 2 filters). A test for this must count the differing pixels itself: a JPEG of the result changes about a tenth of the pixels on its own.
+- *Driver T&L on the VX900.* GTA3 ran with it on: 58 million triangles transformed in the driver, nothing left out, no hang.
+
+**The ring's size is per chip (.635): 256 KB on the VX800, 512 KB on the VX855, 1024 KB on the VX900.** The VX800 hangs with a ring larger than 256 KB: at 1024 KB in GTA3, in the first group after its fourth wrap; at 512 KB in VXDX7's stretch scene with the seam cover on, 27 groups after its fifth wrap, the engine stopped in the middle of a packet. At 256 KB the same tests, GTA3 and the Quake 2 demo ran with no hang. The mechanism is not known: the writer being far ahead of the fetcher at a wrap does not explain it (186 KB behind at the 512 KB hang, a distance a 256 KB ring also reaches). The VX900 waits for the fetcher to reach the writer's lap before a wrap and runs 1024 KB (measured: 44.8 against 49.9 ms a frame; nothing more past 1024). The VX855 ran 1024 KB without a hang with vsync on; 512 KB is its default and still wants a GTA3 run with the frame limiter off. After a ring hang the driver turns the ring off for the session and the engine does not come all the way back from its reset (23 more fetches timed out in the VX800's log), so every figure measured after a hang is the fallback path's: check the hang counter before reading any timing. To reproduce a hang on demand: the VX800, ACCEL\_D3D\_RINGKB 512, the seam cover on, VXDX7 --ss.
+
+**Smooth lines when the coverage cannot show (.636, OpenGL).** Antialiased points, lines and polygons are drawn as swrast draws them: the covered pixels found on the CPU, each run of pixels with one coverage sent as a rectangle with the coverage in the alpha. A program that enables GL\_LINE\_SMOOTH and never enables blending (FieldLines.scr: thousands of short wide segments a frame) pays for coverage that changes no pixel. Rule: with blending off, the alpha test off and no alpha written to the target, the coverage is dropped. A line without stipple is then one quad: the line's own rectangle with every side moved out by 0.45 pixel, so the engine's rule (a pixel is drawn when its centre is inside) takes about the pixels swrast's rule takes (any of its 16 points in the pixel inside); the corners' attributes are the line's at their projection onto it. No pixel is looked for on the CPU. Points and polygons keep their pixel search with the coverage forced to 1, so a row's pixels join into one rectangle; a stippled line gathers its pixels into one span a row.
+
+Failed approach on the way (.633 to .635): keeping swrast's exact pixels with one rectangle a row. It cut the triangles from 39,466 to 10,852 on a scene of 864 curved segments and matched swrast pixel for pixel, but on the VX800 the scene still took 287 ms against 225 for the ICD's software and 25 for Microsoft's. Timed on the host, two thirds of a line's cost was the core's work on each rectangle, not the pixel search and not naming the vertex store for each line (sending a whole draw's rectangles together changed nothing). The count of quads is what costs: one quad a line gives 1,748 triangles in 22 packets. The price is under 1% of the scene's pixels, on the lines' edges, against swrast. A test scene for this needs a depth of its own for each strip: lines at equal depth leave the winner to rounding in swrast's plane equation.
+
+**GL\_CLAMP filtered linearly is the engine's edge clamp (.637, OpenGL).** GL\_CLAMP and GL\_CLAMP\_TO\_EDGE both go to address mode 3. Do not draw GL\_CLAMP exactly. The exact way (v10.357) is a copy of the texture with a ring of the border colour, and it has two holes that end in software: a ring copy has no mip chain, so a mipmapped GL\_CLAMP texture is not prepared at all, and the ring is right only while s and t stay in 0..1, so every other draw falls back. Games of the time set GL\_CLAMP with trilinear filters and expect what the cards did. Duke Nukem: Manhattan Project drew 4,705 primitives in software that way, each with the buffers read back: 5.6 to 9.8 fps in the game against 118 in its menus, with the engine itself healthy. The cost of the edge clamp is that the border colour is not blended into the outer half texel; scenes that compare those pixels with swrast are shown, not judged. CLAMP\_TO\_BORDER keeps its ring (it is asked for by name); MIRROR\_CLAMP\_EXT filtered linearly and a volume's GL\_CLAMP on r stay in software. When a game is a slideshow with the engine idle, read the context line of VXGL.LOG first: "primitives by software" and the fallback bits name the state that sent them there.
+
+**GDI: the brush's style decides before its flags (.637).** A hollow brush (BS\_HOLLOW, the stock NULL\_BRUSH) reaches the driver flagged COLORSOLID. Taking a colour from it fills the rectangle: with 0 at 32 bpp (its colour field), with stale realized pixels at 16 and 8. InstallShield's wizard draws its title and subtitle as static controls whose parent answers WM\_CTLCOLORSTATIC with the hollow brush, and they came out as filled boxes over the banner. Rule: in every place that takes a colour or pattern from a brush, test the style first and leave a hollow brush's call to DIBENG, which draws nothing with it (`vx_solid()` returns 0; `vx_try_blit()` returns VX2D\_SKIP before any brush field is read). Test with VXHOLLOW at 16 and 32 bpp: ten drawing calls with the hollow brush on the screen against the same calls on a memory bitmap, and two real static controls over stripes.
+
+*Failed approach:* supersampling (drawing at twice the width and height into a 2048 x 1024 texture target and shrinking with a bilinear quad). It works, but the test scene took 2.9 times as long on the VX900 and 3.9 times on the VX855, it needs 8 to 16 MB of video memory, and every lock or 2D write to the back buffer needs its own handling. Removed in .629.
+
+**Wait words after every burst on the VX900** (board, .614, GTA3: 409,846 packets, 1 fetch not finished; 583 without them). In a fetched stream on the VX900, follow every burst of vertices with VIA's CE block before the next burst head, texture switch or state set-up: eight 2D blocks `FE000000 00000001 00000000 CC000000 0000006C 00800000 CC000000 CC000000` and a ninth with `00FC0000` in place of `00800000` (CE's `VX900_WAITPATCH`). Without it the engine stops in the middle of long runs of bursts, the same packet again after a reset; the triangles involved all draw when sent alone. The VX800 and VX855 need none. Failed approach: looking for a bad triangle (53 from two hang positions replayed alone and eight at a time: all drew).
+
 **No wait at a wrap** (v10.410, XP's space check s3ginv 0xBBF3D-0xBC16B): after a wrap and until the next full retire, check each new group's room (plus 1 KB of read-ahead) against 43C and wait only when the fetcher is still inside it or 43C is outside the ring. 15,900 checks, 0 waits.
 
 **Writing the words** (v10.411, ACCEL\_D3D\_XPRING\_NT, needs SSE2): build each group in a cached staging buffer, copy it into the ring with MOVNTI four words a step, one SFENCE before the kick's register writes. No ring line may be written both ways: the start block, wrap padding and restart pad keep plain stores and CLFLUSH + MFENCE (WBINVD without CLFLUSH) in lines of their own. Without SSE2: plain stores and CLFLUSH before each kick (7.5 µs a packet).
@@ -3096,7 +3155,7 @@ Each was built, measured on the board and taken out with its switches, debug cod
 | ACCEL\_D3D 3, the DirectX 5-style HAL (execute buffers) | A second Direct3D interface | Never drew on the board; 3 now means 1 |
 | ACCEL\_D3D\_QDIRECT (v10.443-v10.448) | Build each batch directly in the HAL's queue slot, so its copy into the queue disappears | HAL building plus queue copies 2.11 µs a triangle on, 2.08 off; in-run A/B: the queue copy 0.22 → 0.02 but building 1.84 → 1.97 (a cold queue slot cost what the copy saved) |
 | ACCEL\_D3D\_FUSEDVAL (v10.443-v10.448) | Check the prepacked vertices word by word while copying them in, and skip the validation's vertex loops | Copy-in and validation 12.2-12.4 µs a packet on, 10.9 off; in-run A/B: copy-in 6.5 → 9.7, validation 4.7 → 2.3: a C loop is slower than `rep movsd` plus a separate check. ONECOPY (24.3) keeps `rep movsd` and checks after |
-| ACCEL\_D3D\_PFVV (v10.464, another session's) | Prefetch every index's vertex six indices ahead in the vertex-check loop | Slower in every A/B turn (vertices -0.058 us a triangle, \[-0.065, -0.027\], v10.465, the slower bench): 81.6 M of 91.2 M index checks were already answered by the checked-vertex bitmap, so nine prefetches in ten were for vertices already in the cache. Removed in v10.467; PFVV2 (below) prefetched only the unchecked ones and lost too |
+| ACCEL\_D3D\_PFVV (v10.464, an outside change) | Prefetch every index's vertex six indices ahead in the vertex-check loop | Slower in every A/B turn (vertices -0.058 us a triangle, \[-0.065, -0.027\], v10.465, the slower bench): 81.6 M of 91.2 M index checks were already answered by the checked-vertex bitmap, so nine prefetches in ten were for vertices already in the cache. Removed in v10.467; PFVV2 (below) prefetched only the unchecked ones and lost too |
 | ACCEL\_D3D\_PFVV2 (v10.468-.526) | Before a chunk's vertex checks, prefetch only the vertices not yet checked | A loss in 3 of 4 GTA3 A/B runs (-0.25 to +0.15 us a triangle, .523-.526) |
 | ACCEL\_D3D\_FASTVV (v10.454-.526) | In the list path's vertex checks, one integer test of x, y, z and rhw below the last whole vertex instead of the full bounds work | A small loss in every GTA3 A/B run (-0.10 to -0.20 us a triangle). The indexed path keeps the same test, where it is the only check (ix\_check) |
 | ACCEL\_D3D\_VRECIPE (v10.445-.526) | Write the prepacked vertex words from a recipe worked out once per template and vertex format, held in locals (with a fixed-offset form for FVF 0x1C4) | No consistent saving over four GTA3 A/B runs (+0.22 to -0.15 us a triangle). The recipe stays for the OpenGL ICD's grid words, where it does save |
@@ -3232,7 +3291,7 @@ Already there and not part of this work: D16, D32 and D24S8 depth with stencil; 
 
 ### 24.11 Review fixes (v10.465-v10.466)
 
-A review of the HAL, the core and the VxD, each finding checked against the code before it was fixed:
+An outside review of the HAL, the core and the VxD, each finding checked against the code before it was fixed:
 
 - The stretched Blt's staging block was kept in the DLL's shared data but is one process's memory: kept per process now (8 slots by process ID).
 - ACCEL\_D3D\_RINGPROG: a ring retire gave up 100 ms after it began however much fetched work the ring held, so a busy engine could be taken for hung (ring off, engine reset). Now it gives up after 100 ms with neither 43C nor the fence moving, 2 s in all; a lost kick still shows as a hang.
@@ -4936,7 +4995,7 @@ Untextured plain strips are already cheaper than textured indexed ones. Polygons
 
 **What is gated by device.**
 
-- **VX900 engines:** its 2D register order (`+04,+34,+38,+30,+2C,+08,+0C,+10,+00`) and vertex input differ. Until it has its own paths: 2D off, 3D "not ready" (no Direct3D, OpenGL in software), frame buffer, modes, cursor and flips only.
+- **VX900 engines:** its 2D register order (`+04,+34,+38,+30,+2C,+08,+0C,+10,+00`) is what VIA's XP miniport writes for 7122, but the board showed the chip decodes the VX855's M1 order: the 2D engine, DirectDraw and the overlay run on the VX855's code (from .601 to .603). Its vertex input does differ: descriptors and a vertex program in place of attribute-order words. The driver's 3D layer writes them, and the VX900 runs the command fetcher and ring like the other chips with four rules of its own (wrap block, one wrap at a time, wait words after every burst, flips from the CPU). No registry switch from .617: `VX_chip_accel()` answers 1 for all three chips. The whole VX900 recipe is in the VX900 supplement.
 - **Video overlay:** VX855 only. The VX800's HQV unit has another register map; the query answers mask 0 so DirectDraw offers no overlay.
 - **PLL:** VX855 and VX900 take the multiplier and divider as computed; the VX800 holds each less two (OpenChrome `ViaSetDotclock`). Until a board has shown the driver's own timing on a chip, that chip uses the BIOS's timing.
 - **Video ROM check:** strict device number only where the ROM has been read (VX855); elsewhere a VIA x86 ROM.
@@ -4996,7 +5055,7 @@ Rule: the same offset number is not the same register across HC3 and HCM; never 
 
 **Board, .583 (VX2OVL through DirectDraw, 640x480x16):** picture, enlargement, flip, move, hide, YV12, shrink, RGB565, RGB32, source colour key and bob all right. The HQV block of 34.4 is therefore correct for the VX800. Only the **destination colour key** fails: the key-coloured rectangle stays its own colour, no video in it.
 
-**Destination key at 16 bits, tried so far on the VX800:** low bits zero (the VX855's proven form, F81F -> F800F8): fails. Low bits replicated (FF00FF, .584): fails. Third form in .585: the 5-6-5 pixel value itself in the key register (mask bit 12, `VXO_M_KEYRAW`; OpenChrome writes the X pixel value at every depth). VX2OVL v1.5 tries all three live and logs 0x220, 0x264, 0x298, 0x230, 0x210, 0x228, 0x22C, 0x240 for each, so a fourth failure still leaves the registers to read.
+**Destination key at 16 bits, tried so far on the VX800:** low bits zero (then believed proven on the VX855, F81F -> F800F8): fails. Low bits replicated (FF00FF, .584): fails. Third form in .585: the 5-6-5 pixel value itself in the key register (mask bit 12, `VXO_M_KEYRAW`; OpenChrome writes the X pixel value at every depth). VX2OVL v1.5 tries all three live and logs 0x220, 0x264, 0x298, 0x230, 0x210, 0x228, 0x22C, 0x240 for each, so a fourth failure still leaves the registers to read.
 
 **The VX800 BIOS's own PLL words confirm the dm-2 / dn-2 form.** Read back by VXTIME: 1280x1024 SR44 95, SR45 08, SR46 03 = dm 151, dr 2, dn 5 = 108.1 MHz; 1280x800 SR44 44, SR45 88, SR46 81 = dm 70, dr 2, dn 3 = 83.5 MHz. The BIOS uses both states of the two top bits (SR45 bit 7, SR46 bit 7), so neither is required.
 
@@ -5004,7 +5063,7 @@ Rule: the same offset number is not the same register across HC3 and HCM; never 
 
 ### 34.6 VX800 complete: overlay key and own timing proven (.585 board, .586)
 
-**Destination colour key at 16 bits on the VX800 = the 5-6-5 pixel value itself** in 0x220 / 0x264 (with bit 30), no widening. Board, VX2OVL v1.5 with .585 (mask 5057 = 961 | 4096): key right at the first try, and every other step right (picture, enlargement, flip, move, hide, YV12, shrink, RGB565, RGB32, source key, bob). The VX855 needs the widened form with zero low bits. So the key register's format is per device: VX855 24-bit widened, VX800 raw pixel.
+**Destination colour key at 16 bits on the VX800 = the 5-6-5 pixel value itself** in 0x220 / 0x264 (with bit 30), no widening. Board, VX2OVL v1.5 with .585 (mask 5057 = 961 | 4096): key right at the first try, and every other step right (picture, enlargement, flip, move, hide, YV12, shrink, RGB565, RGB32, source key, bob). Corrected 2026-11-13 (.602 on all three boards, VX2OVL v1.5 at 16 bits): the VX855 and the VX900 need the raw pixel value too; both widened forms show no picture at 16 bits on any chip. The VX855's widened form had only been proven at 32 bits, where the three forms are the same number. Rule: the key register takes the pixel value itself at every depth, on every chip. From .603 it is the driver's only form, and the mask's key bits (4 and 12) are gone.
 
 **The driver's own timing runs on the VX800.** Board, VXTIME v1.1 with .585: eight sizes (1152x864, 1280x720, 1280x768, 1280x800, 1280x960, 1280x1024, 1360x768, 1366x768), each with the driver's timing used, 59.69-60.08 Hz measured, picture steady with all four edges. PLL words written, for reference: 1280x1024 SR44 B3 SR45 88 SR46 04; 1280x720 SR44 51 SR45 8C SR46 00; 1366x768 SR44 D5 SR45 88 SR46 07 (the BIOS's 1366x768 runs at 58.93 Hz; the driver's at 59.69). From .586 the driver's timing is the default on 1122 as on 5122.
 
@@ -5088,7 +5147,50 @@ Rule: the same offset number is not the same register across HC3 and HCM; never 
 
 **Tool rules from these runs.** Tools that draw on the screen DC and compare pictures must (1) take the focus with a window of their own, so no caret blinks through (7 pixels, complementary colours), and (2) make that window cover the screen, topmost, never painting or erasing, so no other window repaints a piece of itself between two pictures (a 16x30 block of untouched background differed once).
 
-## 35. VX900 board (Gigabyte M7V90PI-VL): getting Windows 98 to start at all (open, 2026-11-12)
+## 35. VX900 board (Gigabyte M7V90PI-VL): getting Windows 98 to start at all (solved 2026-11-13)
+
+**Solved with one file.** A patched copy of Windows' own VDD in `C:\WINDOWS\SYSTEM\VMM32\VDD.VXD` makes a stock Windows 98 SE install boot with the logo and open DOS windows on VX900 boards. Confirmed on the Gigabyte M7V90PI-VL (video BIOS 09/01/11, Ver19) and an HP board (158Ch, Eden X2 U4200), and on a clean install. The notes further down this section are the earlier search and are kept as failed approaches.
+
+**Cause.** The VX900 video BIOS uses registers above the standard VGA set during every mode set, and the stock VDD does not pass them to a virtual machine.
+
+- With CR3E bit 1 or 2 set (this board reads CR3E=0F), each mode set calls a delay routine nine times. It writes 70h to sequencer register 5D to start a timer in the chip, then polls bit 7 of SR5D with no timeout.
+- The stock VDD keeps 16 shadow sequencer registers per VM. For a VM that does not own the hardware it discards writes to indexes above 0F and answers reads from `[shadow + index]`, which for index 5D is unrelated VDD data. The poll never ends.
+- Windows runs BIOS mode sets inside a VM in three places: the VDD's own mode 10h and 03h calls at Device\_Init, the splash close (AX=0083h) when DISPLAY.DRV enables, and AX=1202h then 0003h when a DOS window opens. All three hung.
+- The same routine is in the VX855 BIOS. That board never sets the CR3E bits, so it never runs it.
+
+**The four changes in the VDD** (found by instruction pattern, same code in 95 OSR2, 98 SE and Me):
+
+| Change | Site (98 SE, object 15) | Effect |
+| --- | --- | --- |
+| Sequencer read, index above 0F: read the chip, saving and restoring its index | `mov al,[ecx+edi+66h]` fallback at 4F51 | BIOS sees real values, not VDD data |
+| Sequencer write, index 5D only: pass to the chip | `push eax / cmp cl,0Fh / ja` at 4ED6 | Chip timer runs, no waits |
+| Detached owner: drop extended CRTC writes | `cmp cl,18h / jbe` at 5380, `jbe` to `jmp` | Logo stays steady during the start-up mode calls |
+| Remove port 3C3 from the trapped-port table (count 32 to 31) | table `20 00 C0 03` | DOS window opens fast |
+
+The BIOS reads port 3C3 about 145,000 times per mode set as a delay. Trapped, that took 5 to 7 seconds.
+
+**Install recipe for a VX900 board.**
+
+1. Run Windows 98 SE Setup normally. It freezes at the logo on the first restart.
+2. Reset, boot to Command prompt only, and copy the patched `VDD.VXD` into `C:\WINDOWS\SYSTEM\VMM32`.
+3. Restart. Setup continues through hardware detection.
+4. Handle the 2 GB of RAM separately (PATCHMEM was used on the confirmed install).
+
+**Rules learned.**
+
+- A file in `SYSTEM\VMM32` overrides the copy packed in `VMM32.VXD`. Building one from the packed copy means fixing the LE data-pages offset and adding an MZ stub.
+- `VMM32.VXD` on 98 SE is W4: 8 KB chunks, DoubleSpace-style bit stream (2-bit codes: 10 literal, 01 literal with high bit, 00 6-bit offset, 11 then one bit for 8-bit or 12-bit offset; gamma length, minimum 2). On the 95 CD it is plain W3 holding only VMM.
+- Windows caches a video ROM image to disk that can come from another machine. Dump C000 live before patching by address.
+- Find BIOS and VDD patch sites by code pattern, not by address. The two VX900 BIOS versions and the three VDDs all differ in layout.
+- Fix the cause before the symptoms. Making reads real removed the need for every earlier workaround.
+
+**Failed or superseded approaches.**
+
+- `Logo=0`: boots, but only hides the splash close; DOS windows still lock.
+- Skipping the VDD's start-up mode 10h and 03h calls, and forcing VMPOLL's fallback path: reached the desktop, but the VMPOLL change stopped keyboard input in DOS windows. Neither is needed once reads are real.
+- Renaming HSFLOP.PDR: not needed; that stall was a side effect.
+- Patching only the BIOS timer loop in shadow RAM (VX9FIX.COM, unlock via D0F3 register 80h): turned the hard lock into a recoverable crash, because the BIOS then calculated from junk register values. Not needed with the VDD fix.
+- The stall at C000:5EE1 seen in an emulator: an artifact. That loop scans the font-override list at 40:A8, which pointed at garbage after the ROM was swapped without re-running its POST.
 
 **Board.** VIA Nano U3300 1.2 GHz, VX900 (graphics 1106:7122), AMI BIOS V9F5 09/14/11, 2 GB DDR3 SO-DIMM, an OEM thin-client board (no vendor page, few BIOS options), driven through an IP KVM. Disk controller 1106:9001 in native mode (programming interface 8F), IRQ 11.
 
@@ -5111,9 +5213,9 @@ Rule: the same offset number is not the same register across HC3 and HCM; never 
 
 **Tools (DOS, sources in the tree under `dos9/`).** VX9PROBE (legacy hardware report), VX9TRACE (log lines and commits, IRQ counts), VX9EBIOS (INT 15 AH=C1 answer), VX9NMI (NMI source test).
 
-**Next.** Read the committed BOOTLOG.TXT after a freeze under VX9TRACE v1.4 for the true last line; then act on that driver (settings line, replacement file in `SYSTEM\VMM32\`, or a resident fix). Fallback: finish setup on the VX800 and move the disk.
+**Next.** Superseded by the fix at the top of this section. The earlier plan was to read the committed BOOTLOG.TXT after a freeze under VX9TRACE v1.4 for the true last line; then act on that driver (settings line, replacement file in `SYSTEM\VMM32\`, or a resident fix). Fallback: finish setup on the VX800 and move the disk.
 
-**Scope from 2026-11-12: the VX800 / VX855 driver.** The VX900 is shelved until Windows 98 starts on that board (section 35). `CHROME9.INF` lists only 1106:1122 and 1106:5122; the 1106:7122 line and its name string were removed (build number unchanged, .597). The VxD still recognises 7122 and would run it as a plain frame buffer if the driver were forced onto one.
+**Scope from 2026-11-12: the VX800 / VX855 driver.** Superseded 2026-11-13: Windows 98 starts on the board (section 35), the INF lists 1106:7122 again, and the VX900 port is under way (the VX900 supplement). As it stood: the VX900 was shelved until Windows 98 started on that board. `CHROME9.INF` lists only 1106:1122 and 1106:5122; the 1106:7122 line and its name string were removed (build number unchanged, .597). The VxD still recognises 7122 and would run it as a plain frame buffer if the driver were forced onto one.
 
 **WinTune 98 reference figures (MPixels/s; different machines, compare within a mode).** 640x480 16-bit: VX800 this driver 112.4 / 233.9 / 81.1 (2D / Direct3D / OpenGL); CN896 with VIA's driver 48.2 / 90.9 / 36.4; Intel 852/855GM with Intel's driver 136.7 / 126.1 / 109.1. 1024x768 32-bit: VX855 this driver (.560) 145.0 / 254.1 / 124.3; the same Intel machine 120.0 / 55.6 / 60.5. No VX855 run at 640x480 16-bit is recorded.
 
@@ -5130,7 +5232,7 @@ Rule: the same offset number is not the same register across HC3 and HCM; never 
 - Chrome9 HC: CN896, P4M900. The cousin: same 3D core, H5 2D engine.
 - Chrome9 HC3: VX800, VX820. M1 2D engine. Supported.
 - Chrome9 HCM: VX855, VX875. M1 2D engine. Supported.
-- Chrome9 HD: VX900. M1 2D engine. Not supported (section 35).
+- Chrome9 HD: VX900. M1 2D engine. Supported from .601 (2D, DirectDraw, overlay); Direct3D from .605, under test (the VX900 supplement). Unlike the HC3 and HCM it has a vertex program stage: hardware transform and lighting is possible on it.
 
 The three M1 chips are the close relatives; one set of binaries serves VX800 and VX855. Platform succession: UniChrome Pro boards were followed by Chrome9 HC, and UniChrome Pro II (CX700/VX700) by Chrome9 HC3.
 
@@ -5157,3 +5259,125 @@ Order used in the README and chart: Chrome9 chips oldest first, Intel last.
 | VX800, this driver | 112.4 | 233.9 | 81.1 |
 | VX855, this driver | 120 | 417 | 150 |
 | Intel 852/855GM, Intel's driver | 136.7 | 126.1 | 109.1 |
+
+## 37. A laptop panel: the second display unit (IGA2) shows the desktop (.598)
+
+**Status: built from one machine's register dump (Samsung NC20, VX800, 1280x800 panel); not yet run there. Treat the register meanings as OpenChrome's and VIA's CE driver's until VXPANEL's log confirms them.**
+
+### 37.1 What went wrong on .597
+
+Every test passed (they read registers and video memory back) while the person at the screen saw no mouse pointer and Direct3D flickering as if it had one buffer; OpenGL was fine because the ICD copies to the visible buffer instead of flipping. An external monitor stayed dark.
+
+The dump (VXSTATE): CR6A = C0 (second unit on), CR97 = 11 and CR99 = 10 (bit 4: the panel takes the second unit), CR36 = 31 (bits 5:4 = 11: the monitor output powered down), the second unit's timing 1280x800 in 1408x816 (CR50-5F), its pitch CR66/CR67 = the desktop's, its start address CR62-64 = 0. The first unit runs as well, with the driver's own timing, and nobody sees it. The start address, the blank and the hardware icon were the first unit's only.
+
+**Rule: a test that reads back cannot judge a display path. A test for anything the eye must confirm has to ask the person at the screen.**
+
+### 37.2 Telling which unit shows the desktop
+
+- **The second unit shows this frame buffer** when CR6A bit 7 is set and its pitch equals the mode's. Pitch in 8-byte units: CR66, CR67 bits 1:0 (bits 9:8), CR71 bit 7 (bit 10).
+- **The picture seen is the second unit's alone** when, besides, the panel takes it (CR97 or CR99 bit 4) and the monitor output is powered down (CR36 bits 5:4 not 0).
+- Look at every mode set and every flip: a BIOS hot key can change the routing.
+
+### 37.3 What the driver does then
+
+| Function | First unit (as before) | Second unit |
+| --- | --- | --- |
+| Start address | CR0D, CR0C, CR48, CR34 last; 2-byte units | CR62 bits 7:1, CR63, CR64, CRA3 bits 2:0; the byte offset >> 3. CR62 bit 0 and CRA3's upper bits kept. Written whenever the second unit shows the frame buffer. An offset that is not a multiple of 8 is refused. |
+| Blank | port 3DA bit 3 | MMIO 204 bit 2 (VIA's CE driver's flip waits on it). Used only when the picture is the second unit's alone. |
+| Flip through the 3D ring | yes | no: the ring's display address is the first unit's |
+| Scan line counter (MMIO 1290) | yes | not used |
+| Hardware icon | 2F0 control 36000004, 2F4 image, 2F8 position, 2FC origin offset; 2EC, 120C, 2E4, 2E8 | 260 control B6000004, 224 image, 208 position, 20C origin offset; 270 = 0, 274 inverse colour, 268 = 000E0000, 278 = 0E0F0000 (OpenChrome viaIGA2InitHI). Same image block, same position, same on/off as the first. |
+
+When MMIO 204 bit 2 does not toggle (the blank probe finds no blank), a flip waits 18 ms after writing the address instead, so the application cannot draw into the old front while it is still scanned, and the refresh rate is reported as 60.
+
+Control FFFFFE48 returns what the driver saw and did: CR6A, CR36, CR97, CR99; the second unit's pitch; the two decisions and whether the pointer is on both units; start addresses written to the second unit and flips that waited by time.
+
+### 37.4 Open on that machine (VXPANEL v1.0 asks and logs)
+
+- Whether MMIO 204 bit 2 follows the refresh there, and whether CR61 bit 5 (the second unit's flip flag in the CE driver) moves when CR62-64 are written.
+- Whether the second unit's icon sits before or after the panel scaler: at 640x480 stretched to the panel the pointer may be in the wrong place.
+- DirectDraw offered 640x480, 800x600 and 1280x800 at 16 bits and 640x480 and 1280x800 at 32 bits, without 1024x768, though the desktop sets 1024x768. VIA's XP driver for the machine carries a "virtual mode" table for the panel with 800x600, 1024x768 and 1152x864. Cause not known.
+- A full-screen MS-DOS box is black or garbled. Not looked at yet.
+
+### 37.5 Installing on that machine: Code 12
+
+After the driver was installed over Windows' Standard VGA driver, Device Manager showed Code 12 (no free memory range) and the three memory ranges of the device at 0. Set by hand in Device Manager (Resources, automatic settings off) to the values the BIOS gives (the frame buffer at D0000000 there), the driver started. The video ROM reads the frame buffer address from PCI configuration register 10h of device 00:01.0 each time and never writes it, and the driver only reads PCI configuration, so the zero was Windows' own allocation. The driver refuses to start with the address at 0 (bring-up failure VX\_BAD\_PCI). Why Windows did not keep the BIOS's ranges is not known.
+
+### 37.6 On the machine (.598, VXPANEL v1.0) and what .599 corrects
+
+**Confirmed on the NC20 with .598:** the pointer is visible and its tip in the right place at 1280x800 and at 640x480 stretched to the panel (the second unit's icon is positioned in the mode's coordinates, before the scaler); red, green and blue screens flip steadily; a moving bar at 60.0 flips a second is clean with two back buffers; 3DMark 2000 runs without flicker. Section 37.2's detection and 37.3's start address and icon registers are right.
+
+**The blank bits are 1 while the picture is scanned and 0 in the blank.** MMIO 204 bit 2 (second unit) was set in 98.06% of 217,803 samples and changed 120 times a second; the second unit shows 800 of 816 lines = 98.04%. MMIO 200 bit 1 (first unit) the same way round: set in 96.2%, 800 of 831 lines = 96.3%. So "in the blank" is the bit **clear**. .598 read it the other way round: the blank probe still found a 60 Hz signal, but a flip counted as taken almost at once, so with one back buffer a program could draw into the buffer still on the screen. .599 reads the bit clear as the blank. (VIA's CE driver waits while the bit is set: it waits for the blank to begin.)
+
+**Not usable there:** CR61 bit 5 (the CE driver's second-unit flip flag) never set when the address is written through CR62-64; MMIO 204 bit 1 never set; MMIO 200 bit 3 always set.
+
+**Rule for a blank or busy bit taken from a manual or another driver: sample it and compare its duty cycle with the timing before trusting its sense.** Blank lines over total lines gives the fraction to expect.
+
+### 37.7 A panel's EDID that lists only its native size
+
+The NC20's panel EDID holds one detailed timing (1280x800), no established timings, no standard timings and no range limits. The monitor test (does the EDID list this size, or do its range limits cover it at 60 Hz) therefore refused 800x600 at 32 bits and 1024x768 at 16 and 32 bits (verdict 8), and Direct3D programs had no 1024x768; the six base modes (640x480 at 8, 16 and 32 bits, 800x600 at 8 and 16, 1024x768 at 8) were all that remained beside the native size.
+
+.599: when the EDID has a native detailed timing, 640x480, 800x600 and 1024x768 are taken if they fit inside it and no range limits said otherwise. Every monitor shows them and a panel's scaler stretches them. Other sizes below the native one (720x480, 1024x600, 1280x720) are still refused unless listed.
+
+## 38. Programs written for DirectX 5 and older: the texture state arrives as render states (.600)
+
+**Status: built from a field report and from reading the core; VXLEG v1.0 checks it on a board. Not yet run.**
+
+### 38.1 The report
+
+On .599 every program using the Direct3D interfaces before DirectX 6 drew without bilinear filtering and without transparency, and was said to have no fog: Final Reality (DX5), PC Player D3D Bench (DX3), Tomb Raider 2 and 3 (DX5), Hellbender (DX2). Programs for DirectX 6.1, 7 and 8 were right (Indiana Jones and the Infernal Machine, Thief 2, Unreal Gold, 3DMark 2000 and 2001 SE, Duke Nukem Manhattan Project).
+
+### 38.2 The cause in the core
+
+Before DirectX 6 a program has no texture stage states. It sets render states: TEXTUREHANDLE (1), TEXTUREADDRESS (3), TEXTUREMAG (17), TEXTUREMIN (18), TEXTUREMAPBLEND (21), BORDERCOLOR (43), TEXTUREADDRESSU and V (44, 45), MIPMAPLODBIAS (46), ANISOTROPY (49). The runtime hands them to a DrawPrimitives2 driver as they are. Only TEXTUREHANDLE was acted on (15.x, v10.185). The others were stored and never read, so such a program drew point-sampled, wrapped, with stage 0's default operations whatever it asked for. Section 15's note that "the runtime maps TEXTUREMAPBLEND to stage 0" was an assumption and is wrong for these interfaces.
+
+**Rule: an assumption about what the runtime does for the driver is not proven by the DirectX 7 tests passing. Check each interface generation with a program that draws through it.**
+
+### 38.3 The mapping (written through to stage 0 when the render state arrives)
+
+| Render state | Stage 0 |
+| --- | --- |
+| TEXTUREMAG: 2 LINEAR, else NEAREST | MAGFILTER linear or point |
+| TEXTUREMIN: 1 NEAREST, 2 LINEAR, 3 MIPNEAREST, 4 MIPLINEAR, 5 LINEARMIPNEAREST, 6 LINEARMIPLINEAR | MINFILTER point (1, 3, 5) or linear (2, 4, 6); MIPFILTER none (1, 2), point (3, 4), linear (5, 6) |
+| TEXTUREADDRESS | ADDRESS, ADDRESSU, ADDRESSV |
+| TEXTUREADDRESSU, TEXTUREADDRESSV, BORDERCOLOR, MIPMAPLODBIAS, ANISOTROPY | the stage state of the same name (ANISOTROPY: MAXANISOTROPY) |
+| TEXTUREMAPBLEND 1 DECAL, 7 COPY, 5 DECALMASK | colour SELECTARG1 (texture), alpha SELECTARG1 |
+| TEXTUREMAPBLEND 2 MODULATE, 6 MODULATEMASK | colour MODULATE; alpha the texture's when its format has alpha, else the diffuse's |
+| TEXTUREMAPBLEND 3 DECALALPHA | colour BLENDTEXTUREALPHA, alpha the diffuse's |
+| TEXTUREMAPBLEND 4 MODULATEALPHA | colour MODULATE, alpha MODULATE |
+| TEXTUREMAPBLEND 8 ADD | colour ADD, alpha the diffuse's |
+
+The arguments are set with the operations: ARG1 the texture, ARG2 the current colour.
+
+MODULATE's alpha depends on the texture, so it is worked out again whenever the texture changes, for as long as TEXTUREMAPBLEND had the last word on stage 0. That is remembered in a state slot of the core's own (render state 254, never sent by Direct3D), and cleared when stage 0's operations or arguments arrive as stage states. It is kept in the state, not in the context: adding a field to the context changes its size and the recorded replays refuse to run.
+
+Direct3D 7 and 8 have no such render states and send none, so their programs are not touched.
+
+### 38.4 Colour-keyed textures
+
+The texture caps now carry D3DPTEXTURECAPS\_TRANSPARENCY (8). Colour keys have been drawn since v10.197, but DirectX 3 and 5 programs look for the bit first (PC Player D3D Bench: "transparent textures not available").
+
+### 38.5 VXLEG v1.0
+
+Draws through IDirect3DDevice2 with TLVERTEX squares into an off-screen 3D surface and reads pixels back: filtering (a 2 x 2 texture magnified, point against linear), TEXTUREMAPBLEND's modes, the diffuse alpha with a texture without alpha, a texture with alpha, colour keys with COLORKEYENABLE under MODULATE, DECAL and with SPECULARENABLE, vertex fog from the specular alpha, WRAP against CLAMP. It prints the hardware device as IDirect3D2 describes it and what a DirectX 5 program reads from those words, the texture formats listed, and the render state ids the driver has received since it was loaded (export VX\_D3D\_QueryLegacy): run it after a game to see what that game sent.
+
+### 38.6 Open from the same report
+
+- **Fog** in these programs: the core draws vertex fog and table fog (16.7) and the caps offer both; why they show none is not known. VXLEG's fog cases and its list of received states decide between a caps question and a drawing one.
+- **Hellbender (DX2):** a band of garbage across the picture. Not known; the device lists no palettized texture format, which programs of that age often want.
+- **InstallShield (newer versions):** panels with black boxes where text belongs. A 2D fault, likely the same on every board. Not found by reading.
+- **Jedi Knight 2 and Duke Nukem Manhattan Project under OpenGL** draw correctly at about 1 frame a second: the ICD is falling back to software drawing for something they use. VXGL\_LOG = 1 names it.
+- **Hardware T&L** is not offered by decision (20.x); 3DMark 2001's Nature test needs pixel shaders, which are not offered.
+
+### 33.17 Who does the transform and lighting, and the default (.601)
+
+Where a driver can do T&L at all:
+
+- **DirectX 6 and below:** never. Direct3D (or the game) transforms and lights; the driver is handed screen-space vertices. There is no DDI for a driver to take that over, so the driver's T&L has no role there.
+- **DirectX 7 and 8:** the program chooses. Plain HAL device or software vertex processing: Direct3D does it. T&L HAL device or hardware vertex processing: the driver must do it, and that choice exists only if the driver shows `D3DDEVCAPS_HWTRANSFORMANDLIGHT` (0x10000 in `dwDevCaps`), `dwMaxActiveLights` = 8 and `dwVertexProcessingCaps` = 0x3F in the extended caps.
+
+Rule from .601: the driver's T&L is **offered by default to every program** (`vx_d3d_tnl=1` in `vx855_2d.c`; the VxD reads `ACCEL_D3D_TNL` with default 1; still withdrawn when the processor lacks FXSR/SSE/SSE2). `ACCEL_D3D_TNL=0` in the registry is the off switch. A program that prefers hardware T&L when offered (GTA3) now runs on the driver's path, which is the slower of the two at this point (33.16), so the remaining work is speed: bring the driver's path level with Direct3D's software path, judged by same-session A/B (`VXTLP GRID HW` against `VXTLP GRID SW`, then GTA3).
+
+Rejected: a built-in list of program names shown no hardware T&L (built and removed inside .601). The DDI cannot tell a program that requires hardware T&L from one that prefers it, and a name list hides the speed gap instead of closing it.
+
+Checks that encode the default: `verification/profile.py` (0x10000 present), `verification/d3d_callbacks.py` (8 lights, 0x3F), `verification/directdraw.py` (`VX_D3D_QueryLegacy` word 16 = 1; the call returns 17 words when given room, 16 to a .600 caller). VXLEG v1.1 prints the offer; VXTLP exercises the path.

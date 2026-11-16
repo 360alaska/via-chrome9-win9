@@ -124,7 +124,6 @@ typedef struct vxgl_ctx {
  DWORD magic;                 /* v10.259: VXGL_MAGIC while alive (0 once torn down) */
  int tex_units;               /* v10.268: texture stages the engine draws with (0: untextured) */
  int tex_unit_of[3];          /* v10.268: the GL unit of each stage */
- int tex_cx[3];              /* v10.357: a stage's GL_CLAMP ring copy: s (1) / t (2) must stay in 0..1 in the draw (vxgl_tex_vertices_ok) */
  uint32_t tss_default[VX_D3D_STAGES][VX_D3D_TSS]; /* v10.268: the core's stage state as vx_d3d_init made it */
  int tex_changed;             /* v10.268: a copy was made or moved: the core's template (which holds the resolved surface) is built again */
  vx_d3d_state *xlate_old;     /* v10.268: during vxgl_translate_state, the state the batch was built with (a flush then sends it under that) */

@@ -246,7 +246,6 @@ typedef struct {
  GLuint ring,ctab;GLenum dmode;const struct gl_color_table *tab;
  GLuint border;                        /* v10.330: the sampler's border colour (A R G B): a depth texture's converted by its depth mode */
  int xf;GLfloat sa,sb,ta,tb;           /* the coordinates the stage takes: s' = sa s + sb q, t' = ta t + tb q */
- int cx;                               /* v10.357: GL_CLAMP filtered linearly on a ring copy, exact while the draw's s (bit 0) / t (bit 1) are in 0..1 */
 } vxgl_plan;
 /* v10.317: a block copy's layout: level l at rel[l] (256-byte aligned) with rows of the sampler's pitch (A8R8G8B8: width x 4, 32 bytes at
  * least; v10.321: rounded up to 32 bytes, as for an NPOT width); a 3D texture's slices follow level 0, each pitch x height bytes (as the
@@ -550,13 +549,10 @@ static GLuint prepare(vxgl_ctx *c,int unit,int stage,GLenum *base,vxgl_plan *pl)
   * MIRRORED_REPEAT only on sides that need nothing (ACCEL_OPENGL_NPOT). */
  {int needS=!pow2(pl->sw)||rect,needT=!one&&(!pow2(pl->sh)||rect);
   int bS=t->WrapS==GL_CLAMP_TO_BORDER,bT=!one&&t->WrapT==GL_CLAMP_TO_BORDER,lin=linear_used(t,pl->mm);
-  /* v10.357: GL_CLAMP filtered linearly, exact (ACCEL_OPENGL_CLAMP = 0, the default): GL clamps s to 0..1 and the filter then takes in the
-   * border colour at the edges (half of it at s = 0 and 1). A ring of the border colour around the texels, clamped to the ring, is the same
-   * filter for every s in 0..1 (the engine at s' = (s x sw + 1) / w blends the ring and the edge texel by the same weights); below 0 or above
-   * 1 GL stays at half the border where the ring goes on to all of it, so a draw whose coordinates leave 0..1 on that side goes to software
-   * (vxgl_tex_vertices_ok, per draw). Not a rectangle, cube map or volume, nor mipmapped (a ring copy has no chain) */
-  int gS=lin&&t->WrapS==GL_CLAMP&&!rect&&!cube&&!vol,gT=lin&&!one&&t->WrapT==GL_CLAMP&&!rect&&!cube&&!vol;
-  if(gS||gT){pl->cx=(gS?1:0)|(gT?2:0);bS|=gS;bT|=gT;}
+  /* .637: GL_CLAMP filtered linearly is the engine's edge clamp, as the cards of its time drew it. v10.357 drew it exactly (a copy with a
+   * ring of the border colour), but a ring copy has no mip chain and holds only for coordinates in 0..1, so mipmapped GL_CLAMP textures
+   * and draws outside 0..1 went to software: Duke Nukem: Manhattan Project drew 4,705 primitives in software (5.6 to 9.8 fps in the game
+   * against 118 in its menus). The cost: the border colour is not blended into the outer half texel. CLAMP_TO_BORDER keeps its ring. */
   pl->padS=!pow2(pl->sw)?1:0;pl->padT=!one&&!pow2(pl->sh)?1:0;
   /* v10.321: a side not a power of two that repeats or mirrors, or a mip chain on one: the copy at the texture's own size, its levels
    * halved and rounded down as GL's (the sampler's NPOT mode, 02/22 bit 15 clear, HCM p118; level l = HTXSnL0W >> l), rows aligned to
@@ -588,7 +584,7 @@ static GLuint prepare(vxgl_ctx *c,int unit,int stage,GLenum *base,vxgl_plan *pl)
     (!vxgl_gl_border||!(vx_d3d_feat&VX_F_BORDER)||linear_used(t,pl->mm)))PREPSW;
  /* GL_CLAMP filtered linearly takes in the border colour at the edges; the engine clamps to the edge texel (as the cards of the time
   * did, and games expect): such textures go to software, which does it exactly */
- if(((t->WrapS==GL_CLAMP&&!(pl->cx&1))||t->WrapS==GL_MIRROR_CLAMP_EXT||(!one&&((t->WrapT==GL_CLAMP&&!(pl->cx&2))||t->WrapT==GL_MIRROR_CLAMP_EXT))||(vol&&t->WrapR==GL_CLAMP))&&linear_used(t,pl->mm))PREPSW; /* v10.357: the ring copy (pl->cx) is exact */ /* v10.353: MIRROR_CLAMP_EXT as GL_CLAMP */
+ if((t->WrapS==GL_MIRROR_CLAMP_EXT||(!one&&t->WrapT==GL_MIRROR_CLAMP_EXT)||(vol&&t->WrapR==GL_CLAMP))&&linear_used(t,pl->mm))PREPSW; /* .637: GL_CLAMP on s and t is the edge clamp (above) */ /* v10.357: the ring copy (pl->cx) is exact */ /* v10.353: MIRROR_CLAMP_EXT as GL_CLAMP */
  /* v10.330 (review #17): a depth texture with a colour table goes to software (the depth mode's conversion returned before the table).
   * (review #13): a border sampled through a colour table too: the copy's texels are looked up, the sampler's border colour and the ring
   * were not. (review #14): a depth texture's border is its red as the depth, converted by the depth mode as its texels are (swrast) */
@@ -795,7 +791,6 @@ int vxgl_tex_state(vxgl_ctx *c) {
  GLcontext *ctx=&c->gl;uint32_t (*tss)[VX_D3D_TSS]=c->core.state.tss;int unit,stage=0,s,nunits;uint32_t tf=0xFFFFFFFFUL;int tf_used=0;
  struct gl_texture_object *st_t[3];vxgl_plan st_pl[3];
  c->tex_units=0;c->tex_sets=0;c->tex_layout=0;c->tex_vol=0;c->tex_set3=0;c->core.state.rs[60]=0xFFFFFFFFUL;
- c->tex_cx[0]=c->tex_cx[1]=c->tex_cx[2]=0;
  for(s=0;s<VX_D3D_STAGES;s++)memcpy(tss[s],c->tss_default[s],sizeof(tss[s]));
  for(s=0;s<3;s++)c->tex_xf[s].on=0;
  /* v10.321: a fragment program as stages (vxgl_fp.c); the units' textures laid out below as for the fixed function */
@@ -854,7 +849,7 @@ int vxgl_tex_state(vxgl_ctx *c) {
   if(stage>0){if(cube||vol)c->tex_set3=1;} /* v10.321: stage 1's set (its own, set 1) carries r */
   else if(cube)c->tex_layout=1;else if(vol){c->tex_layout=3;c->tex_vol=1;}else if(proj)c->tex_layout=2;
   c->tex_xf[stage].on=pl.xf;c->tex_xf[stage].sa=pl.sa;c->tex_xf[stage].sb=pl.sb;c->tex_xf[stage].ta=pl.ta;c->tex_xf[stage].tb=pl.tb;
-  c->tex_unit_of[stage]=unit;c->tex_cx[stage]=pl.cx;stage++;
+  c->tex_unit_of[stage]=unit;stage++;
  }
  if(stage<VX_D3D_STAGES){tss[stage][1]=TOP_DISABLE;tss[stage][4]=TOP_DISABLE;}
  if(tf_used)c->core.state.rs[60]=tf;
@@ -907,19 +902,6 @@ int vxgl_tex_vertices_ok(vxgl_ctx *c,int set2) {
   const GLvector4f *v=VB->AttribPtr[_TNL_ATTRIB_TEX0+c->tex_unit_of[s]];GLuint n;const GLubyte *p;
   if(!v||v->size<4||c->tex_layout==2)continue; /* v10.295: projective: q goes to the engine */
   for(n=0,p=(const GLubyte*)v->data;n<(v->stride?VB->Count:1);n++,p+=v->stride)if(((const GLfloat*)p)[3]!=1.0F)return 0;
- }
- /* v10.357: a GL_CLAMP ring copy (prepare, pl->cx) is exact only while the coordinates stay in 0..1 on that side: the vertices' own (no
-  * texgen on the side, an identity texture matrix, not projective), each one checked. A polygon whose vertices are in 0..1 interpolates
-  * inside it, and Mesa's clipping keeps that */
- for(s=0;s<(GLuint)c->tex_units;s++)if(c->tex_cx[s]) {
-  GLuint u=(GLuint)c->tex_unit_of[s],k,n;const GLvector4f *v=VB->AttribPtr[_TNL_ATTRIB_TEX0+u];const GLubyte *p;
-  static const GLfloat id[16]={1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-  const struct gl_texture_unit *tu=&ctx->Texture.Unit[u];
-  if(c->tex_layout==2||((c->tex_cx[s]&1)&&(tu->TexGenEnabled&S_BIT))||((c->tex_cx[s]&2)&&(tu->TexGenEnabled&T_BIT)))return 0;
-  if(memcmp(ctx->TextureMatrixStack[u].Top->m,id,sizeof(id)))return 0;
-  if(!v)return 0;
-  for(n=0,p=(const GLubyte*)v->data;n<(v->stride?VB->Count:1);n++,p+=v->stride)
-   for(k=0;k<2;k++)if(c->tex_cx[s]&(1U<<k)){GLfloat f=k<v->size?((const GLfloat*)p)[k]:0.0F;if(!(f>=0.0F&&f<=1.0F))return 0;}
  }
  return 1;
 }

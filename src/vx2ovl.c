@@ -1,4 +1,5 @@
-/* VX2OVL v1.0: video overlay (driver v10.106).
+/* VX2OVL v1.6 (driver .603): the three 16-bit key forms and their tries are gone: the key is the pixel value itself on every chip (VX800 .585, VX900 .602 on the boards; the widened forms showed no picture at 16 bits anywhere). A failed key step logs the key and compose registers once.
+ * VX2OVL v1.0: video overlay (driver v10.106).
  * The VX855's V1 video unit can show a YUY2 picture on top of the desktop, scaled up, with the desktop's own pixels deciding where it shows (colour key).
  * ACCEL_OVERLAY is 0 until this test has passed.
  * Mode 1 (ACCEL_OVERLAY is 0, which is the default): the program writes a colour bar picture into video memory, switches the driver's overlay on live and talks to
@@ -159,7 +160,7 @@ static void set_key_window(HINSTANCE hi,int on) {(void)hi; keyrect=on; Invalidat
 static DWORD raw_variant(HINSTANCE hi,DWORD m,mem *a,mem *b) {
  DWORD ok=0,c[4]; int i;
  ctl(0xF8000000UL|m,c);
- logline("-- variant: ACCEL_OVERLAY %lu (register set %lu, %s width count, key %s, flips %s)\n",m,m&3,(m&8)?"width":"width-1",(m&16)?"low bits replicated":"low bits zero",(m&32)?"plain address":"double buffer");
+ logline("-- variant: ACCEL_OVERLAY %lu (register set %lu, %s width count, flips %s)\n",m,m&3,(m&8)?"width":"width-1",(m&32)?"plain address":"double buffer");
  if(c[0]!=m) {logline("   the driver did not take the live mask\n"); return 0;}
  set_key_window(hi,0);
  if(!vxo(VXO_UPDATE,a,VXO_FMT_YUY2,0,0,PW,PH,20,20,20+PW,20+PH,0)) {logline("   refused (reason %lu)\n",last_reason); return 0;}
@@ -174,11 +175,6 @@ static DWORD raw_variant(HINSTANCE hi,DWORD m,mem *a,mem *b) {
  if(vxo(VXO_UPDATE,a,VXO_FMT_YUY2,0,0,PW,PH,20,20,20+2*PW,20+2*PH,1)) {
   wait_ms(1000);
   if(ask(hi,"Now the picture should show only inside a 200 x 100 rectangle (inside the 320 x 240 area the dark blue background is visible around it). Is the bar picture visible only inside that rectangle, with dark blue elsewhere?")) ok|=4;
-  else if(depth==16&&!(m&16)) {
-   logline("   16 bpp: trying the key with replicated low bits\n"); ctl(0xF8000000UL|m|16,c);
-   if(vxo(VXO_UPDATE,a,VXO_FMT_YUY2,0,0,PW,PH,20,20,20+2*PW,20+2*PH,1)) {wait_ms(800); if(ask(hi,"Again: the picture only inside the 200 x 100 rectangle, dark blue elsewhere?")) ok|=4|0x100;}
-   if(!(ok&0x100)) ctl(0xF8000000UL|m,c);
-  }
  }
  set_key_window(hi,0);
  if(ok&2) {
@@ -382,7 +378,7 @@ static void raw_mode(HINSTANCE hi) {
   m=variants[i]; ok=raw_variant(hi,m,&a,&b);
   logline("   variant %lu: picture %s, enlargement %s, colour key %s, flip %s, move %s\n",m,(ok&1)?"yes":"no",(ok&2)?"yes":"no",(ok&4)?"yes":"no",(ok&8)?"yes":"no",(ok&16)?"yes":"no");
   sc=0; if((ok&7)==7) sc=10+((ok&8)?4:0)+((ok&16)?2:0);
-  if(sc>bsc) {bsc=sc; best=ok; bestm=m|((ok&0x100)?16:0);}
+  if(sc>bsc) {bsc=sc; best=ok; bestm=m;}
   if(sc==16) break;
  }
  if(best&&!aborted) extras(hi,&bestm);
@@ -508,17 +504,11 @@ static void dd_mode(HINSTANCE hi) {
  if(!aborted&&ddshow(20,20,20+2*PW,20+2*PH,0)) {wait_ms(1000); if(ask(hi,"Now twice as wide and tall (320 x 240), same picture. Correct?")) okm|=2; else pass=0;} else pass=0;
  set_key_window(hi,1);
  if(!aborted&&ddshow(20,20,20+2*PW,20+2*PH,1)) {wait_ms(1000); if(ask(hi,"With the colour key: the picture should show only inside the 200 x 100 rectangle (dark blue around it). Correct?")) okm|=4; else pass=0;} else pass=0;
- /* v1.5 (.585; VX800 board: the key step failed with the low bits zero and replicated): the other conversions of a 5-6-5 key tried
-  * live, and the key and compose registers logged for every try */
- if(!aborted&&!(okm&4)&&depth==16) {DWORD c2[4],m0,base,t; static const DWORD alt[3]={0,16UL,4096UL}; static const char *const an[3]={"low bits zero","low bits replicated","the pixel value itself"};
-  ctl(0xFFFFFE17UL,c2); m0=c2[0]; base=m0&~(16UL|4096UL);
-  for(t=0;t<3&&!aborted;t++) {DWORD mm=base|alt[t]; int shown,yes=0;
-   ctl(0xF8000000UL|mm|2048UL,NULL); shown=ddshow(20,20,20+2*PW,20+2*PH,1); wait_ms(800);
-   {static const DWORD rg[8]={0x220,0x264,0x298,0x230,0x210,0x228,0x22C,0x240}; int k2; logline("   ACCEL_OVERLAY %lu (key: %s)%s; registers:",mm,an[t],mm==m0?" [the driver's value]":"");
-    for(k2=0;k2<8;k2++) {vx_ovl_req rq; DWORD rr[VXO_REPLY_DWORDS]; memset(&rq,0,sizeof(rq)); rq.cmd=VXO_REGR; rq.offset=rg[k2]; if(ovl(&rq,rr)) logline(" %03lX=%08lX",rg[k2],rr[VXO_R_UPDATES]); else logline(" %03lX=?",rg[k2]);} logline("\n");}
-   if(mm!=m0&&shown) {char qq[300]; sprintf(qq,"Try %lu of 3 (key as %s): the picture should show only inside the 200 x 100 rectangle. Correct now?",t+1,an[t]); yes=ask(hi,qq); logline("   answer for ACCEL_OVERLAY %lu: %s\n",mm,yes?"YES: this device needs this value":"no");}
-   if(yes) break;}
-  ctl(0xF8000000UL|m0,NULL);}
+ /* v1.6 (.603): one key form (the pixel value itself: the driver's only one now); a key step that fails logs the key and compose registers */
+ if(!aborted&&!(okm&4)) {static const DWORD rg[8]={0x220,0x264,0x298,0x230,0x210,0x228,0x22C,0x240}; int k2; DWORD c2[4]; ctl(0xFFFFFE17UL,c2);
+  ctl(0xF8000000UL|c2[0]|2048UL,NULL); logline("   the key step failed; registers:");
+  for(k2=0;k2<8;k2++) {vx_ovl_req rq; DWORD rr[VXO_REPLY_DWORDS]; memset(&rq,0,sizeof(rq)); rq.cmd=VXO_REGR; rq.offset=rg[k2]; if(ovl(&rq,rr)) logline(" %03lX=%08lX",rg[k2],rr[VXO_R_UPDATES]); else logline(" %03lX=?",rg[k2]);} logline("\n");
+  ctl(0xF8000000UL|c2[0],NULL);}
  set_key_window(hi,0);
  if(!aborted&&oback&&ddshow(20,20,20+PW,20+PH,0)) {
   wait_ms(500);
@@ -546,7 +536,7 @@ int WINAPI WinMain(HINSTANCE hi,HINSTANCE prev,LPSTR cmd,int show_) {
  (void)prev;(void)show_; forceraw=(cmd&&(strstr(cmd,"raw")||strstr(cmd,"RAW")))?1:0; forceprobe=(cmd&&(strstr(cmd,"alpha")||strstr(cmd,"ALPHA")))?1:0;
  lf=fopen("VX2OVL.TXT","w"); if(!lf) return 1;
  finish("RUNNING");
- logline("VX2OVL v1.5 (driver .585; DirectDraw extras, bob with DDFLIP_ODD/EVEN)\n");
+ logline("VX2OVL v1.6 (driver .603; one key form: the pixel value itself)\n");
  dev=CreateFileA("\\\\.\\VX85598",0,0,NULL,OPEN_EXISTING,0,NULL);
  if(dev==INVALID_HANDLE_VALUE||!DeviceIoControl(dev,VX_IOCTL_STATUS,NULL,0,&s,sizeof(s),&got,NULL)||got!=sizeof(s)||s.magic!=VX_MAGIC) {finish("FAIL: the VX85598 driver is not active"); return 1;}
  if(s.bpp!=16&&s.bpp!=32) {finish("FAIL: set the desktop to 16 or 32 bits per pixel first"); return 1;}

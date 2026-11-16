@@ -534,6 +534,76 @@ done:
  r->elapsed_ms=(uint32_t)(io->milliseconds(io->context)-start);
 }
 
+/* .604: the VX900's first triangle (tool VX93D). The fixed test above (vx3d_run) with its last step replaced by words the tool supplies,
+ * so that the vertex input forms to be tried on a chip (the VX855's FVF words as the control, VIA's CE setting for the VX900 with its
+ * vertex program, OpenChrome's direct form) need no new VxD each: the same 64 x 64 target in the scratch arena, the same guards, the
+ * same bounded waits and fault latch. Request: probe 1, lab_cmd 'RAW3'; lab_flags bits skip the fixed steps (1 command path, 2 the 2D
+ * fill check, 4 the FE block, 8 the texture-off block, 16 the state and FVF set-up); lab_data holds lab_ndata / 2 pairs (port, value):
+ * ports 41C, 420, 43C, 440 and 6C only; port FFFFFFFF = wait until idle here. Report: stage 2 the fixed steps done, 3 every word sent,
+ * 4 idle after them; vertex_vertices = words sent, vertex_words = the pair at which a wait failed (FFFFFFFF none); status_setup after
+ * the fixed steps, status_solid after the words; image and changed_pixels the target as read back; result PASS = it ran to the end. */
+void vx3d_run_raw(const vx3d_io *io,vx3d_report *r,uint32_t *backup,const vx3d_request *q) {
+ uint32_t i,start=io->milliseconds(io->context),saved=0,n=q->lab_ndata/2,f=q->lab_flags,vbn=0;
+ int t;
+ profile(r);
+ r->target_offset=VX3D_TARGET; r->pitch=VX3D_SIDE*4; r->width=VX3D_SIDE; r->height=VX3D_SIDE;
+ r->vertex_words=0xFFFFFFFFUL; r->vertex_vertices=0;
+ r->status_before=rd(io,0x400); r->stage=1;
+ if(q->lab_ndata>VX3D_LAB_DATA||(q->lab_ndata&1)) {r->result=VX3D_BAD_REQUEST; goto done;}
+ for(i=0;i<n;i++) {uint32_t p=q->lab_data[2*i];
+  if(p!=0x41CUL&&p!=0x420UL&&p!=0x43CUL&&p!=0x440UL&&p!=0x6CUL&&p!=0xFFFFFFFFUL&&p!=0xFFFFFFFEUL&&p!=0xFFFFFFFDUL) {r->result=VX3D_BAD_REQUEST; r->vertex_words=i; goto done;}}
+ if(!idle(io,r)) {r->result=VX3D_BUSY; goto done;}
+ for(i=0;i<VX3D_ARENA_BYTES;i+=4) backup[i/4]=io->read_fb(io->context,VX3D_ARENA+i);
+ saved=1; clear(io); r->stage=2;
+ if(!(f&1)) {setup_command_path(io,r); if(!idle(io,r)) {r->result=VX3D_TIMEOUT; goto fault;}}
+ if(!(f&2)) {
+  r->phase=1; if(!blit_test(io,r)) goto timeout;
+  r->checks_run|=1; r->guard_errors=guards(io,r);
+  if(r->guard_errors) {r->result=VX3D_GUARD_FAILURE; goto capture;}
+  if(r->blit_errors) {r->result=VX3D_BLIT_FAILURE; goto capture;}
+  clear(io);
+ }
+ r->phase=2;
+ if(!(f&4)) {setup_global(io,r); if(!idle(io,r)) {r->result=VX3D_TIMEOUT; goto fault;}}
+ r->phase=3;
+ if(!(f&8)) {t=no_texture(io,r); if(!t) goto timeout; if(t<0) {r->result=VX3D_INIT_FAILURE; goto capture;}}
+ if(!(f&16)) setup(io,r);
+ if(!idle(io,r)) {r->result=VX3D_TIMEOUT; goto fault;}
+ r->status_setup=r->status_after; r->phase=5;
+ for(i=0;i<n;i++) {uint32_t p=q->lab_data[2*i],v=q->lab_data[2*i+1];
+  if(p==0xFFFFFFFFUL) {if(!idle(io,r)) {r->vertex_words=i; goto timeout;}}
+  else if(p==0xFFFFFFFEUL) {if(vbn<2048UL) {io->write_fb(io->context,VX3D_ARENA+0xE000UL+vbn*4UL,v); (void)io->read_fb(io->context,VX3D_ARENA+0xE000UL+vbn*4UL); vbn++;}} /* .623: port FFFFFFFE = the next word of a vertex buffer at the arena + E000h (VX93D INDEX) */
+  else if(p==0xFFFFFFFDUL) vbn=v<2048UL?v:2048UL; /* .624: port FFFFFFFD = the word that comes next (a buffer at another place in the arena's last 8 KB) */
+  else wr(io,r,p,v);
+  r->vertex_vertices=i+1;
+ }
+ r->stage=3;
+ if(!idle(io,r)) {r->vertex_words=n; goto timeout;}
+ r->stage=4; r->status_solid=r->status_after; r->checks_run|=0x100;
+ r->guard_errors=guards(io,r); r->solid_sample=pixel(io,16,16);
+ r->result=VX3D_PASS;
+capture:
+ r->changed_pixels=0;
+ for(i=0;i<VX3D_PIXELS;i++) {
+  r->image[i]=io->read_fb(io->context,VX3D_TARGET+i*4);
+  if(r->image[i]!=VX3D_BACKGROUND) r->changed_pixels++;
+ }
+ r->phase=7;
+ type(io,r,0x01); reg(io,r,0x01,0);
+ if(!idle(io,r)) goto timeout;
+ if(saved) for(i=0;i<VX3D_ARENA_BYTES;i+=4) io->write_fb(io->context,VX3D_ARENA+i,backup[i/4]);
+ if(saved) (void)io->read_fb(io->context,VX3D_ARENA+VX3D_ARENA_BYTES-4);
+ goto done;
+timeout:
+ r->result=VX3D_TIMEOUT;
+fault:
+ /* as vx3d_run: no more commands, and the scratch memory is not written back under a hung engine; the picture is still read for the report */
+ for(i=0;i<VX3D_PIXELS;i++) {r->image[i]=io->read_fb(io->context,VX3D_TARGET+i*4); if(r->image[i]!=VX3D_BACKGROUND) r->changed_pixels++;}
+ r->fault_latched=1;
+done:
+ r->elapsed_ms=(uint32_t)(io->milliseconds(io->context)-start);
+}
+
 /* Fixed independent probes. No caller-supplied commands or GPU addresses. */
 static uint32_t primitive_check(const vx3d_io *io,int point) {
  uint32_t x,y,c,count=0,bad=0,hit;

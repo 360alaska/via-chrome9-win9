@@ -1193,8 +1193,10 @@ def indexed_checks():
    if getattr(s,'nofence',0): # the groups are fetched (43C moves on) but their fences never land: every group stays in flight
     for o,c in s.fences[n:]:s.u.mem_write(FB+o,pack([0]))
    return r
- def run(va,batches,stuck=False,slots=0):
+ def run(va,batches,stuck=False,slots=0,chip900=0,seam=0):
   g=RecGPU(32);g.seq[0x1a]=8;g.seq[0x1e]=1;g.u.mem_write(g.addr('vx3dn_va_off'),pack([va]));g.nofence=stuck
+  if chip900:g.u.mem_write(g.addr('vx3dn_chip900'),pack([1]))
+  if seam:g.u.mem_write(g.addr('vx3dn_seam'),pack([seam]))
   if slots:g.u.mem_write(g.addr('vx3dn_va_nslots'),pack([slots]))
   for q in batches:
    g.u.mem_write(BATCH,b''.join(bytes(x[0]) for x in q));g.u.mem_write(ARENA+0xc800,pack([0xEEEE]))
@@ -1231,6 +1233,41 @@ def indexed_checks():
   g0=gen();assert texdbg(code,sub)==0 and gen()==g0,(hex(code),hex(sub),g0,gen())
  g0=gen();assert texdbg(0x50)==0 and gen()==g0+1,(g0,gen())
  cases.append(f'v10.470 INDEXED: {len(P)} indexed packets through XP\'s ring: their vertices written once into slots of the vertex area, their indices fetched after 04/20 = 3 in {nb} bursts; v10.473: their copy-in and validation counted apart, a retire for a CPU access counted under the cause its caller set; v10.476: TEXDBG reads leave the state cache, a switch starts it over')
+ # .627: the VX900 by index (board, VX93D INDEX v1.9 on .625): the vertices at the next KB in their slot, the five descriptors with their
+ # offsets, five table words (base | 8 words a vertex) under 30030000, 04/20 = 1, no 04/21 or 04/22, the descriptors without offsets after
+ g9,st9,va9=run(VA,batches,chip900=1)
+ assert st9[0]==len(P) and st9[1]==0,st9
+ assert [g9.word(g9.addr('vx3dn_v900_ix')+4*k) for k in range(2)]==[len(P),sum(u32(b,108) for b,i,w in P)]
+ sl=0;got9=g9.got
+ for k,(b,ix,w) in enumerate(P):
+  need=(len(w)*4+1023+SLOT-1)//SLOT
+  if sl+need>nsl:sl=0
+  off=(VA+sl*SLOT+1023)&~1023;sl+=need
+  assert [g9.word(FB+off+4*j) for j in range(len(w))]==w,('VX900 slot',k,hex(off))
+  e=off|8;j=next((i for i in range(len(got9)-5) if got9[i:i+5]==[e]*5),None);assert j is not None,('table',k,hex(e))
+  D=[0x010000C2,0x020041D1,0x030052D1,0x04006342,0x05006442];W=got9[j-16:j];assert any(W[i:i+5]==D for i in range(len(W)-4)) and W[-4:-1]==[0xFE03043C,5,0x30030000],[hex(x) for x in W]
+ n1=sum(1 for x in got9 if x==0x20000001);assert n1==nb and 0x20000003 not in got9,(n1,nb)
+ assert sum(1 for i in range(len(got9)-4) if got9[i:i+5]==[0x010000C2,0x020001D1,0x030002D1,0x04000342,0x05000442])>=len(P)
+ assert not any(x==(0x22000000|(32<<8)) or x==(0x21000000|(VA&0xFFFFFF)) for x in got9),'04/21, 04/22 written on the VX900'
+ cases.append(f'.627 INDEXED on the VX900: {len(P)} packets drawn by index: vertices at a KB boundary in their slots, descriptors with offsets, five table words under 30030000, 04/20 = 1 in {nb} bursts, no 04/21-22, the descriptors without offsets again after')
+ # .628: the seam cover (ACCEL_D3D_SEAM 0x0201: 1/16 right, 2/16 down): every index burst of an opaque packet with depth test and write is sent
+ # a second time between the offset moved (the VX855's 04/41, 04/44; the VX900's constant 0) and put back; other packets are sent once
+ def zed(b): # the fixture's packets with a depth buffer after the target, depth test and write on, no blending
+  b=bytearray(bytes(b));to,tp,tw,th=u32(b,20),u32(b,24),u32(b,28),u32(b,32);zo=(to+tp*th+0xFFFF)&~0xFFFF;zp=(tw*2+31)&~31
+  b[40:60]=pack([zo,zp,tw,th,12]);b[76:92]=pack([1,1,4,0]);return b
+ PZ=[(zed(b),i,w) for b,i,w in P];bz=[PZ[:3],PZ[3:]] if len(PZ)>3 else [PZ]
+ for chip in (0,1):
+  g0,st0,va0=run(VA,bz,chip900=chip);h0=sum(1 for i in range(len(g0.got)-1) if g0.got[i]>>24==0x23 and g0.got[i+1]>>24==0x24)
+  gs,sts,vas=run(VA,bz,chip900=chip,seam=0x0201);gg=gs.got
+  ss=[gs.word(gs.addr('vx3dn_seam_stat')+4*k) for k in range(2)]
+  heads=sum(1 for i in range(len(gg)-1) if gg[i]>>24==0x23 and gg[i+1]>>24==0x24)
+  if chip:on=sum(1 for i in range(len(gg)-3) if gg[i:i+4]==[0x49400001,0x49400002,0,0]);off=sum(1 for i in range(len(gg)-3) if gg[i:i+4]==[0x49400000,0x49400000,0,0])
+  else:on=sum(1 for i in range(len(gg)-1) if gg[i:i+2]==[0x41400001,0x44400002]);off=sum(1 for i in range(len(gg)-1) if gg[i:i+2]==[0x41400000,0x44400000])
+  assert st0[0]==len(P) and sts[0]==len(P),(st0,sts)
+  assert on==nb and heads==h0+nb and ss==[len(P),sum(len(i) for b,i,w in P)] and off>=on,(chip,ss,heads,h0,on,off,nb)
+  assert sum(1 for x in gg if x==0x01CE1548)==nb and sum(1 for x in gg if x==0x01CE154C)>=nb,'.631: the moved copy first and without depth write (01/01 = CE1548), then depth write back (CE154C)'
+  k1=gg.index(0x01CE1548);k2=gg.index(0x01CE154C,k1);assert any(x>>24==0x24 for x in gg[k1:k2]) and any(x>>24==0x24 for x in gg[k2:k2+40]),'the copy between the two 01/01 writes, the burst itself after'
+ cases.append('.628 the seam cover: each index burst of an opaque depth-writing packet sent a second time with the screen offset moved by 1/16 and 2/16 pixel and put back (VX855 04/41, 04/44; VX900 constant 0); other packets once')
  g,st,va=run(0,batches)
  assert st[0]==0 and st[1]>=len(P) and st[1]<=2*len(P),st # .559: a packet of 512 vertices expanded inline (some 8,300 words) can pass the room left in its group: it is written again as the next group's first (counted each time)
  cases.append('v10.470 INDEXED: no vertex area: every indexed packet drawn with its indices expanded inline')

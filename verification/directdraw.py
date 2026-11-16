@@ -85,7 +85,7 @@ class HAL:
    elif code==0x8550001C:
     assert n==80 and z==64;self.gpu.u.mem_write(REQ,bytes(u.mem_read(ip,n)));self.gpu.call('VX2D_ovl',(REQ,REP));blob=bytes(self.gpu.u.mem_read(REP,64))
    elif code==0x85500022: # v10.389: TEXDBG 0xBD 0x81 at a flip (the thread's run time): answered as the VxD does
-    assert n==8 and z==32 and self.word(ip)==0xBD;blob=pack([0xBD,self.word(ip+4),0,0,0,0,0,0])
+    assert n==8 and z==32 and (self.word(ip)==0xBD or (self.word(ip)==0xBC and self.word(ip+4)==0x446));blob=pack([self.word(ip),self.word(ip+4),getattr(self,'stretch3d',0) if self.word(ip)==0xBC else 0,0,0,0,0,0]) # .628: BC 446 = ACCEL_STRETCH3D (0: the CPU's stretch, as these checks expect)
    elif code==0x85500028: # v10.432: VX_IOCTL_LOCKMEM (the VxD's own rules are checked in native3d.py): recorded, answered as locked
     assert n==12 and z==16;q=list(struct.unpack('<3I',u.mem_read(ip,12)));self.locks=getattr(self,'locks',[])+[q]
     pages=((q[1]+q[2]-1)>>12)-(q[1]>>12)+1;blob=pack([pages,q[1]&~4095,1,1])
@@ -373,6 +373,11 @@ SLOT=PAL+16;ACTIVE=SLOT+8*1028
 def palette_checks():
  """v10.71: 8bpp pixel format, DirectDraw palette callbacks and the DAC. Each callback declines outside 8bpp."""
  cases=[]
+ # .601: the driver's T&L is offered by default; the VxD switch (ACCEL_D3D_TNL=0) withdraws it
+ for off in (0,):
+  h=HAL(32);out=ARENA+0xa400;h.u.mem_write(out,bytes(96));assert h.call('_VX_D3D_QueryLegacy@8',(out,24))==17
+  assert struct.unpack('<17I',h.u.mem_read(out,68))[16]==1;assert h.call('_VX_D3D_QueryLegacy@8',(out,16))==16
+ cases.append('.601 hardware T&L is offered by default')
  for bpp in (8,16,32):
   h=HAL(bpp);g=h.gpu;g.u.mem_write(g.addr('wram'),pack([ARENA+0x20000]))
   for k,n in enumerate(('_VXCreatePalette@4','_VXDestroyPalette@4','_VXSetEntries@4','_VXSetPalette@4')):assert h.word(h.context+PAL+4*k)==h.sym[n],n

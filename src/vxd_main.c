@@ -687,6 +687,8 @@ static void configure_FBHDA()
 			dbg_printf("Vertex area at %lx\n", vx3dn_va_off);
 		}
 		
+		{extern uint32_t vx_stretch3d; DWORD st = 1; /* .632: 1 the default (board, .631, VX900: 0 of 307200 pixels differ from the CPU's, 0.73 ms a Blt against 35.45; VX855 1.14 against 62) */ RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_STRETCH3D", &st); vx_stretch3d = st > 2UL ? 2UL : st;} /* .628: stretching Blts by the 3D engine, a tuning value under test (vx_ddraw.c): 0 the CPU, 1 nearest pixel, 2 bilinear */
+		{extern uint32_t vx3dn_seam; DWORD sm = 0; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_SEAM", &sm); vx3dn_seam = sm & 0xFFFFUL;} /* .628: the seam cover, a tuning value under test (vx_native3d_hw.c): 0 off, x + 256 * y sixteenths of a pixel */
 		/* .530: FORCE_SOFTWARE, FORCE_QEMU3DFX (the virtual machines' ICDs) and ACCEL_DCI removed: our ICD and the DCI correction always */
 
 		{
@@ -712,7 +714,7 @@ static void configure_FBHDA()
 			{
 				DWORD acc = 1;
 				extern volatile unsigned long vx2d_enable, vx2d_enable_cfg, vx2d_copy_all, vx2d_copy_all_cfg;
-				{extern int VX_chip_accel(void); if(!VX_chip_accel()) acc = 0;} /* .579: VX900: the engines not used yet */
+				{extern int VX_chip_2d(void); if(!VX_chip_2d()) acc = 0;} /* .579: VX900: the engines not used; .601: its 2D engine used (VX92D on the board: the M1 layout); .602: confirmed on the board, the test switch ACCEL_VX900_2D gone */
 								vx2d_enable = acc;
 				vx2d_enable_cfg = acc;
 				acc = 1;
@@ -743,7 +745,9 @@ static void configure_FBHDA()
 					 acc = 1UL; vx_d3d_mipcap = acc ? 1UL : 0UL;
 					 {extern volatile unsigned long vx_d3d_texhint; vx_d3d_texhint = 1UL; /* .527: always on (ACCEL_D3D_TEXHINT retired) */}
 					 {extern volatile unsigned long vx_d3d_rtnowait; vx_d3d_rtnowait = 1UL; /* .524: always on (ACCEL_D3D_RTNOWAIT retired) */}
-					 {extern volatile unsigned long vx_d3d_tnl; acc = 0UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_TNL", &acc); vx_d3d_tnl = acc ? 1UL : 0UL; /* .555: ACCEL_D3D_IX16 (.554) removed: XP's index form always (vx_native3d_hw.c) */ /* .534: the T&L probe (a feature under test, default 0; vx_d3d_core.c): the HAL offers hardware T&L so a run shows which games choose it; DELETE ONCE THE GAMES ARE PROBED */} /* v10.477 */} /* .527: ACCEL_D3D_PFVV2 removed */
+					 {extern uint32_t vx3dn_xr_pages; extern unsigned long vx_chip_id; acc = vx_chip_id == 0x7122UL ? 1024UL : vx_chip_id == 0x1122UL ? 256UL : 512UL; /* .635 (board, .634, VX800, 512 KB: the ring hung again, 27 groups after its fifth wrap, in VXDX7's scene with the seam cover on; the fetcher was 186 KB behind at that wrap): the VX800 back to 256, the size it ran before .628 */ /* .634: 512 on the VX800 and VX855, to be run on both (the writer can then be at most half as far ahead at a wrap as when the VX800 hung) */ /* .633: 256 there (board, .632, VX800, GTA3: the ring hung in the first group after its fourth wrap, the fetcher 836 KB behind the writer when the wrap was written; the VX900 alone waits for the fetcher's lap before a wrap and alone has a measured gain): 1024 on the VX900, 256 as before .628 on the VX800 and VX855 */ /* .628: 1024 the default (board: the VX900 44.8 against 49.9 ms a frame; the VX855 ran it without a hang) */ RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_RINGKB", &acc); vx3dn_xr_pages = acc >= 4096UL ? 1024UL : acc >= 2048UL ? 512UL : acc >= 1024UL ? 256UL : acc >= 512UL ? 128UL : 64UL;} /* .626: 2048 and 4096 too; .625: the ring's size, under test (vx_native3d_vxd.c) */
+					 /* .632: ACCEL_VX900_WAITS removed: the last wait block only, always (vx_native3d_vxd.c cap_v900_wait) */
+					 {extern volatile unsigned long vx_d3d_tnl; acc = 1UL; /* .601 (the other line of builds, merged in .629): default 1 */ RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_TNL", &acc); vx_d3d_tnl = acc ? 1UL : 0UL; /* .555: ACCEL_D3D_IX16 (.554) removed: XP's index form always (vx_native3d_hw.c) */ /* .534: the T&L probe (a feature under test, default 0; vx_d3d_core.c): the HAL offers hardware T&L so a run shows which games choose it; DELETE ONCE THE GAMES ARE PROBED */} /* v10.477 */} /* .527: ACCEL_D3D_PFVV2 removed */
 					{extern volatile unsigned long vx_d3d_ixpass; vx_d3d_ixpass = 1UL; /* .531: ACCEL_D3D_IX384 removed (384 vertices an indexed packet, always); .529: ACCEL_D3D_HWCULL removed */ /* .525: always on (ACCEL_D3D_IXPASS retired) */} /* .515: the engine's back-face cull for indexed packets; indexed lists passed through */
 					{extern volatile unsigned long vx_d3d_infocache; vx_d3d_infocache = 1UL; /* .525: always on (ACCEL_D3D_INFOCACHE retired) */} /* .524: ACCEL_D3D_IXPF removed */
 					{extern volatile uint32_t vx3dn_shadow; vx3dn_shadow = 1UL; /* .526: always on (ACCEL_D3D_SHADOW retired) */} /* .525: the state set-up's type-01 register shadow */
@@ -781,6 +785,7 @@ static void configure_FBHDA()
 					{extern volatile unsigned long vx_heap_align; acc = 1UL; vx_heap_align = acc ? 1UL : 0UL;} /* v10.179: DirectDraw blocks in multiples of 256 bytes (the HAL asks through query 0xFFFFFE50) */
 					{extern volatile uint32_t vx3dn_clear2d, vx3dn_clear2d_masked; acc = 3UL; vx3dn_clear2d = acc & 1UL; vx3dn_clear2d_masked = (acc >> 1) & 1UL;} /* v10.179: bit 0 = 2D-engine clears, bit 1 = also D24S8 Z-only / stencil-only clears as two ROP fills (default 3) */ /* v10.177: Direct3D clears on the 2D engine */
 					{extern volatile unsigned long vx2d_keep, vx2d_keep_cfg; acc = 1; vx2d_keep = vx2d_keep_cfg = acc ? 1UL : 0UL;}
+					{extern unsigned long vx_chip_id; extern uint32_t vx3dn_chip900; if(vx_chip_id == 0x7122UL) vx3dn_chip900 = 1;} /* .617: the VX900's own words (vertex input, wrap, wait words, CPU flips); always, the switch ACCEL_VX900_3D is gone */
 					{extern volatile unsigned long vx_accel_d3d; acc = 1UL; vx_accel_d3d = acc & 0xFFFFUL;} /* v10.165: default 1 (VXDX7 --draw passed on the board, v10.164); 0 off */ /* v10.149: advertise the experimental Direct3D HAL; v10.150: bit 0 on, bit 1 no GetDriverInfo (DX5-style HAL only) */ /* v10.144: kept engine context; v10.145: default 1 (VX2KEEP passed) */ /* v10.142: the DRV keeps requests the VxD would decline for their size */ /* v10.142: fills at least this many rows high go to the engine below ACCEL_FILL_MIN (0 = off) */
 					acc = 256UL;    vx2d_copy_min = acc;
 					acc = 32UL;     vx2d_line_min = acc; /* v10.90 */
@@ -814,10 +819,10 @@ static void configure_FBHDA()
 						{extern volatile uint32_t vx_prof; DWORD pf = 0;
 						 RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_PROFILE", &pf); vx_prof = pf ? 1 : 0; /* .530: kept for development (the tools turn the profile on themselves); DELETE WHEN DEVELOPMENT IS FINISHED */}
 					}
-					{ /* v10.106: video overlay (V1), 0 off until VX2OVL has passed on the hardware: bits 0-1 register set, bit 2 RGB565 surfaces, bit 3 alternative width count, bit 4 colour key low bits replicated at 16bpp */
+					{ /* v10.106: video overlay (V1), 0 off until VX2OVL has passed on the hardware: bits 0-1 register set, bit 2 RGB565 surfaces, bit 3 alternative width count (bit 4, the key's low bits replicated at 16bpp, gone in .603) */
 						extern volatile unsigned long vx2d_ovl, vx2d_ovl_cfg;
 						acc = 961UL;
-						{extern unsigned long vx_chip_id; if(vx_chip_id == 0x1122UL) acc = 5057UL;} /* .585 (board, VX2OVL v1.5): 961 | 4096 on the VX800: its 16-bit destination key is the pixel value itself (the VX855's widened forms, low bits zero or replicated, showed no picture there) */
+						/* .603: one value for the three chips: the 16-bit key is the pixel value itself everywhere (vx855_2d.c); .585's 5057 for the VX800 (961 | 4096, the raw-key bit) is gone with the bit */
 						vx2d_ovl_cfg = (acc > 8191) ? 0 : acc; vx2d_ovl = vx2d_ovl_cfg;
 					}
 					{ /* v10.116: GDI drawing from system memory: ACCEL_HOST bits 1 mono SRCCOPY blits (host window), 2 mono blits whose ROP reads the screen (staging), 4 colour blits whose ROP reads the screen (staging),
@@ -1092,7 +1097,7 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
    {int k;for(k=0;k<8;k++)outBuf[k]=0;}
    if(inBuf[0]>=0x6C&&inBuf[0]<=0x6E){extern volatile uint32_t vx_prof;outBuf[0]=0x6E;outBuf[1]=vx_prof;} /* v10.329: 6E reads */
    if(inBuf[0]==0x75){extern unsigned long vx_chip_id,vx_chip_fb_cfg,vx_chip_mmio_cfg;extern int VX_chip_accel(void);outBuf[0]=0x75;outBuf[1]=DRV_VER_BUILD; /* v10.214: the VxD's build number */
-    outBuf[2]=vx_chip_id;outBuf[3]=vx_chip_fb_cfg|(vx_chip_mmio_cfg<<8);outBuf[4]=(DWORD)VX_chip_accel();outBuf[5]=vx_status.bar0;outBuf[6]=vx_status.bar1;outBuf[7]=vx_status.stage|(vx_status.failure<<8);} /* .579: the device, its BARs' configuration offsets and bases, whether the engines are used, the bring-up stage and failure */
+    outBuf[2]=vx_chip_id;outBuf[3]=vx_chip_fb_cfg|(vx_chip_mmio_cfg<<8);{extern int VX_chip_2d(void);outBuf[4]=(DWORD)(VX_chip_accel()?1:0)|(DWORD)(VX_chip_2d()?2:0);} /* .601: bit 0 the 3D engine used, bit 1 the 2D engine */outBuf[5]=vx_status.bar0;outBuf[6]=vx_status.bar1;outBuf[7]=vx_status.stage|(vx_status.failure<<8);} /* .579: the device, its BARs' configuration offsets and bases, whether the engines are used, the bring-up stage and failure */
    if(inBuf[0]==0x7C){extern uint32_t vx3dn_idle_stable;outBuf[0]=0x7C;outBuf[1]=vx3dn_idle_stable;} /* v10.221: idle reads */
    if(inBuf[0]>=0x64&&inBuf[0]<=0x68){extern void VX3DN_lat(uint32_t,uint32_t *);VX3DN_lat(inBuf[0],(uint32_t*)outBuf);} /* v10.321: latency distributions (vx_native3d_vxd.c) */
    if(inBuf[0]==0x76||inBuf[0]==0x77){extern uint32_t vx3dn_prof[8];int k;outBuf[0]=inBuf[0];for(k=0;k<7;k++)outBuf[1+k]=vx3dn_prof[k];if(inBuf[0]==0x77)for(k=0;k<8;k++)vx3dn_prof[k]=0;} /* v10.220: profile */
@@ -1122,6 +1127,21 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i==0x81)for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rhang_wn[k]; /* v10.386: the two groups' words and starts */
     else if(i>=0x100&&i<0x140)for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rhang_trace[i-0x100][6+k]; /* v10.386: the groups' first packets */
     else if(i>=0x200&&i<0x200+171)for(k=0;k<6;k++){uint32_t w=(i-0x200)*6+k;outBuf[2+k]=w<1024?vx3dn_rhang_words[w]:0;} /* v10.386: both groups' words (6 a read) */
+    /* .612: where the fetcher stood at the first four hangs (vx_native3d_vxd.c stall_note): 500h + k the record's first six words,
+     * 510h + k its last two and the count of hangs, 600h + k * 100h + n its words, six a read; 400h-43Fh the display registers
+     * 200h-2FCh, four a read, and 440h register 120Ch (the cursor and video stream registers, for VXREG: what a game leaves behind) */
+    else if(i>=0x500&&i<0x504){extern uint32_t vx3dn_stall[4][8];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_stall[i-0x500][k];}
+    else if(i>=0x510&&i<0x514){extern uint32_t vx3dn_stall[4][8],vx3dn_stall_n;outBuf[2]=vx3dn_stall[i-0x510][6];outBuf[3]=vx3dn_stall[i-0x510][7];outBuf[4]=vx3dn_stall_n;}
+    else if(i>=0x600&&i<0xA00){extern uint32_t vx3dn_stall_w[4][1024];uint32_t r=(i-0x600)>>8,n=(i&0xFFUL)*6;for(k=0;k<6;k++)outBuf[2+k]=n+k<1024?vx3dn_stall_w[r][n+k]:0;}
+    else if(i==0xC00){extern uint32_t VX3DN_probe_reset(void);outBuf[2]=VX3DN_probe_reset();} /* .619: VXREG RESET */
+    else if(i>=0xA00&&i<0xC00){extern uint32_t vx3dn_rst_snap[2][198];uint32_t w=(i>>8)-0xA,n=(i&0xFFUL)*6;for(k=0;k<6;k++)outBuf[2+k]=n+k<198?vx3dn_rst_snap[w][n+k]:0;}
+    else if(i>=0x400&&i<0x410){extern uint32_t VX3DN_peek(uint32_t);for(k=0;k<4;k++)outBuf[2+k]=VX3DN_peek(0x200UL+(i-0x400)*16UL+k*4UL);}
+    else if(i==0x446){extern uint32_t vx_stretch3d;outBuf[2]=vx_stretch3d;} /* .628: ACCEL_STRETCH3D, for the HAL */
+    else if(i==0x445){extern uint32_t vx3dn_seam,vx3dn_seam_stat[2];outBuf[2]=vx3dn_seam;outBuf[3]=vx3dn_seam_stat[0];outBuf[4]=vx3dn_seam_stat[1];} /* .628: the seam cover */
+    else if(i==0x443){extern uint32_t vx3dn_v900_ix[2];outBuf[2]=vx3dn_v900_ix[0];outBuf[3]=vx3dn_v900_ix[1];} /* .627: packets drawn by index on the VX900, their vertices */
+    else if(i==0x442){extern uint32_t vx3dn_xr_pages;outBuf[2]=vx3dn_xr_pages*4UL;} /* .625: the ring's size in KB */
+    else if(i==0x440){extern uint32_t VX3DN_peek(uint32_t);outBuf[2]=VX3DN_peek(0x120CUL);}
+    else if(i==0x441){extern uint32_t vx3dn_v900_waits;outBuf[2]=1;outBuf[3]=vx3dn_v900_waits;{extern uint32_t vx3dn_v900_lapwait,vx3dn_vbw[4];outBuf[4]=vx3dn_v900_lapwait;outBuf[5]=vx3dn_vbw[0];outBuf[6]=vx3dn_vbw[1];outBuf[7]=vx3dn_vbw[2];}} /* .614 */
     else if(i==0x80){for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rf_stat[k];outBuf[6]=vx3dn_ring_fence;}
     else if(i==0x92||i==0x93){extern uint32_t vx3dn_xr_prof[12];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_xr_prof[(i-0x92)*6+k];} /* v10.407 */
     else if(i==0xD6){extern uint32_t vx3dn_xr_unit[3];for(k=0;k<3;k++)outBuf[2+k]=vx3dn_xr_unit[k];} /* .504: the ring's cache work by unit (vx_ring.h); .512: D6 (it took 9B, the state-cache misses' first read: VXD3DMON showed the cache counts as miss percentages) */

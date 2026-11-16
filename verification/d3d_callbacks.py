@@ -242,7 +242,7 @@ def audit_checks():
  ext=query(0x7de41f80,0x9d93,0x11d0,[0x89,0xab,0,0xa0,0xc9,5,0x41,0x29])
  assert u32(ext,44)==16 and u32(ext,72)==2 and u32(ext,76)==0xFFFFFF and u32(ext,88)==0 # v10.206: two coordinate sets, + PM, PREMODULATE, the MODULATEINV ops, DOT3
  assert struct.unpack_from('<4I',ext,4)==(1,2048,1,2048) and u32(ext,36)==2048 and u32(ext,40)==2048 # v10.199: 2048
- assert struct.unpack_from('<HH',ext,80)==(3,3) and ext[96:]==bytes(20) # v10.206: three stages and textures
+ assert struct.unpack_from('<HH',ext,80)==(3,3) and u32(ext,84)==8 and u32(ext,96)==0x3F and ext[100:]==bytes(16) # v10.206: three stages and textures; .601: the driver's T&L is offered by default (8 lights, the six vertex processing caps)
  cases.append('v10.169 extended caps: one texture stage and sampler, one coordinate set, 1..1024 textures, op caps DISABLE, SELECTARG1/2, MODULATE/2X/4X, ADD, ADDSIGNED, BLENDDIFFUSEALPHA, BLENDTEXTUREALPHA (v10.172), anisotropy one, no W range, zero reserved fields')
  misc=query(0x406b2f00,0x3e5a,0x11d1,[0xb6,0x40,0,0xaa,0,0xa1,0xf9,0x6a],24)
  h.sym['audit_create_ex']=u32(misc,12);h.sym['audit_destroy_local']=u32(misc,20)

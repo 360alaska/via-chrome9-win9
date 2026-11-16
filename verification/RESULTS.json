@@ -14,7 +14,7 @@
   "le": {
     "format": "LE",
     "objects": 2,
-    "internal_fixups": 7608,
+    "internal_fixups": 8128,
     "device_id": "4333",
     "device_name": "VX85598",
     "ddb_ordinal": 1,
@@ -42,6 +42,7 @@
       "VX_D3D_QueryDraws",
       "VX_D3D_QueryEvents",
       "VX_D3D_QueryLatency",
+      "VX_D3D_QueryLegacy",
       "VX_D3D_QueryPhases",
       "VX_D3D_QueryProfile",
       "VX_D3D_QuerySlow",
@@ -412,6 +413,7 @@
           "GetDesktopWindow",
           "GetMessageA",
           "IsWindow",
+          "MessageBoxA",
           "PeekMessageA",
           "PostQuitMessage",
           "RedrawWindow",
@@ -451,6 +453,8 @@
           "IsBadWritePtr",
           "LoadLibraryA",
           "MultiByteToWideChar",
+          "QueryPerformanceCounter",
+          "QueryPerformanceFrequency",
           "SetConsoleCtrlHandler",
           "SetEnvironmentVariableA",
           "SetFilePointer",
@@ -2036,7 +2040,7 @@
     ]
   },
   "flip": {
-    "passed": 64,
+    "passed": 76,
     "cases": [
       "16bpp calibration takes the known unit and makes no BIOS call",
       "16bpp flip programs CR0C/0D/34 and waits for the blank",
@@ -2069,6 +2073,11 @@
       "16bpp padded scanout pitch is refused (back buffers could not match)",
       "24bpp is refused",
       "16bpp FLIP=0 disables flipping without touching the BIOS (vertical blank is still reported)",
+      "16bpp .598: IGA2 on with the mode's pitch: the start address goes to CR62/63/64/A3 as well (bytes >> 3), CR62 bit 0 and CRA3's upper bits kept; the monitor on: the blank stays the first unit's",
+      "16bpp .598: with IGA2 an offset that is not a multiple of 8 is refused",
+      "16bpp .598: reset returns both units to the desktop",
+      "16bpp .598: IGA2 on with another pitch (not this frame buffer): left alone",
+      "16bpp .598: the panel on IGA2 and the monitor output powered down: port 3DA is not read, the flip waits a frame's time when IGA2's blank status does not toggle, 60 Hz reported",
       "16bpp bad command and bad request size",
       "32bpp calibration takes the known unit and makes no BIOS call",
       "32bpp flip programs CR0C/0D/34 and waits for the blank",
@@ -2101,11 +2110,18 @@
       "32bpp padded scanout pitch is refused (back buffers could not match)",
       "24bpp is refused",
       "32bpp FLIP=0 disables flipping without touching the BIOS (vertical blank is still reported)",
-      "32bpp bad command and bad request size"
+      "32bpp .598: IGA2 on with the mode's pitch: the start address goes to CR62/63/64/A3 as well (bytes >> 3), CR62 bit 0 and CRA3's upper bits kept; the monitor on: the blank stays the first unit's",
+      "32bpp .598: with IGA2 an offset that is not a multiple of 8 is refused",
+      "32bpp .598: reset returns both units to the desktop",
+      "32bpp .598: IGA2 on with another pitch (not this frame buffer): left alone",
+      "32bpp .598: the panel on IGA2 and the monitor output powered down: port 3DA is not read, the flip waits a frame's time when IGA2's blank status does not toggle, 60 Hz reported",
+      "32bpp bad command and bad request size",
+      ".599: a panel that lists only its native 1280x800: 640x480, 800x600 and 1024x768 are taken, larger and odd sizes are not",
+      ".599: without an EDID the monitor test answers no, as before"
     ]
   },
   "directdraw": {
-    "passed": 224,
+    "passed": 225,
     "cases": [
       "16bpp HAL initialization and callback pointer",
       "16bpp DirectDraw primary Lock/Unlock excludes and restores cursor",
@@ -2309,6 +2325,7 @@
       "32bpp entering and leaving exclusive mode sends the async gate codes to the VxD (on, then off)",
       "32bpp process exit puts the desktop back",
       "32bpp no blank signal: WaitForVerticalBlank left to the runtime",
+      ".601 hardware T&L is offered by default",
       "8bpp DriverInit registers the four palette callbacks at every depth",
       "8bpp CanCreate pixel formats: only the desktop depth is accepted",
       "8bpp CreatePalette keeps the 256 colours in the shared context and does not touch the DAC",
@@ -2479,9 +2496,7 @@
       "2x enlargement: horizontal zoom 0x400, vertical 0x1FF, both interpolations on, fetch and width count follow the source size",
       "a vertical-only enlargement leaves the horizontal zoom off",
       "32bpp destination colour key: 24-bit key to both key registers (bit 30 set), compose selects video where the key matches",
-      "16bpp colour key: the 5-6-5 pixel is widened with zero low bits",
-      "16bpp colour key with mask bit 4: low bits replicated",
-      ".585: 16bpp colour key with mask bit 12: the pixel value itself",
+      ".603: 16bpp colour key: the 5-6-5 pixel value itself, on the three chips, with or without the old key bits in the mask",
       "an update without a key switches the key off again",
       "left edge clipped: the source starts at the proportional column (rounded down to 8 pixels in the address), window starts at 0",
       "right edge clipped: window ends at the screen edge, fetch and width count use the visible part",
@@ -2512,6 +2527,8 @@
       "HQV shrink 320x240 to 160x120: source and three output buffers, strides, new-style horizontal (0x90001FE6) and vertical (0x90001FDE) scale controls, filter, V1 control with the HQV swap bit, HQV control (YUV422, triple buffer, first flip), source and destination data offsets, as OpenChrome programs this chip family",
       ".583: the same shrink on the VX800: source data offsets at 0x380-0x38C, line and fetch count in 0x3E0 (639 bytes, 240 lines), none of the VX855-only registers written; scale, buffers and control as the VX855",
       "a second picture through the HQV does not start it again (control written with the flip status bit only)",
+      ".602: the same shrink on the VX900: every register as on the VX855, and 0 written to 0x3A4 (the sharpness / decoder handshake control), which the VX855 does not get",
+      ".602: a plain YUY2 overlay on the VX900 writes what the VX855 gets",
       "flip through the HQV: only the HQV source address changes and the flip is triggered; the V1 registers stay",
       "v10.288: a flip through the HQV to a source outside video memory is refused (6), the scaler keeps the current frame, a good flip after it works",
       "v10.288: a planar flip to a source outside video memory is refused before its chroma is read",
@@ -2928,8 +2945,6 @@
       "src/vx3dtest.c": "7e96d6ebecf2ec32ace6ec85db0c223a4fddb64257ba42ae26617109f2afd589",
       "src/vx3suite.c": "d3f400a7ec35fe0730086941fbac1c1be4bab62591c8f05fb960d0bd664262fe",
       "src/vx3suite_core.inc": "da2eeeb325afa02b94792cf82ada2f59f4668041403a197f0d2f07cd75ffc81f",
-      "src/vx855_3d.h": "b4deea1496162c4532088b17961dbf0eb7493679892831856cc351429354b2bd",
-      "src/vx855_edid.c": "7454d18ad56e4d8eaf48ea34b6615b22bee20a2bfcd859d8d4c0ec2b55218351",
       "src/vx855_fill.h": "cec7a077905e52f37af7c7eb007fa26e64e297ab8b070941c4b91d452d36f0cd",
       "src/vx855_vbe_init.inc": "b929e16bf5e0ecdb90d3e9308e5d2ac6e5cc9fcc02314ecba0ebd29a70fd6a3c",
       "src/vx98test.c": "9aca9664d8c07d83bf5a144d7c370e32f2bb92156e8dc6083e18e831ac52dc01",
@@ -2947,7 +2962,7 @@
     "modified_files": {
       "build.py": {
         "baseline_sha256": "f4fb90bde751305c785a88533cd712e3aba8686b1a4a5853d7046bfd4cec6b5a",
-        "current_sha256": "c309465f10a6153ca9239ac1762c409193f73409512d12a41edeca63aba60ce1"
+        "current_sha256": "a3e3928cfa7b981fe656b3ddd9abee38ff4f9b099c6191f88fa78ff61c1bafad"
       },
       "src/dddrv.c": {
         "baseline_sha256": "6d5a2456a4643b9ba6db2e4c34eed33057ea93f0bb8514a2e320fb2fc92cce4c",
@@ -2955,27 +2970,27 @@
       },
       "src/vx855_2d.c": {
         "baseline_sha256": "c1f1f0dc5eb4f3a6b19ccafc077387adbed7e86391adda2e9d43bf48c29575d3",
-        "current_sha256": "53b8e5ef7a83d7d19fe0aca9bd45b64633a73da4315019c5af1f1a64959370e5"
+        "current_sha256": "a66fec29824e97f84c64aad6a8d4ca478464a7085029744d65a5f71044ef2ceb"
       },
       "src/vx855_2d.h": {
         "baseline_sha256": "a5e8f866b5cb9cb029c2a36af5fe7aae74d981324287dc53873b6187ce1907d8",
-        "current_sha256": "b9df476b0909cd1bb9e32d1b5d27ba035b97f936636faccf8fd38a526d278d6f"
+        "current_sha256": "8cdb2a8a6b95b0c01d272ec9186dff7c517f0899a69ba911165ce756c5028deb"
       },
       "src/vx855_3d.c": {
         "baseline_sha256": "d11d2234f42c66bb34e9bacf851bcf0fd83a5ae3cde5552326440de5ed29ea4f",
-        "current_sha256": "7c50c28e1e99f56f890ccf645a0717b6caa0637e018ddcaa652593aa387c5fcc"
+        "current_sha256": "89ad91ec83d70e2cc5f6fe0ab1c3ecc1534b2b7e6dbece39f307af47726f4476"
       },
       "src/vx855_flip.c": {
         "baseline_sha256": "f91b1a022c0aa6309828e7b6c948f5164c7ecd9f43648f3b19dde28b56705422",
-        "current_sha256": "ac35ca79a3050e7483b11d79395e194bf6009fc59fa7eb23646c8c89a4e9c901"
+        "current_sha256": "a70d44f78a759be861a924ca3beb1f9b10cc04ff3f70b554515a705458b028b0"
       },
       "src/vx_ddraw.c": {
         "baseline_sha256": "6f615cca66ae742b28cc412f9ab42c04ed11642390576cd7362fe5669dc28d29",
-        "current_sha256": "bc1631344dd2db5c4905b086ff0656d679d2b13a56581e05eb42e2346c523a78"
+        "current_sha256": "d41bb6f1d9e47d00f38375abaadd7e1adac119a9acbd125086b0ba5fafa400cb"
       },
       "src/vxd_main.c": {
         "baseline_sha256": "c457b4c71299c0d10ba748d7bf994f2045c69b032869d3d41db779c71e228aa7",
-        "current_sha256": "83839a13b0aef4f1fb4d738df9a0cde95a3abb4c200175bd9f1dbe8f336e0c64"
+        "current_sha256": "220125357eeee2a494eb88dac011040b2113ef45581b7f78ed39cbb02f3309f1"
       },
       "src/vxd_vesa.c": {
         "baseline_sha256": "09a6ba3f12c8499c1daa252d0cfcaff7a86c111e70d176ef8c24c4c4a27b02c1",
@@ -3027,7 +3042,7 @@
       },
       "src/dibcall.c": {
         "baseline_sha256": "f85d338747e5748a74112745fdc1f2b036bf2883281d2911e1134ce9f2a19305",
-        "current_sha256": "f3fd784649a767de6b03ec0dd6bfa6ba1a3bf56958ebd87cfcab3240174f152a"
+        "current_sha256": "fec685d6986117558923d1d581037f49655193a056b1fe4889c8dcdae8261c96"
       },
       "src/vxd_mouse_conv.h": {
         "baseline_sha256": "a4ea6bbf93f289d8f0d77e82238b58371a59138310d9cb411185d2ff967dd200",
@@ -3063,7 +3078,7 @@
       },
       "src/vx85598.c": {
         "baseline_sha256": "0b0bad044f9aa1caac79da79752c0531704f7e3021b559dc5205ffa192137af4",
-        "current_sha256": "111c954e1c76076ddc33cb7c01d0850ddd082dd55b2f5912b8af5a5b7ee40116"
+        "current_sha256": "9cb2f55f4c9b98d8e0e26866a853dedd34d08c1eaf1a06a4c2d183d335cf9884"
       },
       "src/dibthunk.asm": {
         "baseline_sha256": "b3e0c4dfecbd08dbf08b3411d8ea49d55c247b433fc1c06b576a5dc30a3c2591",
@@ -3079,7 +3094,7 @@
       },
       "src/vx855_3d_core.c": {
         "baseline_sha256": "3fba9c39d343c8c4ac1a978c81554f5953d3ca8a628e0930f381c56ad024f83f",
-        "current_sha256": "6252d2c1d25d52f2f322b6d2a8c2256de13a3f3b564f0e9f85f0d461e522ebe1"
+        "current_sha256": "31c9eb92014e7504ff1123bd0d47c5945e4c4b44015c77f754f797c942d0fdc5"
       },
       "src/vxd_wram.c": {
         "baseline_sha256": "63fe6183704799a3e72e2ad5f85775eaf72044221f6986e1d58428e71496a0e6",
@@ -3135,7 +3150,7 @@
       },
       "src/vx2ovl.c": {
         "baseline_sha256": "3316e9995a8067381d3459b62ba8c1382d8310a8d84324bf99c3378f3bd7591c",
-        "current_sha256": "00781b1346f9341419244ac3bcb843e90688fe3f9182b6b494c2f99bb034f84f"
+        "current_sha256": "5eeec2c71b82064a95e293c9dab260757647af705f48d5d0699dd852808972e2"
       },
       "src/vx2strx.c": {
         "baseline_sha256": "020b283d6dc1f34267dc19feb8733e23a9db0e3b225edff70020de44fc7cb28b",
@@ -3204,9 +3219,17 @@
       "src/LICENSE": {
         "baseline_sha256": "e4900f554b4de46e0c5cdfe32c3af03e8e92d9e273e31fa81ef4ce508772f257",
         "current_sha256": "fc72801e4e7e48d535d797114358da8b1ec358d32a985853a766482ce0b73d1a"
+      },
+      "src/vx855_3d.h": {
+        "baseline_sha256": "b4deea1496162c4532088b17961dbf0eb7493679892831856cc351429354b2bd",
+        "current_sha256": "ba9884fcbecd2fa22f814583eae9404a03602aec151bf3fbca7bc9ff7bd01f80"
+      },
+      "src/vx855_edid.c": {
+        "baseline_sha256": "7454d18ad56e4d8eaf48ea34b6615b22bee20a2bfcd859d8d4c0ec2b55218351",
+        "current_sha256": "d6e667018ab65f3d8d69dfc4897527ec1921639a8ed227c3d932a750cde9b96f"
       }
     },
     "removed_files": {}
   },
-  "passed_compiled_code_checks": 2232
+  "passed_compiled_code_checks": 2245
 }

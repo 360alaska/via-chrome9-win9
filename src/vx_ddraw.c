@@ -842,6 +842,13 @@ DWORD WINAPI VX_DD_QueryBltSigs(DWORD *out,DWORD n) {
 int VX_D3D_hold_sync(DWORD why);
 #define HOLD_SYNC(why) VX_D3D_hold_sync(why)
 DWORD WINAPI VXBlit(LPDDHAL_BLTDATA p) {DWORD t=VX_dd_tsc(),rc;if(HOLD_SYNC(1)){if(p)p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;} /* .575 */blt_nh_line=0;blt_sw=0;rc=VXBlit_impl(p);if(blt_armed)present_arm(0);blt_log(p,rc);VX_frame_add(3,VX_dd_tsc()-t);bk_note(p,VX_dd_tsc()-t);bs_note(p,VX_dd_tsc()-t,rc,(const DWORD*)&t);if(p)VX_D3D_trace(95,(DWORD)p->ddRVal,rc,tr_off(p->lpDDDestSurface),tr_off(p->lpDDSrcSurface),p->dwFlags);sb_note(p,VX_dd_tsc()-t,rc);if(p)note2d(20,p->ddRVal,rc,p->lpDDDestSurface?p->lpDDDestSurface->ddsCaps.dwCaps:0,p->dwFlags,p->lpDDSrcSurface?p->lpDDSrcSurface->ddsCaps.dwCaps:0);return rc;}
+int VX_D3D_stretch(const vx3dn_surface *,const RECT *,const vx3dn_surface *,const RECT *,int);
+DWORD blt_3d,blt_3d_no;
+static DWORD stretch3d_mode(void) { /* the VxD's reading of ACCEL_STRETCH3D, asked once (TEXDBG BC 446) */
+ static DWORD have,mode;DWORD in[2],o[8];
+ if(!have){in[0]=0xBC;in[1]=0x446;memset(o,0,sizeof(o));if(ioctl(0x85500022UL,in,8,o,32)&&o[0]==0xBC){mode=o[2];have=1;}}
+ return mode;
+}
 static DWORD VXBlit_impl(LPDDHAL_BLTDATA p) {
  DWORD fxrop=0xCC; int ropfx=0;
  vx2d_request q; swq w; DWORD allowed,rc=VX2D_LOST,i,count,fx; RECT c; int engine;
@@ -923,6 +930,17 @@ static DWORD VXBlit_impl(LPDDHAL_BLTDATA p) {
   engine=!w.alpha_on&&w.d.vram&&w.s.vram&&!w.mirx&&!w.miry&&w.sr.right-w.sr.left==w.dr.right-w.dr.left&&w.sr.bottom-w.sr.top==w.dr.bottom-w.dr.top;
   /* v10.368 (audit N6): an overlapping stretch or mirror goes to the CPU from a staged copy of the source (sw_blit); it was NOTHANDLED,
    * which for video surfaces is E_NOTIMPL for the application */
+ }
+ /* .628: a stretch between two video surfaces by the 3D engine (ACCEL_STRETCH3D, a tuning value under test: 0 the CPU as before, 1 the
+  * engine with the nearest source pixel, 2 the engine with the bilinear filter; DDBLTFX_ARITHSTRETCHY asks for the filter with 1 too). One
+  * rectangle, plain copy: no key, no mirror, no ROP, no constant alpha. Not taken (a surface the engine cannot use): the CPU as before. */
+ if(q.op==VX2D_COPY&&!engine&&!ropfx&&!w.alpha_on&&w.d.vram&&w.s.vram&&!w.mirx&&!w.miry&&!p->IsClipped&&!(q.flags&(VX2D_SRC_KEY|VX2D_DST_KEY))&&
+    p->lpDDSrcSurface!=p->lpDDDestSurface&&(w.bpp==16||w.bpp==32)&&stretch3d_mode()) {
+  vx3dn_surface td,ts;
+  td.offset=w.d.off;td.pitch=w.d.pitch;td.width=w.d.w;td.height=w.d.h;td.format=w.bpp==16?VX3DN_RGB565:VX3DN_XRGB8888;
+  ts.offset=w.s.off;ts.pitch=w.s.pitch;ts.width=w.s.w;ts.height=w.s.h;ts.format=td.format;
+  if(VX_D3D_stretch(&td,&w.dr,&ts,&w.sr,stretch3d_mode()>=2||((p->dwFlags&DDBLT_DDFX)&&(p->bltFX.dwDDFX&DDBLTFX_ARITHSTRETCHY)))){blt_3d++;p->ddRVal=DD_OK;return DDHAL_DRIVER_HANDLED;}
+  blt_3d_no++;
  }
 if(ropfx&&((q.op==VX2D_COPY&&!engine)||(p->IsClipped&&p->dwRectCnt!=1))) return nh(__LINE__); /* v10.84: a source ROP needs the engine and one rectangle (nothing is drawn yet) */
  /* Validate the entire clip list before the first command: a later rejection

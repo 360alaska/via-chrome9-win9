@@ -2,7 +2,10 @@
 """.579: the device profile (vx85598.c VX_check_hardware) in the compiled VxD objects, with a modelled PCI configuration space and video
 ROM: the three devices, the BARs each uses (VX855 10h / 14h; VX800 10h and 14h, or 18h behind a 64-bit frame-buffer BAR; VX900 the
 frame buffer at 18h, the registers at 14h), what is refused (another device, a ROM of another device, a BAR above 4 GB, an I/O BAR,
-no register BAR), and that the engines are used on the VX800 and the VX855 and not on the VX900."""
+no register BAR), and that the engines are used on the VX800 and the VX855 and not on the VX900.
+.598: the VxD's answer to the HAL's ACCEL_D3D query (control 0xFFFFFE50, word 0) is 1 where the engines are used and 0 where they are
+not, so the HAL offers no Direct3D on the VX900 (VX900 board, VXREG v1.58: it was offered).
+.601: the 2D engine's own answer (VX_chip_2d) is 1 on all three (VX900 board, VX92D v1.1: the M1 layout)."""
 import struct,sys,pathlib
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent.parent/'verification'))
 import engine
@@ -37,20 +40,21 @@ def run(dev,cfg,**kw):
  g=PCI(dev,cfg,**kw);rc=g.call('VX_check_hardware',())
  st=struct.unpack('<10I',g.u.mem_read(g.addr('vx_status'),40))
  w=lambda n:g.word(g.addr(n))
- return rc,st[4],st[7],st[8],w('vx_chip_id'),w('vx_chip_fb_cfg'),w('vx_chip_mmio_cfg'),g.call('VX_chip_accel',()),g.call('VX_chip_video',())
+ out=engine.ARENA+0x3000;g.u.mem_write(out,pack([0xEEEEEEEE]*8));g.call('VX2D_control',(0xFFFFFE50,out))
+ return rc,st[4],st[7],st[8],w('vx_chip_id'),w('vx_chip_fb_cfg'),w('vx_chip_mmio_cfg'),g.call('VX_chip_accel',()),1,g.word(out),g.word(out+4),g.call('VX_chip_2d',())
 def main():
  fails=0
  cases=[
-  ('VX855: frame buffer 10h, registers 14h',0x5122,{0x10:0xD0000008,0x14:0xFB000000},{}, (1,0,0xD0000000,0xFB000000,0x5122,0x10,0x14,1,1)),
-  ('VX800, 32-bit BARs: 10h and 14h',0x1122,{0x10:0xD0000008,0x14:0xFA000000},{}, (1,0,0xD0000000,0xFA000000,0x1122,0x10,0x14,1,1)),
-  ('VX800, a 64-bit frame-buffer BAR: 10h (and 14h its upper half), registers 18h',0x1122,{0x10:0xD000000C,0x14:0,0x18:0xFA000004,0x1C:0},{}, (1,0,0xD0000000,0xFA000000,0x1122,0x10,0x18,1,1)),
-  ('VX900: registers 14h, frame buffer 18h (64-bit), the engines not used',0x7122,{0x10:0xF8000000,0x14:0xFB000000,0x18:0xC000000C,0x1C:0},{}, (1,0,0xC0000000,0xFB000000,0x7122,0x18,0x14,0,0)),
+  ('VX855: frame buffer 10h, registers 14h',0x5122,{0x10:0xD0000008,0x14:0xFB000000},{}, (1,0,0xD0000000,0xFB000000,0x5122,0x10,0x14,1,1,1,0x56584433,1)),
+  ('VX800, 32-bit BARs: 10h and 14h',0x1122,{0x10:0xD0000008,0x14:0xFA000000},{}, (1,0,0xD0000000,0xFA000000,0x1122,0x10,0x14,1,1,1,0x56584433,1)),
+  ('VX800, a 64-bit frame-buffer BAR: 10h (and 14h its upper half), registers 18h',0x1122,{0x10:0xD000000C,0x14:0,0x18:0xFA000004,0x1C:0},{}, (1,0,0xD0000000,0xFA000000,0x1122,0x10,0x18,1,1,1,0x56584433,1)),
+  ('VX900: registers 14h, frame buffer 18h (64-bit), the 2D engine and the overlay used (.601, .602), the 3D engine and Direct3D too (.617: no switch)',0x7122,{0x10:0xF8000000,0x14:0xFB000000,0x18:0xC000000C,0x1C:0},{}, (1,0,0xC0000000,0xFB000000,0x7122,0x18,0x14,1,1,1,0x56584433,1)),
   ('VX800: a frame buffer above 4 GB is refused',0x1122,{0x10:0xD000000C,0x14:1,0x18:0xFA000004},{}, (0,3)),
   ('VX855: an I/O BAR where the registers should be is refused',0x5122,{0x10:0xD0000008,0x14:0x0000E001},{}, (0,3)),
   ('VX900: no frame-buffer BAR assigned is refused',0x7122,{0x14:0xFB000000,0x18:0},{}, (0,3)),
   ('another VIA display device is not taken',0x3371,{0x10:0xD0000008,0x14:0xFB000000},{}, (0,1)),
   ('VX855: a video ROM of another device is refused',0x5122,{0x10:0xD0000008,0x14:0xFB000000},{'romdev':0x1122}, (0,4)),
-  ('VX800: a VIA video ROM with another device number is taken',0x1122,{0x10:0xD0000008,0x14:0xFA000000},{'romdev':0x3157}, (1,0,0xD0000000,0xFA000000,0x1122,0x10,0x14,1,1)),
+  ('VX800: a VIA video ROM with another device number is taken',0x1122,{0x10:0xD0000008,0x14:0xFA000000},{'romdev':0x3157}, (1,0,0xD0000000,0xFA000000,0x1122,0x10,0x14,1,1,1,0x56584433,1)),
   ('two active display devices are refused',0x5122,{0x10:0xD0000008,0x14:0xFB000000},{'second_vga':True}, (0,2)),
  ]
  for name,dev,cfg,kw,want in cases:

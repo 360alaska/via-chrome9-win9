@@ -105,6 +105,18 @@ static vx_ddi_global global_caps;
 static DDSURFACEDESC tex_formats[13]; /* v10.169, six since v10.172, ten since v10.199 (L8, DXT1, DXT3, DXT5), 13 since v10.208 (bump) */
 static volatile DWORD trace_inits,trace_mode,trace_count,trace_ring[32][4];
 static volatile DWORD rs_count,rs_ring[64][2],draw_count,draw_shade[8]; /* v10.162: legacy render states as received and the shade mode at each legacy draw */
+/* .601: the driver's own transform and lighting (vx_d3d_tnl.inc) is offered by default, to every program. Direct3D keeps doing the
+ * transform and lighting for a program that asks for software vertex processing or the plain HAL device; the driver's runs for a program
+ * that asks for the T&L HAL device or hardware vertex processing. ACCEL_D3D_TNL=0 in the registry withdraws the offer. */
+/* .600: the render state ids received since the DLL was loaded (8 words, one bit an id) and the legacy texture states' record (8 words, vx_d3d_core.c) */
+DWORD WINAPI VX_D3D_QueryLegacy(DWORD *out,DWORD n) {
+ extern uint32_t vx_d3d_rs_seen[8],vx_d3d_legacy_stat[8];DWORD i;
+ if(!out||n<16)return 0;
+ for(i=0;i<8;i++){out[i]=vx_d3d_rs_seen[i];out[8+i]=vx_d3d_legacy_stat[i];}
+ if(n<17)return 16;
+ out[16]=vx_d3d_tnl?1UL:0; /* .601: hardware T&L offered */
+ return 17;
+}
 DWORD WINAPI VX_D3D_QueryStates(DWORD *out,DWORD n) {
  DWORD i,k=0,c=rs_count,d=draw_count;
  if(!out||n<2+8+128)return 0;
@@ -745,6 +757,36 @@ int VX_D3D_hold_sync(DWORD why) {
  cb_leave();
  return 0;
 }
+/* .628: DirectDraw's stretching Blt between two video surfaces of the display's format by the 3D engine (vx_d3d_quad): 1 = drawn (queued
+ * for the engine, in order with everything else), 0 = not taken (the caller's CPU copy then). The destination must be a surface the
+ * engine can draw into (256-byte aligned, a pitch of 32-byte units), the source one it can read as a texture (its pitch exactly its
+ * width, up to 2048 x 2048). Pixel p of the destination reads the source at left + (p - dl + 0.5) x sw / dw. */
+int VX_D3D_stretch(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface *src,const RECT *sr,int linear) {
+ vx3dn_info info={0};vx_d3d_services s;uint32_t fp[27],rc,by;vx3dn_rect r;float uv[4],sw,sh,dw,dh;vx3dn_surface t;
+ if(!dst||!src||!dr||!sr||!shared_hal)return 0;
+ t=*src;by=t.format==VX3DN_RGB565?2:4;
+ t.format=src->format==VX3DN_RGB565?VX3DN_TEX_RGB565:src->format==VX3DN_XRGB8888?VX3DN_TEX_XRGB8888:0;
+ if(!t.format||dst->format!=src->format||!t.width||!t.height||t.width>2048||t.height>2048||t.pitch!=t.width*by||t.pitch<32||(t.offset&255))return 0;
+ if(!dst->width||!dst->height||dst->width>2048||dst->height>2048||(dst->pitch&31)||dst->pitch>0x7FE0UL||(dst->offset&255)||dst->width>dst->pitch/by)return 0;
+ if(dr->left<0||dr->top<0||dr->right>(LONG)dst->width||dr->bottom>(LONG)dst->height||dr->right<=dr->left||dr->bottom<=dr->top)return 0;
+ if(sr->left<0||sr->top<0||sr->right>(LONG)t.width||sr->bottom>(LONG)t.height||sr->right<=sr->left||sr->bottom<=sr->top)return 0;
+ {uint32_t de=dst->offset+dst->pitch*dst->height,se=t.offset+t.pitch*t.height;if(dst->offset<se&&t.offset<de)return 0;} /* one surface, or overlapping ones */
+ if(!cb_enter())return 0;
+ if(!call(VX_IOCTL_3DN_INFO,0,0,&info,sizeof(info))||!info.ready||!native_surface(dst,&info)||t.offset>=info.fb_bytes||t.height>(info.fb_bytes-t.offset)/t.pitch){cb_leave();return 0;}
+ save_fp(fp);
+ sw=(float)(sr->right-sr->left);sh=(float)(sr->bottom-sr->top);dw=(float)(dr->right-dr->left);dh=(float)(dr->bottom-dr->top);
+ uv[0]=((float)sr->left+0.5F*sw/dw)/(float)t.width;uv[2]=((float)sr->right+0.5F*sw/dw)/(float)t.width;
+ uv[1]=((float)sr->top+0.5F*sh/dh)/(float)t.height;uv[3]=((float)sr->bottom+0.5F*sh/dh)/(float)t.height;
+ /* .630: the nearest pixel as the CPU's stretch picks it: its index is floor((2n + 1) x sw / (2 x dw)), so a centre that falls exactly between
+  * two source pixels (every pixel of a 2:1 shrink) takes the later one. Board (VX855, .629): sampled exactly between, the engine's choice
+  * differed from the CPU's in a fifth of the picture's pixels. A sixteenth of a source pixel further settles it. */
+ if(!linear){float e=0.0625F;uv[0]+=e/(float)t.width;uv[2]+=e/(float)t.width;uv[1]+=e/(float)t.height;uv[3]+=e/(float)t.height;}
+ r.left=dr->left;r.top=dr->top;r.right=dr->right;r.bottom=dr->bottom;
+ memset(&s,0,sizeof(s));s.submit=native_submit;s.submit_n=native_submit_n;
+ rc=vx_d3d_quad(dst,&r,&t,uv,linear,&s,info.generation);
+ restore_fp(fp);cb_leave();
+ return rc==0;
+}
 /* v10.166: a flip moves surface memory between the surfaces of a chain (DirectDraw swaps their video memory), so a cached offset would draw into
  * what is now the front buffer. Re-read the local object's memory at each use; size, pitch and format must not have changed. */
 /* v10.182: why a context was marked lost (HAL diagnostics lost_why / lost_value; VXDX7 prints them). Low byte: 1 VxD not ready, 2 mode
@@ -1333,7 +1375,7 @@ static DWORD d3d_registry(void) { /* the VxD reads the registry (ACCEL_D3D) and 
  vx_d3d_hold_on=1; /* .551: the queue held across DrawPrimitives2 calls, always (ACCEL_D3D_HOLD removed: GTA3 on .550, median 93 -> 76 ms) */
  if(h==INVALID_HANDLE_VALUE) return 0;
  memset(o,0,sizeof(o));
- if(DeviceIoControl(h,0x85500012UL,&code,4,o,16,&got,NULL)&&got==16&&o[1]==0x56584433UL) {on=o[0];if(o[2]&0x100UL)vx_heap_round=o[2]&1;if(o[2]&0x400UL){event_log_file=(o[2]>>1)&1;vx_d3d_ckey_on=(o[2]>>2)&1;vx_d3d_sample_on=(o[2]>>13)&1;} /* .511: bit 13 ACCEL_D3D_SAMPLE */if(o[2]&0x800UL){vx_d3d_rttex=(o[2]>>3)&1;vx_d3d_mipcap=(o[2]>>4)&1;vx_d3d_texhint=(o[2]>>5)&1;{extern uint32_t vx_d3d_texruns;vx_d3d_texruns=1;} /* .528; .529: always *//* .531: bit 6 (ACCEL_D3D_IX384) retired: 384 always */vx_d3d_indexed=(o[2]>>7)&1;vx_d3d_rtnowait=(o[2]>>12)&1;{extern uint32_t vx_d3d_ixpass;vx_d3d_ixpass=(o[2]>>16)&1;{vx_d3d_infocache=(o[2]>>17)&1;vx_d3d_delta=(o[2]>>20)&1;vx_d3d_tnl=(o[2]>>21)&1; /* .534: bit 21 ACCEL_D3D_TNL */
+ if(DeviceIoControl(h,0x85500012UL,&code,4,o,16,&got,NULL)&&got==16&&o[1]==0x56584433UL) {on=o[0];if(o[2]&0x100UL)vx_heap_round=o[2]&1;if(o[2]&0x400UL){event_log_file=(o[2]>>1)&1;vx_d3d_ckey_on=(o[2]>>2)&1;vx_d3d_sample_on=(o[2]>>13)&1;} /* .511: bit 13 ACCEL_D3D_SAMPLE */if(o[2]&0x800UL){vx_d3d_rttex=(o[2]>>3)&1;vx_d3d_mipcap=(o[2]>>4)&1;vx_d3d_texhint=(o[2]>>5)&1;{extern uint32_t vx_d3d_texruns;vx_d3d_texruns=1;} /* .528; .529: always (.621-.622 had a test switch: the seam test cleared the texture change inside a packet) *//* .531: bit 6 (ACCEL_D3D_IX384) retired: 384 always */vx_d3d_indexed=(o[2]>>7)&1;vx_d3d_rtnowait=(o[2]>>12)&1;{extern uint32_t vx_d3d_ixpass;vx_d3d_ixpass=(o[2]>>16)&1;{vx_d3d_infocache=(o[2]>>17)&1;vx_d3d_delta=(o[2]>>20)&1;vx_d3d_tnl=(o[2]>>21)&1; /* .534: bit 21 ACCEL_D3D_TNL */
   /* .543: the driver's T&L is SSE only (vx_d3d_tnl.inc): offered only when the processor has FXSR, SSE and SSE2 (CPUID 1 EDX bits 24-26)
    * and the system saves the XMM registers (CR4 OSFXSR, bit 9): the VxD's control 0xFFFFFE34, as VXGL.DLL reads it */
   /* .545: the same answer sets vx_d3d_sse2 (the indexed pass-through's span kernels, vx_d3d_span.inc), with or without the T&L */
@@ -1359,7 +1401,7 @@ void VX_D3D_init(void *ctx) {
  /* v10.178 (WinTune 98 "Could not find any compatible devices"): the raster caps were empty. Z test and subpixel accuracy are what the
   * hardware does (VXDX7 --draw and --raster: Z with every ZFUNC, float vertices); DX5-style device checks look for D3DPRASTERCAPS_ZTEST. */
  (void)d3d_registry(); /* v10.215: the feature switches before the caps that depend on them (the DITHER cap was set from the default) */
- if(vx_d3d_tnl)h->dwDevCaps|=0x10000UL; /* .534: D3DDEVCAPS_HWTRANSFORMANDLIGHT for the probe (vx_d3d_core.c); nothing is transformed */
+ if(vx_d3d_tnl)h->dwDevCaps|=0x10000UL; /* D3DDEVCAPS_HWTRANSFORMANDLIGHT: the driver's T&L (.536); .601: on by default */
  p->dwRasterCaps=D3DPRASTERCAPS_ZTEST|D3DPRASTERCAPS_SUBPIXEL|0x80UL|0x100UL|((vx_d3d_feat&VX_F_DITHER)?0x1UL:0)|0x4000UL; /* v10.196: + FOGVERTEX, FOGTABLE (fog, v10.195); v10.201: + DITHER, ZBIAS */
  p->dwZCmpCaps=255;p->dwSrcBlendCaps=0x1FFF;p->dwDestBlendCaps=0x3FF;p->dwAlphaCmpCaps=255; /* v10.177: every blend factor (SRCALPHASAT/BOTH* as source only), alpha test */
  p->dwShadeCaps=D3DPSHADECAPS_COLORFLATRGB|D3DPSHADECAPS_COLORGOURAUDRGB|D3DPSHADECAPS_SPECULARFLATRGB|D3DPSHADECAPS_SPECULARGOURAUDRGB|D3DPSHADECAPS_ALPHAFLATBLEND|D3DPSHADECAPS_ALPHAGOURAUDBLEND|0x80000UL; /* v10.196: + FOGGOURAUD. v10.178: + specular (XP's specular programs, v10.172) */
@@ -1393,7 +1435,7 @@ void VX_D3D_init(void *ctx) {
     t->ddpfPixelFormat.dwRBitMask=fm[k][2];t->ddpfPixelFormat.dwGBitMask=fm[k][3];t->ddpfPixelFormat.dwBBitMask=fm[k][4];t->ddpfPixelFormat.dwRGBAlphaBitMask=fm[k][5];t->ddpfPixelFormat.dwFourCC=fcc[k];}}
   global_caps.dwNumTextureFormats=(vx_d3d_feat&VX_F_BUMP)&&(vx_d3d_feat&VX_F_STAGES)?13:10;global_caps.lpTextureFormats=tex_formats; /* v10.212: the bump formats are the last three */
   global_caps.hwCaps.dwDevCaps|=D3DDEVCAPS_TEXTUREVIDEOMEMORY;
-  p->dwTextureCaps=1|2|4|((vx_d3d_feat&VX_F_PROJECTED)?0x400:0)|((vx_d3d_feat&VX_F_CUBE)?0x800:0); /* v10.214: + CUBEMAP */
+  p->dwTextureCaps=1|2|4|8|((vx_d3d_feat&VX_F_PROJECTED)?0x400:0)|((vx_d3d_feat&VX_F_CUBE)?0x800:0); /* v10.214: + CUBEMAP; .600: + D3DPTEXTURECAPS_TRANSPARENCY (8): colour-keyed textures are drawn (v10.197) and DirectX 3/5 programs look for the bit before they use them (PC Player D3D Bench: "transparent textures not available") */
   /* v10.456 (cookbook 24.8; Velocity9x: 3DMark2001 refused its first mipmapped texture without it): ACCEL_D3D_MIPCAP (default 1) adds
    * D3DPTEXTURECAPS_MIPMAP (0x4000, DirectX 8's name for what the filter caps and DDSCAPS_MIPMAP already offer; a cube map's levels are
    * not sampled here, so no MIPCUBEMAP). VXRTT reports what Direct3D 8 makes of it. */

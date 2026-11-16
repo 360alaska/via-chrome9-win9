@@ -86,7 +86,31 @@ def checks():
   g=setup(bpp);geometry(g,1024,768,bpp,pitch=1024*px+64);r=ctl(g,Q);assert r[1]==3 and r[7]==1 and not g.bios_log;case(f'{bpp}bpp padded scanout pitch is refused (back buffers could not match)')
   g=setup(bpp);g.u.mem_write(g.hda+20,pack([24]));r=ctl(g,Q);assert r[1]==3 and r[7]==1;case('24bpp is refused')
   g=setup(bpp);g.u.mem_write(g.addr('vx_flip_enable'),pack([0]));r=ctl(g,Q);assert r[1]==3 and r[7]==7 and not g.bios_log and r[3]==1;case(f'{bpp}bpp FLIP=0 disables flipping without touching the BIOS (vertical blank is still reported)')
+  # --- .598: the second display unit (IGA2: a laptop's panel) shows the same frame buffer ---
+  def two(g,pitch,panel):
+   g.crt[0x6a]=0x80;g.crt[0x66]=(pitch>>3)&255;g.crt[0x67]=0xC0|((pitch>>11)&3);g.crt[0x71]=0
+   if panel:g.crt[0x97]=0x11;g.crt[0x99]=0x10;g.crt[0x36]=0x31
+  def start2(g):return (((g.crt.get(0x62,0)>>1)&0x7f)|(g.crt.get(0x63,0)<<7)|(g.crt.get(0x64,0)<<15)|((g.crt.get(0xa3,0)&7)<<23))<<3
+  g=setup(bpp,fast=True);two(g,1024*px,False);g.crt[0x62]=1;g.crt[0xa3]=0xA8;r=ctl(g,Q);assert (r[0],r[1],r[3])==(OK,1,1),r
+  v=g.vbn;r=ctl(g,F,stride);assert r[0]==OK and g.crt_start()==stride>>1 and start2(g)==stride and g.crt[0x62]&1 and g.crt[0xa3]&0xF8==0xA8,(r,hex(start2(g)))
+  assert g.word(g.addr('vx_flip_two')+8)==1;case(f'{bpp}bpp .598: IGA2 on with the mode\'s pitch: the start address goes to CR62/63/64/A3 as well (bytes >> 3), CR62 bit 0 and CRA3\'s upper bits kept; the monitor on: the blank stays the first unit\'s')
+  r=ctl(g,F,stride+4);assert r[0]==UNS and start2(g)==stride;case(f'{bpp}bpp .598: with IGA2 an offset that is not a multiple of 8 is refused')
+  r=ctl(g,R);assert r[0]==OK and g.crt_start()==0 and start2(g)==0;case(f'{bpp}bpp .598: reset returns both units to the desktop')
+  g=setup(bpp,fast=True);two(g,1024*px+8,False);ctl(g,Q);r=ctl(g,F,stride);assert r[0]==OK and start2(g)==0 and g.word(g.addr('vx_flip_two')+8)==0;case(f'{bpp}bpp .598: IGA2 on with another pitch (not this frame buffer): left alone')
+  g=setup(bpp,fast=True);two(g,1024*px,True);r=ctl(g,Q);assert (r[0],r[1],r[3])==(OK,1,2),r # MMIO 204 bit 2 never set in the model: no usable blank
+  assert g.word(g.addr('vx_flip_two')+8)==3;v=g.vbn;r=ctl(g,F,stride);assert r[0]==OK and start2(g)==stride and g.crt_start()==stride>>1 and g.vbn==v,(r,g.vbn-v)
+  assert g.word(g.addr('vx_flip_two')+16)==1 and g.word(g.addr('vx_flip_old_front'))==0xFFFFFFFF;assert g.call('VX_flip_hz',())==60
+  case(f'{bpp}bpp .598: the panel on IGA2 and the monitor output powered down: port 3DA is not read, the flip waits a frame\'s time when IGA2\'s blank status does not toggle, 60 Hz reported')
   g=setup(bpp);r=ctl(g,99);assert r[0]==UNS;g.u.mem_write(REQ,pack([12,0,0,0]));g.call('VX_flip_control',(REQ,REP));assert u32(g.u.mem_read(REP,4),0)==FAIL;case(f'{bpp}bpp bad command and bad request size')
+ # --- .599: a panel's EDID with one detailed timing and nothing else (NC20, 1280x800) ---
+ e=bytes.fromhex('00FFFFFFFFFFFF000DAF3312000000002D120103801A11780A61C58F59578F2823505400000001010101010101010101010101010101121B008450201230281A340004AA10000018000000FE004E31323149422D4C30360A2020000000FE00434D4F0A202020202020202020000000FE004E31323149422D4C30360A202000C4')
+ assert len(e)==128 and sum(e)%256==0
+ g=setup(32);g.u.mem_write(g.addr('vx_edid'),e);g.u.mem_write(g.addr('vx_edid_ok'),pack([1]))
+ ok=lambda w,h:g.call('VX_edid_mode_ok',(w,h))
+ assert ok(1280,800)==1 and ok(640,480)==1 and ok(800,600)==1 and ok(1024,768)==1,[ok(1280,800),ok(640,480),ok(800,600),ok(1024,768)]
+ assert ok(1280,1024)==0 and ok(1440,900)==0 and ok(1280,720)==0 and ok(1024,600)==0 and ok(720,480)==0
+ case('.599: a panel that lists only its native 1280x800: 640x480, 800x600 and 1024x768 are taken, larger and odd sizes are not')
+ g=setup(32);g.u.mem_write(g.addr('vx_edid'),e);g.u.mem_write(g.addr('vx_edid_ok'),pack([0]));assert g.call('VX_edid_mode_ok',(800,600))==0;case('.599: without an EDID the monitor test answers no, as before')
  return cases
 if __name__=='__main__':
  c=checks();print(len(c),'flip checks passed')

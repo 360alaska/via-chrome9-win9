@@ -122,7 +122,15 @@ static uint32_t fx_pend=0xFFFFFFFFUL;uint32_t vx3dn_gap_stat[3]; /* starts with 
 static void fx_park_forget(void); /* v10.391 */
 /* v10.402: XP's ring in GART-mapped system memory (the xr_ functions below). xr_state: -1 off for good (vx3dn_xr_stat[1]
  * says why), 0 not set up, 1 the page table set and the ring not running, 2 the ring running */
-#define XR_PAGES 64UL
+/* .625: the ring's size, a tuning value under test (ACCEL_D3D_RINGKB: 256, 512 or 1024; 256 as before). Board, .623-.624, GTA3: 36 MB of
+ * command words a second through a 256 KB ring is 152 wraps a second, and the writer met the fetcher 11,383 times in 120 s; each time
+ * it waits for everything kicked (about 0.5 ms). A longer ring holds more of a frame's 1.8 MB, so the CPU builds on while the engine
+ * draws. Read once, before the ring's memory is allocated. */
+/* .626: 2048 and 4096 KB too (the page table has 16384 entries; the ring takes 0x100 onward). When the pages cannot be had the size is
+ * halved down to 256 KB before the ring is given up. */
+uint32_t vx3dn_xr_pages=64;
+#define XR_PAGES_MAX 1024UL
+#define XR_PAGES ((uint32_t)vx3dn_xr_pages)
 #define XR_BYTES (XR_PAGES*4096UL)
 #define XR_IDX0 0x100UL
 #define XR_GPU (XR_IDX0<<12)
@@ -133,7 +141,7 @@ volatile uint32_t vx3dn_xr=1;
 volatile unsigned long vx3dn_gart_off;
 volatile uint32_t vx3dn_xr_cr_pause; /* the command regulator's busy bit (0x400 bit 4) seen set with the fetcher at its pause (vx855_2d.c) */
 uint32_t vx3dn_xr_stat[72]={1};
-static int xr_state,xr_ran,xr_tested,xr_after_wrap,xr_wrapgrp,xr_lap;
+static int xr_state,xr_ran,xr_tested,xr_after_wrap,xr_wrapgrp,xr_lap;extern uint32_t vx3dn_chip900;
 /* v10.410: [0] wraps, [1] space checks, [2] waits they took, [3-5] 43C, 444, 400 when the last post-wrap kick was written again
  * (TEXDBG 0xBC 0x95) */
 uint32_t vx3dn_xr_stat2[6];static uint32_t xr_lin,xr_next,xr_pend;
@@ -164,6 +172,8 @@ static int engine_reset(void) {
  VX2D_3d_reset(); /* v10.281: the 2D side sets the engine up again before its next operation */
  return !(st&RESET_IDLE_MASK)&&st!=0xFFFFFFFFUL;
 }
+uint32_t vx_stretch3d; /* .628: ACCEL_STRETCH3D (vxd_main.c reads it, the HAL asks for it) */
+
 void VX3DN_info(vx3dn_info *i) {
  uint32_t limit;
  memset(i,0,sizeof(*i));i->cb=sizeof(*i);i->abi=VX3DN_ABI;
@@ -432,8 +442,31 @@ static void fx_note(const vx3dn_packet *p,uint32_t words) {
   ((p->ext.dither&1)<<16)|((p->ext.stencil&3)<<17)|((p->raster.alpha_func&15)<<20)|((p->shader.count&0xFF)<<24);
  d[2]=p->ext.stencil_w1;d[3]=p->ext.stencil_w2;d[4]=p->write_mask;d[5]=words;
 }
+/* .612 (board, .610 and .611 on the VX900: fetches that hang in the middle of a group with the engine busy, in the ring and one-shot,
+ * 237 in 80 s of GTA3; the ring's record keeps a group's first words, not the place): where the fetcher stood at each of the first
+ * four hangs of any kind, and the words there. vx3dn_stall[k]: status 400, the position (43C, two reads agreeing), 444, 440, the
+ * time, 1 when the position is in XP's ring, the count of all hangs; vx3dn_stall_w[k]: STALL_BEFORE words before the position (the
+ * VX900's fetcher reads in 64-byte steps and has been seen AC0h past the word the engine was on) and the rest after it; a word
+ * outside the ring or the command block reads DEADDEAD. TEXDBG BC 500h + k (the record), 600h + k * 100h + n (six words a read). */
+#define STALL_N 4
+#define STALL_W 1024UL
+#define STALL_BEFORE 896UL
+uint32_t vx3dn_stall[STALL_N][8],vx3dn_stall_w[STALL_N][STALL_W],vx3dn_stall_n;
+static void stall_note(uint32_t st) {
+ uint32_t n=vx3dn_stall_n++,a=read_mmio(0,0x43C),b,k,base;int ring;
+ if(n>=STALL_N)return;
+ for(k=0;k<8;k++){b=read_mmio(0,0x43C);if(a==b)break;a=b;}
+ ring=fx_in_ring(a);
+ vx3dn_stall[n][0]=st;vx3dn_stall[n][1]=a;vx3dn_stall[n][2]=read_mmio(0,0x444);vx3dn_stall[n][3]=read_mmio(0,0x440);
+ vx3dn_stall[n][4]=Get_System_Time();vx3dn_stall[n][5]=(uint32_t)ring;vx3dn_stall[n][6]=vx3dn_stall_n;vx3dn_stall[n][7]=fx_pend;
+ base=(a&~3UL)-STALL_BEFORE*4UL;
+ for(k=0;k<STALL_W;k++){uint32_t w=base+k*4;
+  vx3dn_stall_w[n][k]=(ring?fx_in_ring(w):(vx3dn_cmd_off&&vx_status.fb_linear&&w>=vx3dn_cmd_off&&w+4<=vx3dn_cmd_off+VX3DN_CMD_BYTES-256UL))?fx_rd(w):0xDEADDEADUL;}
+}
+static int ring_map(void);
+uint32_t VX3DN_peek(uint32_t reg) {if((reg&3UL)||reg>0x1FFCUL)return 0;if(!mapped&&!ring_map())return 0xEEEEEEEEUL;return read_mmio(0,reg);} /* .612: a register read for VXREG's list (TEXDBG BC 400h); .613: the registers mapped first (the .612 list on a clean start read address 0, the 3D layer not yet used) */
 static void hang_note(uint32_t st,uint32_t (*from)[6],uint32_t n) {
- uint32_t k,j;vx3dn_hang_count++;vx3dn_hang_status=st;vx3dn_hang_n=n>16?16:n;
+ uint32_t k,j;stall_note(st);vx3dn_hang_count++;vx3dn_hang_status=st;vx3dn_hang_n=n>16?16:n;
  for(k=0;k<vx3dn_hang_n;k++)for(j=0;j<6;j++)vx3dn_hang[k][j]=from[k][j];
 }
 static int fetch_idle(uint32_t *last);
@@ -555,7 +588,7 @@ void xr_mfence(void);
 #pragma aux xr_mfence = 0x0F 0xAE 0xF0 modify exact [];
 void xr_wbinvd(void);
 #pragma aux xr_wbinvd = 0x0F 0x09 modify exact [];
-static uint32_t xr_alloc,xr_pte[XR_PAGES+1],xr_ls=64;static int xr_flushmode;
+static uint32_t xr_alloc,xr_pte[XR_PAGES_MAX+1],xr_ls=64;static int xr_flushmode;
 /* v10.466 (review): xr_rp_ok says whether two reads agreed; after 8 that did not, the value is not taken as the fetcher's position */
 static uint32_t xr_rp_ok(int *ok) {uint32_t a=read_mmio(0,0x43C),b,n;*ok=0;for(n=0;n<8;n++){b=read_mmio(0,0x43C);if(a==b){*ok=1;break;}a=b;}return a;}
 static uint32_t xr_rp(void) {int ok;return xr_rp_ok(&ok);}
@@ -642,8 +675,11 @@ static int xr_setup(void) {
  if(xr_state)return xr_state>0;
  vx3dn_xr_stat[23]=vx3dn_gart_off;
  if(!vx3dn_gart_off||!vx3dn_cmd_off||!vx_status.fb_linear||(vx3dn_gart_off&0xFFFUL)){xr_off(VX_XR_OFF_NOTABLE);return 0;}
- xr_alloc=_PageAllocate(XR_PAGES+1,PG_SYS,0,0,0x100,0xFFFFF,&phys,PAGEFIXED|PAGEUSEALIGN);
- if(!xr_alloc||xr_alloc==0xFFFFFFFFUL||(xr_alloc&4095UL)){xr_alloc=0;xr_off(VX_XR_OFF_ALLOC);return 0;}
+ if(vx3dn_xr_pages>XR_PAGES_MAX)vx3dn_xr_pages=XR_PAGES_MAX;if(vx3dn_xr_pages<64UL)vx3dn_xr_pages=64UL;
+ for(;;){xr_alloc=_PageAllocate(XR_PAGES+1,PG_SYS,0,0,0x100,0xFFFFF,&phys,PAGEFIXED|PAGEUSEALIGN); /* .626: a smaller ring when the pages cannot be had */
+  if(xr_alloc&&xr_alloc!=0xFFFFFFFFUL&&!(xr_alloc&4095UL))break;
+  xr_alloc=0;if(vx3dn_xr_pages<=64UL){xr_off(VX_XR_OFF_ALLOC);return 0;}
+  vx3dn_xr_pages>>=1;}
  _CopyPageTable(xr_alloc>>12,XR_PAGES+1,(DWORD*)xr_pte,0);
  for(k=0;k<=XR_PAGES;k++){if(!(xr_pte[k]&1)||(xr_pte[k]&0xFFFFF000UL)<0x100000UL)break;for(j=0;j<k;j++)if(!((xr_pte[k]^xr_pte[j])&0xFFFFF000UL))break;if(j<k)break;}
  if(k<=XR_PAGES){_PageFree((void*)xr_alloc,0);xr_alloc=0;xr_off(VX_XR_OFF_PAGES);return 0;}
@@ -675,7 +711,13 @@ static int xr_wait_b(uint32_t *st) { /* the last group kicked done: the fence at
  for(n=0;;n++){q=xr_quiet(st);if(q<0)break;
   if(q>0&&(!fx_rfenced||fx_fence_read()==want)){if(++stable>=2){if(q==2){vx3dn_xr_stat[12]++;vx3dn_xr_cr_pause=1;}r=1;break;}}else stable=0;
   /* v10.405: a group after a wrap whose fence does not come with every engine idle: its kick written again once (the count tells) */
-  if(xr_wrapgrp&&!rk&&q>0&&fx_rfenced&&(uint32_t)(Get_System_Time()-t0)>=3){uint32_t pz=xr_pend-0x10;rk=1;vx3dn_xr_stat[69]++;
+  /* .610 (board, .609 on the VX900, Quake 2: 2556 wraps, 33 of these kicks, the last written with the fetcher at its pause and every
+   * engine idle; it then read on past the pause into the last lap's words, 43C = pause + AC0h, and the ring hung): two faults. The
+   * test never looked at the fence, so the kick was also written again for a group already done (the first of the two quiet reads
+   * that end the wait); the fence is tested now. And on the VX900 a pause address written again lets a fetcher standing at that
+   * pause go on (there the pause holds until the next pause write and is only met by reading up to it; the VX800 and VX855 compare
+   * the position), so on the VX900 a kick is never written twice. */
+  if(xr_wrapgrp&&!rk&&q>0&&fx_rfenced&&!vx3dn_chip900&&fx_fence_read()!=want&&(uint32_t)(Get_System_Time()-t0)>=3){uint32_t pz=xr_pend-0x10;rk=1;vx3dn_xr_stat[69]++;
    vx3dn_xr_stat2[3]=xr_rp();vx3dn_xr_stat2[4]=read_mmio(0,0x444);vx3dn_xr_stat2[5]=read_mmio(0,0x400);
    write_mmio(0,0x41C,0x00100000UL);write_mmio(0,0x420,0x64000000UL|(pz&0xFFFFFFUL));write_mmio(0,0x420,0x65000000UL|(pz>>24));}
   if(!(n&15)){uint32_t now=Get_System_Time();
@@ -835,6 +877,20 @@ uint32_t vx3dn_reg_draws; /* v10.227: register-path draws since the VxD loaded (
 static uint32_t q_before_draw(void);
 static uint32_t q_before_clear(void);
 extern volatile uint32_t vx_flip_old_front;void VX_flip_front_wait(uint32_t off); /* v10.384 (vx855_flip.c) */
+/* .620: the wait for the vertical blank in the ring after a CPU flip on the VX900. Board (.619, VXRING vblank): a 2D block with register
+ * 6C = 1 in a fetched stream holds the fetcher until the first display unit's blank begins (60 of 60 fills done at scan line 601 of a
+ * 600-line mode, 0.02 to 16.5 ms after the start; 6C = 0, 00800000 and 00FC0000 do not hold; 6C = 2 never ends with the second unit
+ * off). Since .616 the VX900 flips from the CPU, and the first colour draw on the old front then waited in the CPU for the flip to be
+ * taken: 4.2 to 4.9 ms a frame in GTA3 (9.8 s of 120). That wait now goes into the ring: one such block in a group of its own, kicked
+ * at once, once a flip (vbw_epoch); everything sent after it runs behind it, and the CPU goes on building. A packet sent by the
+ * registers or a clear outside the ring retires the ring first, the block with it. Written the moment the draw would have waited, so
+ * the fetcher reads it within microseconds: a block read after the blank it was meant for would hold for a whole frame.
+ * Only while the ring runs and the picture is the first unit's (VX_flip_word_ok: a CPU flip pending, not a panel on the second unit
+ * alone); otherwise the CPU waits as before. vx3dn_vbw: [0] packets that did not wait in the CPU, [1] blocks kicked, [2] not queued
+ * (the CPU waited), [3] the last reason (1 ring not running, 2 engine busy, 3 clocks off, 4 no room, 5 kick). */
+extern volatile uint32_t vx_flip_epoch;int VX_flip_word_ok(void);
+static uint32_t vbw_epoch=0xFFFFFFFFUL;uint32_t vx3dn_vbw[4];
+static int vbw_queue(void);
 uint32_t vx3dn_ss_worst[8][8],vx3dn_ss_count; /* v10.393: VX3DN_submit calls of 10 ms and more, the 8 longest: whole, critical-section wait,
  * engine wait (TSC / 256), op | clear flags << 8, triangles, thread run ms, wall ms, target offset */
 static uint32_t submit_x(const vx3dn_packet *p);
@@ -904,6 +960,9 @@ static int front_wait_needed(const vx3dn_packet *p) {
  {extern int vx_flip_ring_pend;extern uint32_t vx3dn_fr_stat[8]; /* v10.417: after a ring flip a fetched draw runs after the flip in the ring */
   if(vx_flip_ring_pend&&(p->op==VX3DN_DRAW||p->op==VX3DN_CLEAR)&&xr_state==2&&vx3dn_fetch&&vx3dn_cmd_off&&!fault){vx3dn_fr_stat[6]++;return 0;}}
  /* v10.418: a clear too: in the ring it runs after the flip; a clear that is not is done after a retire of the ring (the flip with it) */
+ if(vx3dn_chip900&&(p->op==VX3DN_DRAW||p->op==VX3DN_CLEAR)&&VX_flip_word_ok()){ /* .620 */
+  if(vx_flip_old_front==0xFFFFFFFFUL)return 0; /* taken meanwhile (VX_flip_word_ok looks) */
+  if(vbw_epoch==vx_flip_epoch||vbw_queue()){vbw_epoch=vx_flip_epoch;vx3dn_vbw[0]++;return 0;}}
  return 1;
 }
 /* .527: the last packet refused as BAD_PACKET, for the HAL's event log on both paths (it had the VxD's reason only for single submits,
@@ -1141,6 +1200,26 @@ static void cap_write(void *ctx,uint32_t reg,uint32_t v) {
   if(vx3dn_wform)vx3dn_wp=(uint32_t*)ring_cpu+ring_wordp;}
  else cap_err|=4;
 }
+/* .614 (board, .612: GTA3's fetches hang on the VX900 in the middle of long runs of bursts, the same packet again after a reset; the
+ * triangles there sent alone through the lab all draw, VX93D HANG on .613). VIA's CE driver ends every VX900 draw with a block it calls
+ * VX900_WAITPATCH (DDI_VIA.dll 10066438; the VX800 and VX855 path has none): eight 2D blocks FE000000 1 0 CC000000 with register 6C =
+ * 00800000 (wait for the 3D engine) and a ninth with 6C = 00FC0000. A draw there is one burst of vertices; here the block follows every
+ * burst of a fetched packet (the emitter's wait call, which reads idle at once under the capture), so no burst head, texture switch
+ * or state set-up reaches the engine while a burst is in it.
+ * vx3dn_v900_waits: blocks sent. (.617: always sent on the VX900; the switch that left them out is gone.) */
+/* .623 (board, .617, Quake 2: the wait blocks are half of every packet, 1505 words against 1355 of vertices; GTA3 450): how much of the
+ * block is needed is not known, only that none at all hangs the engine (583 hangs in 144 s). ACCEL_VX900_WAITS, under test:
+ * 0 the whole block after every burst (as .614); 1 its last block only (6C = 00FC0000: 8 words for 72); 2 its last two (00800000,
+ * 00FC0000); 3 the whole block after every second burst. VXD3DMON's hang counts in GTA3 say which hold. */
+/* .632: the block's last part only (6C = 00FC0000, 8 words), always; ACCEL_VX900_WAITS is gone. Board, .631, VX900: GTA3 twice
+ * (1.3 and 3.6 million sent) and the Quake 2 demo (75 fps) with no hang, no fetch unfinished, no ring given up. */
+extern void (*vx3dn_v900_wait)(void);uint32_t vx3dn_v900_waits;
+static void cap_v900_wait(void) {
+ cap_sync();cap_close();
+ if(ring_wordp+8UL>cap_max){cap_err|=1;return;}
+ ring_put(0xFE000000UL);ring_put(1);ring_put(0);ring_put(0xCC000000UL);ring_put(0x6C);ring_put(0x00FC0000UL);ring_put(0xCC000000UL);ring_put(0xCC000000UL);
+ vx3dn_v900_waits++;
+}
 static uint32_t cap_read(void *ctx,uint32_t reg) {(void)ctx;return cap_direct()?read_mmio(0,reg):0;}
 /* v10.232: a vertex's words in one call (vx3dn_write_n): the checks once, then a plain copy into the block */
 extern void (*vx3dn_write_n)(const uint32_t *w,uint32_t n);
@@ -1219,13 +1298,28 @@ static void xr_wrap(void) { /* s3ginv 0xBBC10 */
  w[p/4]=0xFE020420UL;w[p/4+1]=0x41C;w[p/4+2]=0x00300000UL;w[p/4+3]=0xCC000000UL;p+=16;
  if(p<XR_WRAP){vx_stosd((void*)(w+p/4),0xCCC00003UL,(XR_WRAP-p)/4);p=XR_WRAP;} /* v10.412: rep stosd, the same words */
  xr_flush(a,XR_WRAP);
+ /* .609 (board, .608 on the VX900: 7 wraps good, then the fetcher was at ring + AC0h with the engine busy before the new lap's first
+  * kick, the fence went back from DEh to D1h and the ring hung at ring + 13C0h): on the VX900 the fetcher does not stop at the ring's
+  * start for a pause of start - 10h after its jump, as the VX800 and VX855 do; it ran on into the last lap's words. The pause has to
+  * be one it reaches by reading. XP's VX900 driver has that form (s3ginvA.dll BFC2B: a batch end at the ring's start, padded with
+  * CCC00004, the pause at its end - 10h) and CE always pads the start (80h bytes) and pauses after it. Here: one 256-byte block, the
+  * kick's own form, so the groups stay on 256-byte bounds; the pause is start + F0h and the lap's groups begin at start + 100h.
+  * .611: the ring's first 256 bytes never hold a group (xr_start puts its own block there and begins at 100h), so the block is
+  * written without a wait; .609 waited once for everything kicked before the first wrap, for nothing. */
+ if(vx3dn_chip900){uint32_t k;w[0]=0xFE020420UL;w[1]=0x41C;w[2]=0x00300000UL;w[3]=0xCC000000UL;for(k=4;k<64;k++)w[k]=0xCCC00004UL;xr_flush(0,0x100);pause=XR_GPU+0xF0UL;}
  f=VX_irq_save();
  write_mmio(0,0x41C,0x00100000UL);
- write_mmio(0,0x420,0x66000000UL|((XR_GPU+XR_WRAP-0x10UL)&0xFFFFFFUL));write_mmio(0,0x420,0x67000000UL|((XR_GPU+XR_WRAP-0x10UL)>>24));
+ /* .608: on the VX900 the jump address is 40h before the padded end, not 10h (CE's DDI_VIA.dll wrap routine, CE 7 at 100B4E72: "sub 40h"
+  * for 7122, "sub 10h" for 1122 and 5122; it also pads to 64 bytes there and to 256 on the others). Board, .608: 8 jumps taken with
+  * it (.607, 10h: 2). CE also takes the jump address away after the jump (66/67 = FFFFFFF0); not done: CE's wrap point moves from
+  * lap to lap, this one is the same every lap. XP's VX900 driver writes end - 10h (s3ginvA.dll BFBF1), its padding unit not read. */
+ {uint32_t j=XR_GPU+XR_WRAP-(vx3dn_chip900?0x40UL:0x10UL);
+ write_mmio(0,0x420,0x66000000UL|(j&0xFFFFFFUL));write_mmio(0,0x420,0x67000000UL|(j>>24));}
  write_mmio(0,0x420,0x64000000UL|(pause&0xFFFFFFUL));write_mmio(0,0x420,0x65000000UL|(pause>>24));
  VX_irq_restore(f);
- xr_pend=XR_GPU;xr_next=0;vx3dn_xr_stat[6]++;vx3dn_ring_stat[2]++;xr_after_wrap=1;
+ xr_pend=pause+0x10UL;xr_next=xr_pend-XR_GPU;vx3dn_xr_stat[6]++;vx3dn_ring_stat[2]++;xr_after_wrap=1;
 }
+uint32_t vx3dn_v900_lapwait; /* .616: wraps on the VX900 that first waited for the fetcher to reach the writer's lap */
 static int xr_open_x(void);
 static int xr_open(void) {uint32_t t=PT();int r=xr_open_x();XP_ADD(0,t);return r;}
 static int xr_open_x(void) { /* 1: the group opened in the ring, 0: XP's ring cannot run (off for good) */
@@ -1234,7 +1328,18 @@ static int xr_open_x(void) { /* 1: the group opened in the ring, 0: XP's ring ca
   * of the last lap may still be read (xr_lap, until a retire), each new group's room, with 1 KB for the fetcher's read-ahead, is
   * checked against the fetcher's read position (43C, two reads agreeing): the engine is waited for only when it is still there or
   * the position is not in the ring. */
- if(xr_state==2&&xr_next+FETCH_MAX_BYTES+512UL>XR_WRAP){xr_wrap();xr_lap=fx_inflight;vx3dn_xr_stat2[0]++;}
+ if(xr_state==2&&xr_next+FETCH_MAX_BYTES+512UL>XR_WRAP){
+  /* .616 (board, .614 and .615 on the VX900, GTA3: one ring given up after 3975 and after 18543 wraps, every engine idle, the fetcher
+   * paused at ring start + 100h and the groups of the whole lap before it unread; the last thing written was a wrap, xr_pend = start
+   * + 100h): the writer wrapped a second time while the fetcher was still in the lap before. The wrap's pause, start + F0h, was then
+   * the pause in force when the fetcher came round to the start, and it stopped there, in front of the lap it had yet to read. The
+   * VX800 and VX855 take a pause behind them as passed; the VX900 stops at whatever pause is in force when it reads up to it. So on
+   * the VX900 a wrap is written only once the fetcher is in the writer's lap (xr_lap clear: seen behind the writes, or everything
+   * retired); if it is not, everything kicked is waited for first. */
+  if(vx3dn_chip900&&xr_lap&&fx_inflight){int rok;uint32_t rp=xr_rp_ok(&rok),off=rp-XR_GPU;
+   if(rok&&rp>=XR_GPU&&rp<=XR_GPU+XR_BYTES&&off<=xr_next)xr_lap=0;
+   else{vx3dn_v900_lapwait++;if(!fx_retire(1))return (fx_ring_dead||fault)?0:xr_open_x();if(xr_state!=2)return xr_open_x();}}
+  xr_wrap();xr_lap=fx_inflight;vx3dn_xr_stat2[0]++;}
  if(xr_state==2&&xr_lap&&fx_inflight){int rok;uint32_t rp=xr_rp_ok(&rok),off=rp-XR_GPU;vx3dn_xr_stat2[1]++;
   if(rok&&rp>=XR_GPU&&rp<=XR_GPU+XR_BYTES&&off<=xr_next)xr_lap=0; /* the fetcher is in this lap, behind the writes */
   else if(!rok||rp<XR_GPU||rp>XR_GPU+XR_BYTES||xr_next+FETCH_MAX_BYTES+512UL+0x400UL>off){vx3dn_xr_stat2[2]++;if(!fx_retire(1))return (fx_ring_dead||fault)?0:xr_open_x();}} /* v10.465 (review): a ring that hung in this wait is not started again (the group goes one-shot) */
@@ -1321,11 +1426,11 @@ static uint32_t fx_build_b(const vx3dn_packet *p,uint32_t *last) {
   * first packet's command-regulator blocks go into the group's words as every later packet's do, not to 43C/440 directly while the ring
   * holds its paused fetcher (the group then ran only by the v10.382 quirk, and a lost kick only came back by the hang path). v10.231: no register writes under a draw in flight; v10.275: nor after another packet of the group (they would come before its words run) */
  io.context=0;io.read=cap_read;io.write=cap_write;io.read_fb=read_fb;io.write_fb=write_fb;io.milliseconds=ticks;
- tb=PT();same=fx_same_state(p);vx3dn_vertices_only=(uint32_t)same;if(!same&&vx3dn_state_cache&&!(++vx3dn_miss_n&7))fx_classify(p); /* v10.429 */vx3dn_tex_only=!same&&fx_tex_only(p)?1UL:0; /* v10.450 */vx3dn_write_n=cap_write_n;vx3dn_reserve=cap_reserve;vx3dn_copyw=movsd_fn;
+ tb=PT();same=fx_same_state(p);vx3dn_vertices_only=(uint32_t)same;if(!same&&vx3dn_state_cache&&!(++vx3dn_miss_n&7))fx_classify(p); /* v10.429 */vx3dn_tex_only=!same&&fx_tex_only(p)?1UL:0; /* v10.450 */vx3dn_write_n=cap_write_n;vx3dn_reserve=cap_reserve;vx3dn_copyw=movsd_fn;vx3dn_v900_wait=vx3dn_chip900?cap_v900_wait:0;
  {uint32_t t1=PT();vx3dn_bprof[0]+=(t1-tb+128)>>8;tb=t1;}
  vx3dn_tsc=vx_prof?tsc_fn:0;{uint32_t e0=vx3dn_eprof[0]+vx3dn_eprof[1]+vx3dn_eprof[2];const uint32_t i7=vx3dn_ixp[7];
  if(vx3dn_wprof){uint32_t k;for(k=0;k<4;k++){wp_mk[k]=0xFFFFFFFFUL;wp_g0[k]=vx3dn_geo[k];}vx3dn_mark=wp_mark;} /* v10.440 */
- rc=vx3dn_execute(p,&io,last);cap_close();vx3dn_mark=0;{extern uint32_t vx3dn_sh_ok;vx3dn_sh_ok=0;}if(same&&!vx3dn_vertices_only)same=0;vx3dn_vertices_only=0;if(vx3dn_tex_only&&!rc)vx3dn_texonly_stat[0]++;vx3dn_tex_only=0; /* v10.450 */ /* v10.296: the emitter sent the whole state (Coarse Z) */vx3dn_write_n=0;vx3dn_reserve=0;vx3dn_copyw=0;vx3dn_cgroups=0;vx3dn_tsc=0;
+ rc=vx3dn_execute(p,&io,last);cap_close();vx3dn_mark=0;{extern uint32_t vx3dn_sh_ok;vx3dn_sh_ok=0;}if(same&&!vx3dn_vertices_only)same=0;vx3dn_vertices_only=0;if(vx3dn_tex_only&&!rc)vx3dn_texonly_stat[0]++;vx3dn_tex_only=0; /* v10.450 */ /* v10.296: the emitter sent the whole state (Coarse Z) */vx3dn_write_n=0;vx3dn_reserve=0;vx3dn_copyw=0;vx3dn_v900_wait=0;vx3dn_cgroups=0;vx3dn_tsc=0;
  {uint32_t t1=PT(),d=(t1-tb+128)>>8,e=vx3dn_eprof[0]+vx3dn_eprof[1]+vx3dn_eprof[2]-e0;vx3dn_bprof[1]+=d;vx3dn_eprof[3]+=d>e?d-e:0;tb=t1;if(p->pre.on==2&&vx3dn_ixp[7]!=i7)vx3dn_ixp[3]+=d;}} /* v10.473; v10.476: only the packets whose parts were timed ([7]: drawn from a slot with the profile on), so the set-up is their emitter less their parts (an expanded packet counted in [3] but not in [4..6] made it wrong) */
  if(rc||cap_err){ring_wordp=at;vx3dn_forget();vx3dn_ix_stat[1]=ix1;vx3dn_ix_stat[2]=ix2;vx3dn_ix_stat[3]=ix3;return rc?rc:FETCH_DECLINED;}
  /* v10.391 (review): an empty draw (clip of no area: vx3dn_execute returns before the state set-up) sends nothing: the state it
@@ -1453,6 +1558,16 @@ uint32_t vx3dn_ix_wait[2];
 static uint32_t fx_build(const vx3dn_packet *p,uint32_t *last);
 static uint32_t fx_ix_again(const vx3dn_packet *p,uint32_t *last) {
  uint32_t rc;
+ /* .611 (board, .609 on the VX900, Quake 2, 120 s: 1076 packets waited here and all 1076 then went through the registers, about 12 ms
+  * each): the VX900 has no vertex area (vx_native3d_hw.c: its indexed packets are always expanded), so the wait frees nothing and the
+  * second build is the first again. There the packet gets a group of the largest size instead (80 KB, what the staging buffer and
+  * the command block hold; 1920 indices expanded are about 20,000 words): in the ring no wait at all, in a one-shot group the wait
+  * a one-shot start makes anyway. */
+ if(vx3dn_chip900){uint32_t kb=vx3dn_fetch_kb;
+  if(fx_gring!=2&&!fx_retire(0))return VX3DN_LOST;
+  vx3dn_fetch_kb=80UL;fx_open_group();vx3dn_fetch_kb=kb;
+  vx3dn_ix_wait[0]++;rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
+  return rc;}
  if(!fx_retire(0))return VX3DN_LOST;
  vx3dn_ix_wait[0]++;fx_open_group();rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
  return rc;
@@ -1462,7 +1577,7 @@ static uint32_t fetch_draw(const vx3dn_packet *p,uint32_t *last,int async) {
  if(!fx_inflight&&!fetch_idle(last))return VX3DN_LOST; /* what the register path's first wait does (with a draw in flight: before the start) */
  fx_open_group();
  rc=fx_build(p,last);
- if(rc==FETCH_DECLINED&&p->pre.on==2&&fx_inflight)rc=fx_ix_again(p,last); /* .564 */
+ if(rc==FETCH_DECLINED&&p->pre.on==2&&(fx_inflight||vx3dn_chip900))rc=fx_ix_again(p,last); /* .564; .611: the VX900 */
  if(rc==FETCH_DECLINED){vx3dn_fetch_stat[2]++;return rc;}
  if(rc)return rc; /* the emitter's own refusals (its waits read idle here) */
  rc=fx_start(async,last);
@@ -1540,7 +1655,7 @@ again:
   if(rc==FETCH_DECLINED&&fx_gpackets){vx3dn_batch_stat[2]++;rc=fx_start(1,&last_status);grp=0;
    if(rc==FX_REBUILD){k=gfirst;*done=gdone;submitted=gsub;triangles=gtri;rc=VX3DN_OK;goto again;}
    if(rc)break;fx_open_group();grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;rc=fx_build(&request_copy,&last_status);}
-  if(rc==FETCH_DECLINED&&request_copy.pre.on==2&&fx_inflight){rc=fx_ix_again(&request_copy,&last_status);grp=rc==VX3DN_OK;if(grp){gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}} /* .564: by index once the slots are free (fx_ix_again) */
+  if(rc==FETCH_DECLINED&&request_copy.pre.on==2&&(fx_inflight||vx3dn_chip900)){rc=fx_ix_again(&request_copy,&last_status);grp=rc==VX3DN_OK;if(grp){gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}} /* .564: by index once the slots are free (fx_ix_again) */
   if(rc==FETCH_DECLINED) { /* too many words for a fetch even alone (the group is empty): through the registers, as a single draw */
    vx3dn_fetch_stat[2]++;grp=0;
    if(!fx_retire_stop(0))rc=VX3DN_LOST;else{vx3dn_reg_draws++;vx3dn_forget();rc=vx3dn_execute(&request_copy,&io,&last_status);}
@@ -1716,6 +1831,10 @@ uint32_t VX3DN_query(uint32_t op,uint32_t owner,uint32_t *count) {
  uint32_t rc=VX3DN_OK,v=0;
  *count=0;
  if(op>4||!owner)return VX3DN_BAD_PACKET;
+ /* .606: no engine count on the VX900 yet. Its manual has the count (01/1C-1D) but not the write-back address (01/21-22 are absent there),
+  * and the board gave no answer to the VX855's read (VXGL v5.7 on .605: the query ended with no count, 4294967295 samples). A query is
+  * refused when it begins, so the ICD counts it in software as it does when another context's query holds the count. */
+ {extern uint32_t vx3dn_chip900;if(vx3dn_chip900)return VX3DN_UNSUPPORTED;}
  cs_enter();
  if(op==0){
   if(q_owner&&q_owner!=owner){vx3dn_query_switch[1]++;rc=VX3DN_BUSY;}
@@ -1747,8 +1866,35 @@ static void ring_triangle(vx3dn_packet *p,const vx_ring_reply *r,const vx_ring_r
  * group A, flags bits 16-23 copies of the 2D fill; band B (the rectangle below it) group B: the fill in the colour's complement less
  * one, or (flag 0x800) the 3D triangle captured in XP's forms. Flag 0x400: kick B only once band A is drawn. */
 /* v10.406: VXRING ops 5-12 (the ring in video memory: appends, backlog, restart, wrap, the tape's replays) are gone with that ring */
+/* .619: the pointer after an engine reset on the VX900 (board, .610-.612, GTA3 with ring hangs: after the resets the pointer follows the
+ * mouse along y and not along x; the icon unit's registers 2E4-2FC and 120C read the same). VXREG RESET: the sequencer and CRT
+ * registers 00-FF, MMIO 200-2FC, 120C and 400 are read, the engine is reset as after a hang (SR4E bit 4, then SR1A bit 6), and they
+ * are read again. vx3dn_rst_snap[0] before, [1] after: 64 dwords SR (four a dword), 64 CR, 64 MMIO, 120C, 400. */
+uint32_t vx3dn_rst_snap[2][198];
+static void rst_snap(uint32_t *s) {
+ unsigned long f;unsigned char old,unlock,oc;uint32_t k;
+ for(k=0;k<198;k++)s[k]=0;
+ f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));
+ for(k=0;k<256;k++)s[k>>2]|=(uint32_t)sr((unsigned char)k)<<((k&3)*8);
+ sw(0x10,unlock);outp(0x3C4,old);
+ oc=inp(0x3D4);for(k=0;k<256;k++){outp(0x3D4,(unsigned char)k);s[64+(k>>2)]|=(uint32_t)inp(0x3D5)<<((k&3)*8);}outp(0x3D4,oc);
+ VX_irq_restore(f);
+ for(k=0;k<64;k++)s[128+k]=read_mmio(0,0x200+k*4);
+ s[192]=read_mmio(0,0x120C);s[193]=read_mmio(0,0x400);
+}
+uint32_t VX3DN_probe_reset(void) { /* 1: reset and back to idle; 2: busy or not mapped; 3: the reset failed (the device is lost) */
+ uint32_t rc;
+ cs_enter();
+ if(VX3D_busy()||VX2D_busy()||fault||!ring_map()){cs_leave();return 2;}
+ (void)fx_retire_stop(1);
+ rst_snap(vx3dn_rst_snap[0]);
+ xr_reset_engine();
+ rst_snap(vx3dn_rst_snap[1]);
+ rc=fault?3UL:1UL;
+ cs_leave();return rc;
+}
 uint32_t VX3DN_ring(const vx_ring_req *q,vx_ring_reply *r) {
- unsigned long f;unsigned char old,unlock,a=0,b=0;uint32_t k,t0,n,i,st,stable=0,lin_end;int opened=0;
+ unsigned long f;unsigned char old,unlock,a=0,b=0;uint32_t k,t0,n,i,st,stable=0,lin_end,tk=0;int opened=0;
  memset(r,0,sizeof(*r));r->cb=sizeof(*r);r->abi=VX_RING_ABI;
  if(!q||q->cb!=sizeof(*q)||q->abi!=VX_RING_ABI||q->op>4||!hda){r->result=1;return 1;}
  cs_enter();
@@ -1801,6 +1947,10 @@ uint32_t VX3DN_ring(const vx_ring_req *q,vx_ring_reply *r) {
   rc=vx3dn_execute(&tp,&io,&last);cap_close();r->capture_error=cap_err|(rc?0x200|rc:0);r->capture_blocks=cap_blocks;
   if(r->capture_error){r->result=1;goto check;}
  } else if(q->op==1) { /* one-shot (s3ginv 0xBC770): packet, pad to 32 bytes, pause = end - 4, 65 | 0x200 */
+  /* .619, flag 0x10000 (VXRING vblank): one 2D block with register 6C = the request's mode before the fill, in the form of CE's wait
+   * block (eight words). The time from the start to the first idle read and the display's state then tell whether the fetcher held
+   * for that word: XR's flip in the ring waits with 6C = 1, CE's VX900 block has 00800000 and 00FC0000. */
+  if(q->flags&0x10000UL){ring_put(0xFE000000UL);ring_put(1);ring_put(0);ring_put(0xCC000000UL);ring_put(0x6C);ring_put(q->mode);ring_put(0xCC000000UL);ring_put(0xCC000000UL);}
   ring_fill_packet(r,q);}
  if(q->op==1||q->op==3) {
   while(ring_wordp&3)ring_put(0xCC000000UL);
@@ -1825,6 +1975,7 @@ uint32_t VX3DN_ring(const vx_ring_req *q,vx_ring_reply *r) {
    write_mmio(0,0x41C,0x00100000UL);ring_pre(r,9,0x64000000UL|(r->gpu_pause&0xFFFFFFUL));write_mmio(0,0x420,0x65000000UL|(r->gpu_pause>>24));
    if(q->flags&8)write_mmio(0,0x420,0x680A0001UL);}
  }
+ tk=VX_tsc(); /* .619 */
  r->words=ring_count;for(k=0;k<VX_RING_STREAM&&k<ring_wordp;k++)r->stream[k]=ring_cpu[k]; /* v1.3: the buffer as written */
  /* wait: up to 200 ms for 0x400 & 101FF3 = 0 eight reads in a row; samples at about 0, 1, 2, 5, 10, 20, 50, 100 ms */
  {static const uint32_t at_ms[VX_RING_SAMPLES]={0,1,2,5,10,20,50,100};
@@ -1833,7 +1984,8 @@ uint32_t VX3DN_ring(const vx_ring_req *q,vx_ring_reply *r) {
    uint32_t ms=(uint32_t)(Get_System_Time()-t0);
    st=read_mmio(0,0x400);r->polls++;
    if(n<VX_RING_SAMPLES&&ms>=at_ms[n]){r->sample_ms[n]=ms;r->sample_400[n]=st;r->sample_43c[n]=read_mmio(0,0x43C);r->sample_444[n]=read_mmio(0,0x444);n++;r->samples=n;}
-   if(!(st&0x101FF3UL)){if(++stable>=8){r->idle=1;break;}}else stable=0;
+   if(!(st&0x101FF3UL)){if(!stable&&(q->flags&0x10000UL)){r->k_t_idle=(uint32_t)(VX_tsc()-tk)>>4;r->k_400[0]=inp(0x3DA);r->k_400[1]=read_mmio(0,0x200);r->k_400[2]=read_mmio(0,0x1290);r->k_reads_idle=r->polls;} /* .619: when and where in the frame the fill was done */
+    if(++stable>=8){r->idle=1;break;}}else stable=0;
    if(ms>=200||st==0xFFFFFFFFUL)break;
   }
   r->elapsed_ms=(uint32_t)(Get_System_Time()-t0);}
@@ -1872,7 +2024,26 @@ uint32_t fr_seq; /* .532: public (the emulator's B1 test) */static int fr_dead,f
 static void fr_gone(void) {if(vx3dn_fr_pend&&((fx_fence_read()-fr_seq)&0x8000UL))fr_lost=1;vx3dn_fr_pend=0;}
 int VX3DN_ring_flip_lost(void) {int r=fr_lost;fr_lost=0;return r;}
 static uint32_t xr_kick(int async,uint32_t *last);
-int VX3DN_ring_flip_ok(void) {return vx3dn_flip_ring&&!fr_dead&&!fault&&xr_state==2&&fx_rfenced&&!fx_ring_dead&&vx3dn_xr&&vx3dn_fetch&&vx3dn_cmd_off;}
+/* .616 (board, .615 on the VX900, GTA3 with the ring alive all session: the picture flashes; .614, where the ring was given up after 16 s
+ * and the CPU flipped from then on, did not): the flip in the ring is XR's 1106:5122 form (2D register 6C = 1, the wait for the
+ * vertical blank, then the command regulator's 10/11/12). Neither is proven on the VX900, whose manual marks 60h-9Fh reserved, and
+ * the clear and the draws that follow in the ring go to the old front at once. Not used there until a test shows the right words. */
+int VX3DN_ring_flip_ok(void) {return !vx3dn_chip900&&vx3dn_flip_ring&&!fr_dead&&!fault&&xr_state==2&&fx_rfenced&&!fx_ring_dead&&vx3dn_xr&&vx3dn_fetch&&vx3dn_cmd_off;}
+static int vbw_queue(void) {
+ unsigned long f;unsigned char old,unlock,a,b;uint32_t last,why=0;
+ cs_enter();
+ if(fault||xr_state!=2||!fx_rfenced||fx_ring_dead||!vx3dn_xr||!vx3dn_fetch||!vx3dn_cmd_off)why=1;
+ else if(VX3D_lab_busy()||VX2D_busy())why=2;
+ else{f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));a=sr(0x1A);b=sr(0x1E);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);
+  if(!(a&8)||!(b&1))why=3;
+  else if(!xr_open())why=4;}
+ if(!why){
+  while(ring_wordp&3)ring_put(0xCC000000UL);
+  ring_put(0xFE000000UL);ring_put(1);ring_put(0);ring_put(0xCC000000UL);ring_put(0x6C);ring_put(1);ring_put(0xCC000000UL);ring_put(0xCC000000UL);
+  if(xr_kick(1,&last)==VX3DN_OK)vx3dn_vbw[1]++;else why=5;}
+ if(why){vx3dn_vbw[2]++;vx3dn_vbw[3]=why;}
+ cs_leave();return !why;
+}
 int VX3DN_ring_flip(uint32_t off) { /* 1: queued in the ring (the caller has CR32 bit 0 set); 0: not (the CPU flips) */
  unsigned long f;unsigned char old,unlock,a,b;uint32_t last,why=0;int ok=0;
  cs_enter();
@@ -1902,8 +2073,8 @@ void VX3DN_ring_flip_wait(void) {
  int w;
  if(VX3DN_ring_flip_done())return;
  vx3dn_fr_stat[2]++;w=VX_smp_wait_begin(); /* v10.437: a wait for the sampler; v10.439: this thread's entry */
- for(n=0;!VX3DN_ring_flip_done();n++)
-  if(!(n&63)&&(uint32_t)(Get_System_Time()-t0)>=100UL){vx3dn_fr_stat[4]++;fr_dead=1;fr_lost=1;cs_enter();(void)fx_retire(1);cs_leave();vx3dn_fr_pend=0;break;} /* .532 (B1): lost (fr_lost) */ /* a flip that never ran: the ring's hang handling, and no more ring flips this session */
+ for(n=0;!VX3DN_ring_flip_done();n++){
+  if(!(n&63)&&(uint32_t)(Get_System_Time()-t0)>=100UL){vx3dn_fr_stat[4]++;fr_dead=1;fr_lost=1;cs_enter();(void)fx_retire(1);cs_leave();vx3dn_fr_pend=0;break;}} /* .532 (B1): lost (fr_lost) */ /* a flip that never ran: the ring's hang handling, and no more ring flips this session */
  VX_smp_wait_end(w);
  d=(VX_tsc()-t)>>8;vx3dn_fr_stat[3]+=d;if(d>vx3dn_fr_stat[7])vx3dn_fr_stat[7]=d;
 }

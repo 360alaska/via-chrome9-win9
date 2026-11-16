@@ -330,6 +330,7 @@ typedef struct vx3d_sf_io {
 void vx3d_run_lab(const vx3d_io *, const vx3d_sf_io *, vx3d_report *, const vx3d_request *);
 void vx3d_run_sf(const vx3d_io *, const vx3d_sf_io *, vx3d_report *, uint32_t *, uint32_t *, uint32_t *);
 void vx3d_run(const vx3d_io *, vx3d_report *, uint32_t *backup);
+void vx3d_run_raw(const vx3d_io *, vx3d_report *, uint32_t *backup, const vx3d_request *); /* .604 */
 void vx3d_run_probe(const vx3d_io *, vx3d_report *, uint32_t *backup);
 void vx3d_run_transport(const vx3d_io *, vx3d_report *, uint32_t *backup, uint32_t *queue_backup);
 #ifdef VXD32

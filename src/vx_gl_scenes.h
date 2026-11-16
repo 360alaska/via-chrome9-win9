@@ -809,6 +809,16 @@ static void s_vpsize(void) {
  glDisable(GL_VERTEX_PROGRAM_POINT_SIZE_ARB);glDisable(GL_VERTEX_PROGRAM_ARB);scene_bind_prog(GL_VERTEX_PROGRAM_ARB,0);
 }
 /* v4.4: antialiased points, lines and polygons (blended over the gradient: the coverage shows) */
+/* .633: smooth lines with blending off (FieldLines.scr): the coverage changes no pixel (.636: the ICD draws each line as one quad). 36 curved strips of 24 short segments, four widths, the depth test on. */
+static void s_aaflat(void) {
+ int i,j;reset();grad();glClear(GL_DEPTH_BUFFER_BIT);glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);glEnable(GL_LINE_SMOOTH);
+ for(i=0;i<36;i++){static const float wd[4]={1.0f,1.7f,2.5f,4.0f};float a0=i*0.1745f,r0=18.0f+(i%5)*9.0f,zz=((i*7)%36-18)*0.04f; /* each strip at a depth of its own: equal depths leave the winner to rounding */
+  glLineWidth(wd[i&3]);glBegin(GL_LINE_STRIP);
+  for(j=0;j<=24;j++){float t=j/24.0f,a=a0+t*2.2f,r=r0+t*70.0f;glColor3f(0.3f+0.7f*t,1.0f-0.6f*t,0.4f+0.5f*(float)(i&1));
+   glVertex3f(128.3f+r*(float)cos(a),128.6f+r*0.9f*(float)sin(a),zz);}
+  glEnd();}
+ glLineWidth(1);glDisable(GL_LINE_SMOOTH);glDisable(GL_DEPTH_TEST);glDepthFunc(GL_LESS);
+}
 static void s_aa(void) {
  int i;GLuint t;reset();grad();glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
  glEnable(GL_POINT_SMOOTH);
@@ -1163,8 +1173,8 @@ static void s_mclampmip(void) {
  for(j=0;j<6;j++){float sz=(float)(6+j*7);mc_quad((float)(4+j*42),10,sz,sz,2);mc_quad((float)(4+j*42),120,sz,sz*2,3);}
  glDisable(GL_TEXTURE_2D);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);glDeleteTextures(1,&tx);
 }
-/* v4.6 (v10.357): GL_CLAMP filtered linearly (exact by default): coordinates in 0..1 on the engine (a ring of the border colour), a quad
- * whose coordinates leave 0..1 in software (GL stays at half the border there); NPOT and power-of-two, a 1D texture */
+/* v4.6 (v10.357): GL_CLAMP filtered linearly; NPOT and power-of-two. .637: the engine's edge clamp for every draw (no ring of the
+ * border colour, nothing in software): the outer half texel differs from swrast, which blends the border colour in; shown, not judged */
 static void s_glclamp(void) {
  static GLubyte t[8*8*4],n[6*5*4];int i;GLuint a,b;GLfloat bc[4]={0.1f,0.2f,0.9f,1};
  reset();
@@ -1174,13 +1184,24 @@ static void s_glclamp(void) {
  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_BORDER_COLOR,bc);
  glEnable(GL_TEXTURE_2D);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
- quad_tc(8,8,112,112,0,0,1,1);           /* in 0..1: the engine */
- quad_tc(136,8,112,112,-0.5f,-0.5f,1.5f,1.5f); /* out of 0..1: software */
+ quad_tc(8,8,112,112,0,0,1,1);           /* in 0..1 */
+ quad_tc(136,8,112,112,-0.5f,-0.5f,1.5f,1.5f); /* out of 0..1 */
  glGenTextures(1,&b);glBindTexture(GL_TEXTURE_2D,b);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,6,5,0,GL_RGBA,GL_UNSIGNED_BYTE,n); /* NPOT */
  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_BORDER_COLOR,bc);
  quad_tc(8,136,112,112,0,0,1,1);
  glDisable(GL_TEXTURE_2D);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);glDeleteTextures(1,&a);glDeleteTextures(1,&b);
+}
+/* .637 (Duke Nukem: Manhattan Project): a mipmapped GL_CLAMP texture, trilinear, with coordinates in 0..1 and out of it. Before .637
+ * both went to software (a ring copy has no mip chain; outside 0..1 the ring is not exact). */
+static void s_glclampmip(void) {
+ GLuint a;int k;
+ reset();glEnable(GL_TEXTURE_2D);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
+ a=scene_levels(256,-1);
+ glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
+ glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+ for(k=0;k<3;k++){float sz=(float)(96>>k);quad_tc((float)(6+k*100),8,sz,sz,0,0,1,1);quad_tc((float)(6+k*100),130,sz,sz,-0.5f,-0.5f,1.5f,1.5f);}
+ glDisable(GL_TEXTURE_2D);glDeleteTextures(1,&a);
 }
 static const struct {const char *name;scene_fn f;int info;} scenes[]={
  {"clear",s_clear},{"smooth triangles, quads, strip, fan",s_smooth},{"depth test",s_depth},{"blending",s_blend},{"culling",s_cull},
@@ -1200,7 +1221,9 @@ static const struct {const char *name;scene_fn f;int info;} scenes[]={
  {"cube map mip chain",s_cubemip},{"3D texture",s_tex3d},{"point sizes from a vertex program",s_vpsize},{"antialiased points, lines, polygons",s_aa},{"fragment programs as stages",s_fprog},{"ATI fragment shaders as stages",s_atishader},{"GLSL fragment shaders as stages",s_glsl},{"NPOT: repeat, mirrored, mip chain",s_npot2},{"cube map, 3D texture with a second unit",s_unit3d},{"render to texture (framebuffer objects)",s_rtt},
  {"KIL as the alpha test",s_kil},{"fog option, GL_FOG off",s_fogopt},{"smooth points, alpha test",s_aapoint_atest},
  {"MIRROR_CLAMP_TO_EDGE magnified",s_mclamp},{"MIRROR_CLAMP_TO_EDGE mipmapped",s_mclampmip},
- {"GL_CLAMP filtered linearly",s_glclamp},
+ {"GL_CLAMP filtered linearly",s_glclamp,1},
+ {"smooth lines, blending off",s_aaflat,1}, /* .636: info: each line is one quad by the engine's rule, swrast takes any pixel a sample of 16 touches: under 1% of the pixels, on the lines' edges */
+ {"GL_CLAMP mipmapped, in and out of 0..1",s_glclampmip,1},
  {"speed: lit sphere, 12288 triangles",s_speed}};
 #define NS ((int)(sizeof(scenes)/sizeof(scenes[0])))
 

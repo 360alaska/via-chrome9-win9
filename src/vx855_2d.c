@@ -135,7 +135,7 @@ void VX2D_3d_reset(void) {if(m2d_state==1) m2d_state=0; vx2d_3d_resets++;}
 volatile uint32_t vx2d_own3d;
 volatile unsigned long vx2d_ops,vx2d_fallbacks;
 /* .531: vx_d3d_ix384 (ACCEL_D3D_IX384, out[2] bit 6) removed: always 384 */
-volatile unsigned long vx_d3d_rttex=1,vx_d3d_mipcap=1,vx_d3d_texhint=1,vx_d3d_indexed=0,vx_d3d_rtnowait=1,vx_d3d_tnl=0; /* .534: ACCEL_D3D_TNL (out[2] bit 21; a feature under test, default 0) */ /* v10.477: ACCEL_D3D_RTNOWAIT (out[2] bit 12) */ /* v10.463: ACCEL_D3D_TEXHINT (out[2] bit 5; .527: always 1); .528: bit 6 ACCEL_D3D_TEXRUNS (was v10.468's ACCEL_D3D_PFVV2, removed in .527); v10.470: ACCEL_D3D_INDEXED (bit 7: 1 when the vertex area is there) */ /* v10.456: ACCEL_D3D_RTTEX, ACCEL_D3D_MIPCAP (the HAL's out[2] bits 3 and 4, bit 11 valid) */
+volatile unsigned long vx_d3d_rttex=1,vx_d3d_mipcap=1,vx_d3d_texhint=1,vx_d3d_indexed=0,vx_d3d_rtnowait=1,vx_d3d_tnl=1; /* .534: ACCEL_D3D_TNL (out[2] bit 21); .601: default 1: the driver's T&L for every program that asks for hardware T&L; registry 0 turns it off */ /* v10.477: ACCEL_D3D_RTNOWAIT (out[2] bit 12) */ /* v10.463: ACCEL_D3D_TEXHINT (out[2] bit 5; .527: always 1); .528: bit 6 ACCEL_D3D_TEXRUNS (was v10.468's ACCEL_D3D_PFVV2, removed in .527); v10.470: ACCEL_D3D_INDEXED (bit 7: 1 when the vertex area is there) */ /* v10.456: ACCEL_D3D_RTTEX, ACCEL_D3D_MIPCAP (the HAL's out[2] bits 3 and 4, bit 11 valid) */
 volatile unsigned long vx_d3d_infocache=1,vx_d3d_v8=1; /* .524: IXPF removed (bit 18 free) */ /* .523: ACCEL_D3D_V8 (out[2] bit 19) */ /* .522: ACCEL_D3D_INFOCACHE, ACCEL_D3D_IXPF (out[2] bits 17, 18) */
 volatile unsigned long vx_d3d_ixpass=1; /* .515: ACCEL_D3D_IXPASS (out[2] bit 16); .529: ACCEL_D3D_HWCULL (bits 14-15) removed, .528's TEXRUNS bit 6 retired: always on */
 volatile unsigned long vx_d3d_feat_cfg=0x0787FFFFUL; /* .527: bits 27-30 clear (no switch: PAIRLIST, FASTVV, VRECIPE, FASTMATCH removed) */ /* v10.454: bit 28 ACCEL_D3D_FASTVV, default 1 */ /* v10.444: bit 28 clear (v10.449: ACCEL_D3D_QDIRECT's, removed) */ /* v10.362: bit 19 (ACCEL_3D_CLEAR3D) off, its default; v10.361: bit 23 (ACCEL_3D_GUARD) on, its default; v10.357: the opt-in bits 20-22 (STRICT, EXACTKEY, DDRAW_3DBLT; v10.358: 23 ACCEL_3D_GUARD) off before the registry is read, as their defaults; v10.212: ACCEL_D3D_STAGES .. ACCEL_D3D_CUBE, bits 0-8 (vxd_main.c) */
@@ -234,6 +234,10 @@ static int idle_n(int want) {
 static int idle(void) {return idle_n(32);}
 /* v10.58zc: before programming a command the engine only has to be idle now. Our own previous command already waited for
  * 32 stable idle reads, so two idle reads are enough here; anything else falls back to the full wait. */
+/* .602-.603 (VX900 board, VX92D v1.3): on the VX900 the command regulator's busy bit (status bit 4) is set for exactly one status read
+ * after an engine register is written (16 of 16 tries; never after a register read, a sequencer read or the flush alone). This check runs
+ * before an operation's registers are written, so it never meets that read: 0 of 88,550 calls fell through to the full wait (.602's
+ * counters, removed again in .603). */
 static int idle_fast(void) {
  uint32_t a=rd(0x400),b=rd(0x400);
  if(idle_bits(a)&&idle_bits(b)) {stats.last_status=b; return 1;}
@@ -1304,7 +1308,7 @@ volatile unsigned long vx2d_hwcur_off=0,vx2d_hwcur_cfg=0,vx2d_hwcur=0;
 static void hcw(uint32_t r,uint32_t v) {wr(r,v);}
 static const uint32_t hc_inv=0x00FFFFFFUL; /* the inverse colour register (0x120C, 0x274): white */
 static uint32_t hc_shows,hc_hides,hc_moves,hc_declined,hc_sets,hc_ctrl;
-static int hc_on,hc_ready,hc_off_pending; static int32_t hc_lx,hc_ly; /* v10.142 (review O02): position last written while shown */
+static int hc_on,hc_ready,hc_off_pending,hc_two; /* .598: hc_two = the second display unit's icon is driven as well */ static int32_t hc_lx,hc_ly; /* v10.142 (review O02): position last written while shown */
 static int hc_map(void) {
  uint32_t base=vx_status.bar1&0xFFFFFFF0UL;
  if(native_fault) return 0; /* A lost native owner also fences cursor/video writes. */
@@ -1320,13 +1324,17 @@ static uint32_t hc_reg(int k) { /* 0 control 1 image address 2 position 3 origin
  static const uint32_t r1[4]={0x2F0UL,0x2F4UL,0x2F8UL,0x2FCUL},r2[4]={0x260UL,0x224UL,0x208UL,0x20CUL};
  return vx2d_hwcur==2?r2[k]:r1[k];
 }
+/* .598 (NC20: the pointer invisible on the panel, which IGA2 scans; vx855_flip.c): with the primary set in use and IGA2 showing this
+ * frame buffer, the second display's icon unit (0x260 control B6000004, 0x224 image, 0x208 position, 0x20C origin offset, as OpenChrome's
+ * viaIGA2InitHI for these chips) is given the same image, position and on/off, so the pointer is on both pictures */
+static void hc_ctl(uint32_t c) {hcw(hc_reg(0),c); if(hc_two) hcw(0x260UL,0xB6000004UL|(c&1UL));}
 /* v10.330 (review #188): a hide that could not reach the unit (no mapping, or the native loss fence) is kept pending and tried again at the
  * next hide; it cleared hc_on and was forgotten, so the sprite could stay while the driver counted it hidden */
 void VX2D_hwcur_hide(void) {
  hc_pos_ok=0;
  if(!hc_on&&!hc_off_pending) return;
  if(hc_on) {hc_on=0; hc_hides++;}
- if(vx2d_hwcur&&hc_ready&&hc_map()) {hc_ctrl&=~1UL; hcw(hc_reg(0),hc_ctrl); hc_off_pending=0;}
+ if(vx2d_hwcur&&hc_ready&&hc_map()) {hc_ctrl&=~1UL; hc_ctl(hc_ctrl); hc_off_pending=0;}
  else hc_off_pending=(vx2d_hwcur&&hc_ready)?1:0;
 }
 /* v10.258: brightness (0..255*1000) for the mono cursor's two colours; a 24-bit colour as the mono cursor's colour registers take it
@@ -1356,7 +1364,11 @@ int VX2D_hwcur_set(const uint32_t *am,const uint32_t *xm,uint32_t stride,uint32_
  if(vx2d_hwcur==1) {hcw(0x2ECUL,0); hcw(0x120CUL,hc_inv); hcw(0x2E4UL,0x00FFFFFFUL); hcw(0x2E8UL,0x0D000D0FUL); hc_ctrl=0x36000004UL;}
  else {hcw(0x270UL,0); hcw(0x274UL,hc_inv); hcw(0x268UL,0x000E0000UL); hcw(0x278UL,0x0E0F0000UL); hc_ctrl=0xB6000004UL;}
  (void)img[4095]; /* v10.327 (review): the write-combined image drained before the base register is written */
- hcw(hc_reg(0),hc_ctrl); hcw(hc_reg(1),(uint32_t)vx2d_hwcur_off);
+ {extern int VX_flip_iga2(void); int two=vx2d_hwcur==1&&VX_flip_iga2();
+  if(hc_two&&!two) hcw(0x260UL,0xB6000004UL); /* no longer shown by IGA2: its icon off */
+  hc_two=two;
+  if(hc_two) {hcw(0x270UL,0); hcw(0x274UL,hc_inv); hcw(0x268UL,0x000E0000UL); hcw(0x278UL,0x0E0F0000UL); hcw(0x224UL,(uint32_t)vx2d_hwcur_off);}} /* .598 */
+ hc_ctl(hc_ctrl); hcw(hc_reg(1),(uint32_t)vx2d_hwcur_off);
  hc_ready=1; hc_sets++; return 1;
 }
 /* position of the image's top left corner (may be negative); shows the cursor when it was hidden */
@@ -1372,8 +1384,9 @@ int VX2D_hwcur_move(int32_t x,int32_t y) {
  if(x<0) {xo=(uint32_t)(-x)&0xFEUL; x=0;}
  if(y<0) {yo=(uint32_t)(-y)&0xFEUL; y=0;}
  hcw(hc_reg(2),((uint32_t)x<<16)|((uint32_t)y&0x7FFUL)); hcw(hc_reg(3),(xo<<16)|(yo&0x7FFUL));
+ if(hc_two) {hcw(0x208UL,((uint32_t)x<<16)|((uint32_t)y&0x7FFUL)); hcw(0x20CUL,(xo<<16)|(yo&0x7FFUL));} /* .598 */
  hc_moves++;
- if(!hc_on) {hc_on=1; hc_shows++; hc_ctrl|=1UL; hcw(hc_reg(0),hc_ctrl);}
+ if(!hc_on) {hc_on=1; hc_shows++; hc_ctrl|=1UL; hc_ctl(hc_ctrl);}
  hc_pos_ok=1;
  return 1;
 }
@@ -1381,7 +1394,7 @@ int VX2D_hwcur_active(void) {return hc_on;}
 /* v10.252 (review): after an engine reset the cursor unit's registers may be gone while hc_on / hc_ready still say shown: forget them,
  * so the next set programs the unit and the image again and the next move enables it */
 void VX2D_hwcur_invalidate(void) {
- if(vx2d_hwcur&&hc_map()) {hcw(hc_reg(0),hc_ctrl&~1UL); hc_off_pending=0;} /* off whatever the reset left: shown again only if it should be */
+ if(vx2d_hwcur&&hc_map()) {hc_ctl(hc_ctrl&~1UL); hc_off_pending=0;} /* off whatever the reset left: shown again only if it should be */
  hc_on=0;hc_ready=0;hc_pos_ok=0;
 }
 /* v10.106: video overlay on the VX855 V1 video engine, programmed as OpenChrome's via_xv_overlay.c does it for YUY2 without the HQV unit (V1 control 0x230, QWORDs per line 0x234,
@@ -1509,12 +1522,10 @@ static int ov_program(const vx_ovl_req *q) {
  if(q->flags&VXO_KEY) {
   uint32_t k=q->key&0xFFFFFFUL;
   if(hda->bpp==8) k&=0xFFUL; /* v10.130: manual (0x220): 256 colours = bits 7:0, the palette index itself, no DAC lookup */
-  if(hda->bpp==16) { /* the key is a 5-6-5 pixel; the engine compares 24-bit colours: the low bits are zero, or (bit 4) replicated */
-   uint32_t r5=(k>>11)&31UL,g6=(k>>5)&63UL,b5=k&31UL;
-   if(m&VXO_M_KEYRAW) k&=0xFFFFUL; /* .585 */
-   else if(m&16UL) k=(((r5<<3)|(r5>>2))<<16)|(((g6<<2)|(g6>>4))<<8)|((b5<<3)|(b5>>2));
-   else k=((r5<<3)<<16)|((g6<<2)<<8)|(b5<<3);
-  }
+  if(hda->bpp==16) k&=0xFFFFUL; /* .603: at 16 bits the key is the 5-6-5 pixel value itself, on every chip, as at 8 and 32 bits (OpenChrome
+   * writes the pixel value at every depth). Boards: VX800 (.585) and VX900 (.602, VX2OVL v1.5) show the key only with this form; the two
+   * widened forms (low bits zero: mask bit 4 clear; replicated: bit 4 set; the raw form was mask bit 12) showed no picture on any chip at
+   * 16 bits and are gone. The VX855's "proven" widened form was proven at 32 bits, where all three are the same number. */
   k|=0x40000000UL;
   wr(0x220UL,k); wr(0x264UL,k);
   comp|=0x00000001UL|0x00000020UL;
@@ -1652,6 +1663,7 @@ static int ov_program(const vx_ovl_req *q) {
   wr(0x370UL,0UL); wr(0x378UL,(sxr<<16)|sbr); wr(0x374UL,0UL); wr(0x37CUL,(sxr<<16)|sbr);
   wr(0x380UL,0UL); wr(0x388UL,(sxr<<16)|sbr); wr(0x384UL,0UL); wr(0x38CUL,(sxr<<16)|sbr);
   wr(0x3CCUL,(sxr<<16)|sbr); wr(0x394UL,0UL); wr(0x3E0UL,0UL); wr(0x3E8UL,0UL); wr(0x3B8UL,0x0643212CUL);
+  if(vx_chip_id==0x7122UL) wr(0x3A4UL,0UL); /* .602: the VX900 takes the VX855's map and one more write: the sharpness / decoder handshake control (OpenChrome via_xv_overlay.c, HQV_SHARPNESS_DECODER_HANDSHAKE_CTRL_410 = 0, on the VX900 only) */
   }}
   wr(0x284UL,0x13000DEDUL); wr(0x288UL,0x13171000UL);
   if(first) { /* first picture: wait until the HQV is idle, then start it and wait for the first flip */
@@ -1677,7 +1689,6 @@ void VX2D_ovl(const vx_ovl_req *q,uint32_t *r) {
  complete_pending();
  ov_reason=0;
  if(!q||q->cb!=sizeof(*q)||q->abi!=VXO_ABI) {r[VXO_R_RESULT]=1; r[VXO_R_REASON]=99; vx_unlock(); return;}
- {extern int VX_chip_video(void); if(!VX_chip_video()) {r[VXO_R_RESULT]=q->cmd==VXO_QUERY?0:1; r[VXO_R_REASON]=98; vx_unlock(); return;}} /* .579: the VX900's video engine is not driven yet: the mask answered 0, so DirectDraw offers no overlay there (.583: the VX800's is) */
  switch(q->cmd) {
   case VXO_QUERY: rc=0; ov_reason=ov_last_refuse; break;
   case VXO_HIDE: VX2D_ovl_hide(); rc=0; break;
@@ -1738,6 +1749,176 @@ static void vx_cpuid1_raw(uint32_t *edx_out,uint32_t *ecx_out);
 #pragma aux vx_cpuid1_raw = "push ebx" "push esi" "push edi" "mov esi,eax" "mov edi,edx" "mov eax,1" 0x0F 0xA2 "mov [esi],edx" "mov [edi],ecx" "pop edi" "pop esi" "pop ebx" parm [eax] [edx] modify exact [eax ecx edx];
 static void vx_cpuid1(uint32_t *d,uint32_t *c) {*d=0;*c=0;vx_cpuid1_raw(d,c);}
 static void control_body(uint32_t value,uint32_t *out);
+/* .599 (.600: with the 2D engine not in use the sequencer's engine enables, SR1A bit 3 and SR1E bit 0, are put back as found too): the VX900 2D probe (VX92D): which register layout the 2D engine decodes, the source key's polarity and the status register
+ * around a command, on any of the three chips and whether or not the 2D engine is in use (on the VX900 it is not yet). Everything is
+ * drawn in the first 16 rows of the screen (256 pixels wide, or the screen's width when narrower), saved first and put back after;
+ * the timing step inverts the whole screen twice. Controls 0xFFFFFE70 + k:
+ *   0  a solid fill by the M1 layout (the driver's own sequence: 04 08 14 1C 30 48 58 5C 20 4C 0C 10, command F0002001)
+ *   1  the same fill by the older layout XP's miniport uses for 7122 (04, 34 base, 38 pitch, 0C position, 10 size, 18 colour)
+ *   3  a keyed copy of 64 pixels (key and other colour alternating), key control 4000h at 48h
+ *   4  the same with 6000h (bit 13, the key type: VIA's CE driver sets it on the VX900)
+ *   5  two whole-screen inverts (ROP 55): the status reads before busy and until idle
+ *   6  (.602) the status register at rest and after a register write, a register read, a sequencer read and a flush
+ *   C D E  the last step's result words 4-7, 8-11, 12-15
+ * Result word 0: 0 ran, 1 no usable desktop, 2 display held or 3D busy, 3 the registers could not be opened, 4 the engine was not idle,
+ * 5 a command did not finish (word 7: 1 the reset then worked, 2 it did not). Word 15: SR1A | SR1E << 8 | SR4E << 16 | SR3C << 24. */
+static uint32_t p9_r[16];
+static uint8_t p9_keep[256*16*4];
+static uint32_t p9_sv[19];
+static int p9_xf;
+static uint32_t p9_sr0; /* .600: SR1A / SR1E as found: e_begin turns the engine enables on, and with the 2D engine not in use nothing else would turn them off again */
+static uint32_t p9_get(uint32_t x,uint32_t y,uint32_t n) {
+ volatile uint8_t *p=(volatile uint8_t*)(vx_status.fb_linear+y*hda->pitch+x*n);
+ return n==1?(uint32_t)*p:n==2?(uint32_t)*(volatile uint16_t*)p:*(volatile uint32_t*)p;
+}
+static void p9_put(uint32_t x,uint32_t y,uint32_t n,uint32_t v) {
+ volatile uint8_t *p=(volatile uint8_t*)(vx_status.fb_linear+y*hda->pitch+x*n);
+ if(n==1) *p=(uint8_t)v; else if(n==2) *(volatile uint16_t*)p=(uint16_t)v; else *(volatile uint32_t*)p=v;
+}
+static uint32_t p9_sr(void) {
+ unsigned long f=VX_irq_save(); unsigned char old=inp(0x3C4),u=sq_get(0x10); uint32_t v;
+ sq_put(0x10,(unsigned char)(u|1));
+ v=(uint32_t)sq_get(0x1A)|((uint32_t)sq_get(0x1E)<<8)|((uint32_t)sq_get(0x4E)<<16)|((uint32_t)sq_get(0x3C)<<24);
+ sq_put(0x10,u); outp(0x3C4,old); VX_irq_restore(f); return v;
+}
+/* the status reads until 32 idle ones in a row: the index of the first of them; 0xFFFFFFFE none in 400000 reads, 0xFFFFFFFF the window reads all ones */
+static uint32_t p9_wait(uint32_t *busy_at,uint32_t *first) {
+ uint32_t i,s,stable=0;
+ for(i=0;i<400000UL;i++) {
+  s=rd(0x400); if(!i&&first) *first=s;
+  if(s==0xFFFFFFFFUL) return 0xFFFFFFFFUL;
+  if(busy_at&&*busy_at==0xFFFFFFFFUL&&(s&2UL)) *busy_at=i;
+  if(idle_bits(s)) {if(++stable>=32UL) return i-31UL;} else stable=0;
+ }
+ return 0xFFFFFFFEUL;
+}
+static int p9_open(void) {
+ int i;
+ if(vx2d_enable) {p9_xf=1; return xf_open()==VX2D_DONE;}
+ p9_xf=0; if(!hc_rmap()) return 0; if(!e_begin()) return 0;
+ for(i=0;i<19;i++) p9_sv[i]=rd(saved_regs[i]);
+ return 1;
+}
+static void p9_close(void) {
+ int i;
+ if(p9_xf) {xf_close(); return;}
+ for(i=0;i<19;i++) wr(saved_regs[i],p9_sv[i]);
+ {unsigned long f=VX_irq_save(); unsigned char old=inp(0x3C4);
+  if(sq_get(0x1A)!=(unsigned char)(p9_sr0&255UL)) sq_put(0x1A,(unsigned char)(p9_sr0&255UL));
+  if(sq_get(0x1E)!=(unsigned char)((p9_sr0>>8)&255UL)) sq_put(0x1E,(unsigned char)((p9_sr0>>8)&255UL));
+  outp(0x3C4,old); VX_irq_restore(f);}
+ e_end();
+}
+static void p9_run(uint32_t kind) {
+ uint32_t bpp=hda?hda->bpp:0,n=bpp>>3,W,H,RW,RH=16UL,x,y,i,cm,BG,C1,C2,K,S,depth,pitch,fx=8UL,fy=4UL,fw,fh=8UL;
+ uint32_t s0=0,s1=0,busy=0xFFFFFFFFUL,done,sum0=0,sum1=0,sv34=0,sv38=0;
+ for(i=0;i<16;i++) p9_r[i]=0;
+ if(!desktop_x(0)||(bpp!=8&&bpp!=16&&bpp!=32)||hda->height<RH||hda->width<64UL) {p9_r[0]=1; return;}
+ W=hda->width; H=hda->height; RW=W<256UL?W:256UL; fw=RW-16UL; pitch=hda->pitch; depth=xf_depth(bpp);
+ cm=bpp==8?0xFFUL:bpp==16?0xFFFFUL:0xFFFFFFUL;
+ BG=bpp==8?0x11UL:bpp==16?0x1111UL:0x111111UL; C1=bpp==8?0xA5UL:bpp==16?0xA5A5UL:0xA5A5A5UL; C2=bpp==8?0x3CUL:bpp==16?0x3C3CUL:0x3C3C3CUL;
+ K=bpp==8?0xFFUL:bpp==16?0xF81FUL:0xFF00FFUL; S=bpp==8?0x0FUL:bpp==16?0x07E0UL:0x00FF00UL;
+ if(vx_native_display_hold||(vx3dn_rt_why=2,VX3D_busy())) {p9_r[0]=2; return;}
+ p9_r[15]=p9_sr0=p9_sr(); p9_r[13]=RW|(RH<<16); p9_r[14]=bpp|(pitch<<8);
+ if(!p9_open()) {p9_r[0]=3; return;}
+ if(p9_wait(0,&s0)>=0xFFFFFFFEUL) {p9_r[0]=4; p9_r[4]=s0; p9_close(); return;}
+ if(kind==5UL) FBHDA_access_rect(0,0,W,H); else FBHDA_access_rect(0,0,RW,RH);
+ for(y=0;y<RH;y++) for(x=0;x<RW*n;x++) {uint8_t b=*(volatile uint8_t*)(vx_status.fb_linear+y*pitch+x); p9_keep[y*RW*n+x]=b; sum0+=b;}
+ if(kind!=5UL) for(y=0;y<RH;y++) for(x=0;x<RW;x++) p9_put(x,y,n,BG);
+ flush();
+ if(kind==0UL) {
+  wr(4,depth); wr(8,(pitch>>3)<<16); wr(0x14,0); wr(0x1C,0); wr(0x30,0); wr(0x48,0); wr(0x58,C1); wr(0x5C,0); wr(0x20,0); wr(0x4C,C1);
+  wr(12,((fh-1UL)<<16)|(fw-1UL)); wr(16,(fy<<16)|fx);
+  flush(); s0=rd(0x400); wr(0,0xF0002001UL);
+ } else if(kind==1UL) {
+  sv34=rd(0x34); sv38=rd(0x38);
+  wr(4,depth); wr(0x34,0); wr(0x38,0x80000000UL|((pitch>>3)<<16)); wr(0x0C,(fy<<16)|fx); wr(0x10,((fh-1UL)<<16)|(fw-1UL)); wr(0x18,C2);
+  flush(); s0=rd(0x400); wr(0,0xF0002001UL);
+ } else if(kind==3UL||kind==4UL) {
+  for(x=0;x<64UL;x++) p9_put(x,2,n,(x&1UL)?S:K);
+  wr(4,depth); wr(8,((pitch>>3)<<16)|(pitch>>3)); wr(0x14,0); wr(0x1C,0); wr(0x30,0); wr(0x48,0); wr(0x58,0); wr(0x5C,0); wr(0x20,0);
+  wr(0x18,(2UL<<16)|0UL); wr(0x50,K); wr(0x48,kind==3UL?0x4000UL:0x6000UL);
+  wr(12,(0UL<<16)|63UL); wr(16,(10UL<<16)|0UL);
+  flush(); s0=rd(0x400); wr(0,0xCC000001UL);
+ } else {
+  wr(4,depth); wr(8,(pitch>>3)<<16); wr(0x14,0); wr(0x1C,0); wr(0x30,0); wr(0x48,0); wr(0x58,0); wr(0x5C,0); wr(0x20,0); wr(0x4C,0);
+  wr(12,((H-1UL)<<16)|(W-1UL)); wr(16,0);
+  flush(); s0=rd(0x400); wr(0,0x55002001UL);
+ }
+ done=p9_wait(&busy,&s1);
+ if(done<0xFFFFFFFEUL&&kind==5UL) { /* the second invert puts the screen back */
+  uint32_t b2=0xFFFFFFFFUL,d2;
+  p9_r[1]=busy; p9_r[2]=done; p9_r[5]=s0; p9_r[6]=s1;
+  flush(); wr(0,0x55002001UL); d2=p9_wait(&b2,0); p9_r[3]=b2; p9_r[4]=d2; done=d2;
+ }
+ if(done>=0xFFFFFFFEUL) {p9_r[0]=5; p9_r[7]=reset()?1UL:2UL;}
+ if(kind==0UL||kind==1UL) {
+  uint32_t C=kind?C2:C1,in_ok=0,in_other=0,out=0,tot=0,minx=0xFFFFUL,miny=0xFFFFUL,maxx=0,maxy=0,any=0,v;
+  for(y=0;y<RH;y++) for(x=0;x<RW;x++) {
+   int in=x>=fx&&x<fx+fw&&y>=fy&&y<fy+fh;
+   v=p9_get(x,y,n)&cm; if(v==C) tot++;
+   if(v!=BG) {any=1; if(x<minx) minx=x; if(x>maxx) maxx=x; if(y<miny) miny=y; if(y>maxy) maxy=y;}
+   if(in) {if(v==C) in_ok++; else if(v!=BG) in_other++;} else if(v!=BG) out++;
+  }
+  p9_r[1]=in_ok; p9_r[2]=out; p9_r[3]=done; p9_r[4]=s0; p9_r[5]=s1; p9_r[6]=busy;
+  p9_r[8]=any?(minx|(miny<<16)):0xFFFFFFFFUL; p9_r[9]=any?(maxx|(maxy<<16)):0xFFFFFFFFUL; p9_r[10]=tot; p9_r[11]=fw*fh; p9_r[12]=in_other;
+  if(kind==1UL) {wr(0x34,sv34); wr(0x38,sv38);}
+ } else if(kind==3UL||kind==4UL) {
+  uint32_t ws=0,wk=0,ks=0,kk=0,other=0,v;
+  for(x=0;x<64UL;x++) {
+   v=p9_get(x,10,n)&cm;
+   if(x&1UL) {if(v==S) ws++; else if(v==BG) ks++; else other++;}
+   else {if(v==K) wk++; else if(v==BG) kk++; else other++;}
+  }
+  p9_r[1]=ws; p9_r[2]=wk; p9_r[3]=done; p9_r[4]=ks; p9_r[5]=kk; p9_r[6]=other; p9_r[8]=s0; p9_r[9]=s1; p9_r[10]=busy;
+  wr(0x48,0);
+ }
+ for(y=0;y<RH;y++) for(x=0;x<RW*n;x++) {
+  volatile uint8_t *p=(volatile uint8_t*)(vx_status.fb_linear+y*pitch+x);
+  if(kind==5UL) sum1+=*p; else *p=p9_keep[y*RW*n+x];
+ }
+ if(kind==5UL) p9_r[8]=(p9_r[0]==0&&sum0==sum1)?1UL:0UL;
+ FBHDA_access_end(0);
+ p9_close();
+}
+/* .602: the status register at rest and after things that are not commands: sixteen tries each of: 0 nothing (status reads only),
+ * 1 one engine register written (5Ch, the pattern's background colour, with the value it holds), 2 one engine register read (04h),
+ * 3 a sequencer register read (SR1A), 4 the driver's flush alone. For each: the status reads until the idle test passes (at most 64).
+ * Words 1-5: tries whose first read was not idle | the most reads until idle << 8 | the first read's bits 0-15 of the last such try << 16.
+ * Word 6: the first status of the last try of kind 0. (.602 only: words 8-10 carried idle_fast's counts.) */
+static void p9_status(void) {
+ uint32_t k,t,i,s,first;
+ for(i=0;i<16;i++) p9_r[i]=0;
+ if(!desktop_x(0)) {p9_r[0]=1; return;}
+ if(vx_native_display_hold||(vx3dn_rt_why=2,VX3D_busy())) {p9_r[0]=2; return;}
+ p9_r[15]=p9_sr0=p9_sr();
+ if(!p9_open()) {p9_r[0]=3; return;}
+ if(p9_wait(0,&s)>=0xFFFFFFFEUL) {p9_r[0]=4; p9_r[4]=s; p9_close(); return;}
+ for(k=0;k<5UL;k++) {
+  uint32_t bad=0,most=0,lastbits=0;
+  for(t=0;t<16UL;t++) {
+   for(i=0;i<8UL;i++) (void)rd(0x400); /* settled before the try */
+   if(k==1UL) wr(0x5C,rd(0x5C)); else if(k==2UL) (void)rd(0x04);
+   else if(k==3UL) {unsigned long f=VX_irq_save(); unsigned char old=inp(0x3C4); (void)sq_get(0x1A); outp(0x3C4,old); VX_irq_restore(f);}
+   else if(k==4UL) flush();
+   first=rd(0x400); s=first;
+   for(i=0;i<64UL&&!idle_bits(s);i++) s=rd(0x400);
+   if(!idle_bits(first)) {bad++; lastbits=first&0xFFFFUL;}
+   if(i>most) most=i;
+   if(!k) p9_r[6]=first;
+  }
+  p9_r[1+k]=bad|(most<<8)|(lastbits<<16);
+ }
+ p9_close();
+}
+static void p9_control(uint32_t value,uint32_t *out) {
+ uint32_t k=value&15UL,b=0,i;
+ if(k==0UL||k==1UL||k==3UL||k==4UL||k==5UL) p9_run(k);
+ else if(k==6UL) p9_status();
+ else if(k==12UL) b=4; else if(k==13UL) b=8; else if(k==14UL) b=12;
+ else {out[0]=0xFFFFFFFFUL; out[1]=out[2]=out[3]=0; return;}
+ for(i=0;i<4;i++) out[i]=p9_r[b+i];
+}
 void VX2D_control(uint32_t value,uint32_t *out) {
  /* v10.424: arming a present is one word: not through control_body, whose complete_pending would wait for the copy the arm is for */
  if((value&~1UL)==0xFFFFFE20UL) {vx2d_present_arm=value&1UL; out[0]=present_async_ops; out[1]=vx2d_present_arm; out[2]=vx2d_async_present; out[3]=vx2d_async; return;}
@@ -1756,6 +1937,7 @@ static void control_body(uint32_t value,uint32_t *out) {
   * 0, 1, 2-3, 4-7 | 8-15, 16-31, 32-63, 64-127 | 128 and more, the fewest reads from busy to idle, the bytes a pixel, 0. The wait after
   * every command (idle_n) takes 32 idle reads in a row as "finished": a first busy read later than that is a wait that ends early. */
  {static uint32_t ip_h[9],ip_min,ip_bpp;
+  if((value&0xFFFFFFF0UL)==0xFFFFFE70UL) {p9_control(value,out); vx_unlock(); return;} /* .599: the VX900 2D probe (VX92D) */
   if(value==0xFFFFFE40UL) {
    uint32_t n,i,never=0,maxfirst=0,maxdone=0,bpp=hda?hda->bpp:0,P=1024UL; int rc2;
    out[0]=0xFFFFFFFFUL; out[1]=out[2]=out[3]=0;
@@ -1803,6 +1985,7 @@ static void control_body(uint32_t value,uint32_t *out) {
    xf_close();
    out[0]=first; out[1]=busy; out[2]=(s0&0xFFFFUL)|(pass<<16); out[3]=s1; vx_unlock(); return;
   }
+  if(value==0xFFFFFE48UL) {extern uint32_t vx_flip_two[8]; out[0]=vx_flip_two[0]; out[1]=vx_flip_two[1]; out[2]=vx_flip_two[2]|((uint32_t)hc_two<<8); out[3]=vx_flip_two[3]|(vx_flip_two[4]<<16); vx_unlock(); return;} /* .598 */
   if(value==0xFFFFFE47UL) {out[0]=start_waits; out[1]=start_unseen; out[2]=start_late; out[3]=stats.timeouts; vx_unlock(); return;}
   if(value==0xFFFFFE46UL) {out[0]=started_waits; out[1]=started_unseen; out[2]=vx3dn_xr_cr_pause; out[3]=async_waits; vx_unlock(); return;
   }
@@ -1893,7 +2076,7 @@ static void control_body(uint32_t value,uint32_t *out) {
  if((value&0xFF000000UL)==0xF4000000UL) {vx2d_prof=value&1UL; if(vx2d_prof) {for(i2=0;i2<8;i2++) ph_sum[i2]=0; ph_n=0;} out[0]=vx2d_prof; out[1]=ph_n; out[2]=0; out[3]=0; vx_unlock(); return;} /* v10.132: phase profile on/off */
  if((value&0xFF000000UL)==0xF3000000UL) {vx2d_str_fuse=value&1UL; out[0]=vx2d_str_fuse; out[1]=str_fused_rows; out[2]=str_ops; out[3]=0; vx_unlock(); return;} /* v10.132: fused 1-bit expansion */
  if((value&0xFF000000UL)==0xEB000000UL) {vx2d_keep=value&1UL; if(!vx2d_keep) k_release(); out[0]=vx2d_keep; out[1]=keep_opens; out[2]=keep_releases; out[3]=keep.open; vx_unlock(); return;} /* v10.144: kept engine context */
- if(value==0xFFFFFE50UL) {extern volatile unsigned long vx_accel_d3d; out[0]=vx_accel_d3d; out[1]=0x56584433UL; {extern volatile unsigned long vx_heap_align; out[2]=0x100UL|(vx_heap_align&1);} {extern volatile unsigned long vx_d3d_log; extern volatile unsigned long vx3dn_ckey; out[2]|=0x400UL|((vx_d3d_log&1)<<1)|((vx3dn_ckey&1)<<2)|(((vx_d3d_log>>1)&1)<<13);{extern volatile unsigned long vx3dn_delta; /* .524: ACCEL_D3D_DELTA, bit 20 */ out[2]|=0x800UL|((vx_d3d_rttex&1)<<3)|((vx_d3d_mipcap&1)<<4)|((vx_d3d_texhint&1)<<5)|((vx_d3d_indexed&1)<<7)|((vx_d3d_rtnowait&1)<<12)|((vx_d3d_ixpass&1)<<16)|((vx_d3d_infocache&1)<<17)|((vx_d3d_v8&1)<<19)|((vx3dn_delta&1)<<20)|((vx_d3d_tnl&1)<<21);}} /* v10.179: bit 8 = field valid, bit 0 = ACCEL_HEAP_ALIGN; v10.202: bit 10 valid, bit 1 = ACCEL_D3D_LOG; v10.208: bit 2 = ACCEL_D3D_CKEY */ {extern volatile unsigned long vx_d3d_feat_cfg; out[3]=0x80000000UL|(vx_d3d_feat_cfg&0x7FFFFFFFUL);} /* v10.212: bit 31 valid, the ACCEL_D3D_* feature switches */ vx_unlock(); return;} /* v10.149: registry ACCEL_D3D for the HAL's DriverInit */
+ if(value==0xFFFFFE50UL) {extern volatile unsigned long vx_accel_d3d; {extern int VX_chip_accel(void); out[0]=VX_chip_accel()?vx_accel_d3d:0UL;} /* .598 (VX900 board, VXREG v1.58: the HAL offered Direct3D with the 3D engine not driven; every ContextCreate would then fail instead of the application taking the software device): ACCEL_D3D answers 0 there */ out[1]=0x56584433UL; {extern volatile unsigned long vx_heap_align; out[2]=0x100UL|(vx_heap_align&1);} {extern volatile unsigned long vx_d3d_log; extern volatile unsigned long vx3dn_ckey; out[2]|=0x400UL|((vx_d3d_log&1)<<1)|((vx3dn_ckey&1)<<2)|(((vx_d3d_log>>1)&1)<<13);{extern volatile unsigned long vx3dn_delta; /* .524: ACCEL_D3D_DELTA, bit 20 */ out[2]|=0x800UL|((vx_d3d_rttex&1)<<3)|((vx_d3d_mipcap&1)<<4)|((vx_d3d_texhint&1)<<5)|((vx_d3d_indexed&1)<<7)|((vx_d3d_rtnowait&1)<<12)|((vx_d3d_ixpass&1)<<16)|((vx_d3d_infocache&1)<<17)|((vx_d3d_v8&1)<<19)|((vx3dn_delta&1)<<20)|((vx_d3d_tnl&1)<<21);}} /* v10.179: bit 8 = field valid, bit 0 = ACCEL_HEAP_ALIGN; v10.202: bit 10 valid, bit 1 = ACCEL_D3D_LOG; v10.208: bit 2 = ACCEL_D3D_CKEY */ {extern volatile unsigned long vx_d3d_feat_cfg; out[3]=0x80000000UL|(vx_d3d_feat_cfg&0x7FFFFFFFUL);} /* v10.212: bit 31 valid, the ACCEL_D3D_* feature switches */ vx_unlock(); return;} /* v10.149: registry ACCEL_D3D for the HAL's DriverInit */
  if(value==0xFFFFFE3FUL) {out[0]=keep_opens; out[1]=keep_releases; out[2]=keep.open; out[3]=vx2d_keep; vx_unlock(); return;}
  if((value&0xFFFFFFE0UL)==0xFFFFFE40UL&&(value&31UL)<19UL) {uint32_t k=value&31UL; out[0]=m2d_linear?rd(saved_regs[k]):0xFFFFFFFFUL; out[1]=saved_regs[k]; out[2]=keep.saved[k]; out[3]=keep.open; vx_unlock(); return;} /* v10.144: register k of the 19 now, and in the kept context */
  if((value&0xFF000000UL)==0xEC000000UL) {vx2d_prefilter=value&1UL; out[0]=vx2d_prefilter; out[1]=vx2d_ops; out[2]=vx2d_fallbacks; out[3]=0; vx_unlock(); return;} /* v10.142: DRV size pre-check */
@@ -1922,7 +2105,7 @@ static void control_body(uint32_t value,uint32_t *out) {
   out[0]=xf_skips; out[1]=xf_why; out[2]=vx2d_host; out[3]=vx2d_stage_off; vx_unlock(); return;
  }
  if(value==VX2D_REGISTRY) { vx2d_gdi=vx2d_gdi_cfg; vx2d_linemax=vx2d_linemax_cfg; vx2d_linemaxy=vx2d_linemaxy_cfg; vx2d_keep=vx2d_keep_cfg; if(!vx2d_keep) k_release(); vx2d_fill_tall=vx2d_fill_tall_cfg; vx2d_prefilter=vx2d_prefilter_cfg; vx2d_col8=vx2d_col8_cfg; vx2d_op_wait=vx2d_op_wait_cfg; vx2d_dread=vx2d_dread_cfg; vx2d_span_wait=vx2d_span_wait_cfg; vx2d_str_fuse=vx2d_str_fuse_cfg; vx2d_prof=0; vx2d_host=vx2d_host_cfg; xf_mask_out(); if(vx2d_gamma!=vx2d_gamma_cfg) {vx2d_gamma=vx2d_gamma_cfg; VX2D_gamma_load(NULL);}if(vx2d_ovl!=vx2d_ovl_cfg) {VX2D_ovl_hide(); ov_last.cb=0; vx2d_ovl=vx2d_ovl_cfg;} vx2d_str_mask=vx2d_str_cfg; vx2d_str_mask2=vx2d_str_cfg2; if(vx2d_hwcur!=vx2d_hwcur_cfg) {if(hc_on) VX2D_hwcur_hide(); hc_ready=0; vx2d_hwcur=vx2d_hwcur_cfg;} vx2d_async=vx2d_async_cfg; vx2d_async_gate=0; vx2d_async_present=vx2d_async_present_cfg; vx2d_present_arm=0; vx2d_copy_all=vx2d_copy_all_cfg; vx2d_enable=vx2d_enable_cfg; vx2d_force=0;}
- else if(value!=VX2D_QUERY&&(value&~7UL)==0) {vx2d_copy_all=(value&1)!=0; {extern int VX_chip_accel(void);vx2d_enable=(value&2)==0&&VX_chip_accel();} vx2d_force=(value&4)!=0;} /* bit 2: ignore size thresholds (tests) */
+ else if(value!=VX2D_QUERY&&(value&~7UL)==0) {vx2d_copy_all=(value&1)!=0; {extern int VX_chip_2d(void);vx2d_enable=(value&2)==0&&VX_chip_2d();} /* .601: the 2D engine's own answer */ vx2d_force=(value&4)!=0;} /* bit 2: ignore size thresholds (tests) */
  out[0]=vx2d_ops; out[1]=vx2d_fallbacks; out[2]=m2d_state; out[3]=flags(); vx_unlock();
 }
 void VX2D_stats(vx2d_stats *out) {

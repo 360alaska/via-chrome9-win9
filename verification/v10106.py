@@ -31,9 +31,11 @@ def v10106_checks():
  g=fresh();ov(g,1,sw=160,sh=120,src=(0,0,160,60),dst=(10,10,170,130),pitch=320);x=reg(g);assert x[0x24C]==0x8000|0x1FF and x[0x250]==5 and (x[0x24C]>>16)==0,hex(x[0x24C]);cases.append('a vertical-only enlargement leaves the horizontal zoom off')
  # --- colour key ---
  g=fresh(32);ov(g,1,flags=1,key=0xFF00FF);x=reg(g);assert x[0x220]==0x40FF00FF and x[0x264]==0x40FF00FF and x[0x298]==0x90000021|0 or x[0x298]==0x90000021,{hex(k):hex(v) for k,v in x.items()};cases.append('32bpp destination colour key: 24-bit key to both key registers (bit 30 set), compose selects video where the key matches')
- g=fresh(16);ov(g,1,flags=1,key=0xF81F);x=reg(g);assert x[0x220]==0x40F800F8,hex(x[0x220]);cases.append('16bpp colour key: the 5-6-5 pixel is widened with zero low bits')
- g=fresh(16,1|16);ov(g,1,flags=1,key=0xF81F);assert reg(g)[0x220]==0x40FF00FF;cases.append('16bpp colour key with mask bit 4: low bits replicated')
- g=fresh(16,1|4096);ov(g,1,flags=1,key=0xF81F);assert reg(g)[0x220]==0x4000F81F and reg(g)[0x264]==0x4000F81F,hex(reg(g)[0x220]);cases.append('.585: 16bpp colour key with mask bit 12: the pixel value itself')
+ for mk in (1,1|16,1|4096): # .603: one form at 16 bits, the pixel value itself, whatever the old key bits of the mask (4 and 12) say
+  g=fresh(16,mk);ov(g,1,flags=1,key=0xF81F);x=reg(g);assert x[0x220]==0x4000F81F and x[0x264]==0x4000F81F,hex(x[0x220])
+ for chip in (0x5122,0x1122,0x7122):
+  g=fresh(16);g.u.mem_write(g.addr('vx_chip_id'),pack([chip]));ov(g,1,flags=1,key=0x07E0);assert reg(g)[0x220]==0x400007E0,hex(reg(g)[0x220])
+ cases.append('.603: 16bpp colour key: the 5-6-5 pixel value itself, on the three chips, with or without the old key bits in the mask')
  g=fresh(32);ov(g,1,flags=1,key=0xFF00FF);ov(g,1);assert reg(g)[0x298]&0x2F==0,hex(reg(g)[0x298]);cases.append('an update without a key switches the key off again')
  # --- clipping to the screen ---
  g=fresh();r=ov(g,1,sw=160,sh=120,src=(0,0,160,120),dst=(-100,10,220,130),pitch=320);assert r[0]==0
@@ -83,6 +85,11 @@ def v10106_checks():
  assert x[0x380]==0 and x[0x384]==0 and x[0x388]==x[0x38C]==(319<<16|239) and x[0x3E0]==((320*2-1)<<16|239) and x[0x3B8]==0x0643212C and all(a not in x for a in (0x370,0x374,0x378,0x37C,0x3CC,0x394,0x3E8)),{hex(k):hex(v) for k,v in x.items()}
  assert x[0x3B0]==0x90001FE6 and x[0x3B4]==0x90001FDE and x[0x3D0]==0x8C000011 and x[0x254]==HQ and x[0x3D4]==0x100000;cases.append('.583: the same shrink on the VX800: source data offsets at 0x380-0x38C, line and fetch count in 0x3E0 (639 bytes, 240 lines), none of the VX855-only registers written; scale, buffers and control as the VX855')
  r=ov(g,1,dst=(10,10,170,130));assert reg(g)[0x3D0]==0x8C000001 and r[14]==1;cases.append('a second picture through the HQV does not start it again (control written with the flip status bit only)')
+ gk=g;g5=freshq();ov(g5,1,dst=(10,10,170,130));x5=reg(g5) # .602: the VX900 takes the VX855's HQV map and one more write (0 to 0x3A4)
+ g=freshq();g.u.mem_write(g.addr('vx_chip_id'),pack([0x7122]));r=ov(g,1,dst=(10,10,170,130));x=reg(g);assert r[0]==0 and r[14]==1,r
+ assert x.get(0x3A4,1)==0 and 0x3A4 not in x5 and {k:v for k,v in x.items() if k!=0x3A4}==x5,{hex(k):(hex(v),hex(x5.get(k,0))) for k,v in x.items() if x5.get(k)!=v};cases.append('.602: the same shrink on the VX900: every register as on the VX855, and 0 written to 0x3A4 (the sharpness / decoder handshake control), which the VX855 does not get')
+ g=fresh(32);g.u.mem_write(g.addr('vx_chip_id'),pack([0x7122]));r=ov(g,1);assert (r[0],r[1],r[2])==(0,0,1) and reg(g)=={k:v for k,v in (lambda h:(ov(h,1),reg(h))[1])(fresh(32)).items()},r;cases.append('.602: a plain YUY2 overlay on the VX900 writes what the VX855 gets')
+ g=gk
  w0=len(g.writes);r=ov(g,2,offset=0x180000);x=reg(g);assert r[0]==0 and x[0x3D4]==0x180000 and x[0x3D0]==0x8C000011 and r[5]==2 and [a for a,v in g.writes[w0:]]==[0x3D0,0x3D4,0x3D0][-2:] or True
  assert reg(g)[0x3D4]==0x180000 and reg(g)[0x254]==HQ and reg(g)[0x230]==0x02050081;cases.append('flip through the HQV: only the HQV source address changes and the flip is triggered; the V1 registers stay')
  r=ov(g,2,offset=0xFFFFFF00);assert r[:2]==[1,6] and reg(g)[0x3D4]==0x180000 and reg(g)[0x230]&1,(r,hex(reg(g)[0x3D4]));r=ov(g,2,offset=0x180000);assert r[0]==0 and reg(g)[0x3D4]==0x180000;cases.append('v10.288: a flip through the HQV to a source outside video memory is refused (6), the scaler keeps the current frame, a good flip after it works')
@@ -165,7 +172,7 @@ def v10106_checks():
   h.surface(h.dst,h.dg,0,g.pitch,1024,768);h.u.mem_write(h.dst+84,pack([0xF81F if bpp==16 else 0xFF00FF,0xF81F if bpp==16 else 0xFF00FF]))
   uo=ARENA+0xA500;d=bytearray(112);struct.pack_into('<I',d,0,0);struct.pack_into('<I',d,4,h.dst);struct.pack_into('<4i',d,8,100,50,420,290);struct.pack_into('<I',d,24,L1);struct.pack_into('<4i',d,28,0,0,320,240);struct.pack_into('<I',d,44,0x4000|0x400)
   h.u.mem_write(uo,bytes(d));h.to_gpu() if hasattr(h,'to_gpu') else None;assert h.call('_VXUpdateOverlay@4',(uo,))==1 and h.word(uo+104)==0
-  x=reg(g);assert x[0x254]==0x100000 and x[0x230]&1 and x[0x220]==(0x40F800F8 if bpp==16 else 0x40FF00FF) and x[0x240]==(100<<16|50),{hex(k):hex(v) for k,v in x.items()};cases.append(f'{bpp}bpp UpdateOverlay: surface address, rectangles and the destination colour key from the primary surface reach the V1 registers')
+  x=reg(g);assert x[0x254]==0x100000 and x[0x230]&1 and x[0x220]==(0x4000F81F if bpp==16 else 0x40FF00FF) and x[0x240]==(100<<16|50),{hex(k):hex(v) for k,v in x.items()};cases.append(f'{bpp}bpp UpdateOverlay: surface address, rectangles and the destination colour key from the primary surface reach the V1 registers')
   struct.pack_into('<I',d,44,0x4000|0x800);struct.pack_into('<I',d,80,0x123456);h.u.mem_write(uo,bytes(d));assert h.call('_VXUpdateOverlay@4',(uo,))==1 and h.word(uo+104)==0;exp=0x40123456 if bpp==32 else None
   if bpp==32:assert reg(g)[0x220]==exp
   cases.append(f'{bpp}bpp UpdateOverlay with KEYDESTOVERRIDE takes the key from the effects structure')

@@ -185,7 +185,7 @@ static void vxh_text(WORD cond,WORD opts,WORD rr,LPRECT opaque,LPRECT clip,LPDRA
 }
 static void vxh_capture(WORD x,WORD y,WORD w,WORD h,DWORD rop,LPBRUSH brush,LPDRAWMODE dm) {
  vxh_record *p; DIB_Brush32 __far *b=(DIB_Brush32 __far *)brush; DIB_Brush8 __far *b8=(DIB_Brush8 __far *)brush; int k;
- if(!(vxh_log.active&1)||!brush||((b->dp32BrushFlags&COLORSOLID)&&wBpp!=8)) return; /* v10.87: solid brushes are recorded at 8bpp (VX2AUTO v2.4: true solid fills never reached the engine there) */
+ if(!(vxh_log.active&1)||!brush||((b->dp32BrushFlags&COLORSOLID)&&wBpp!=8&&b->dp32BrushStyle!=BS_HOLLOW)) return; /* .637: a hollow brush is recorded at every depth (it comes flagged COLORSOLID) */ /* v10.87: solid brushes are recorded at 8bpp (VX2AUTO v2.4: true solid fills never reached the engine there) */
  if(vxh_log.count>=VXH_CAP) {vxh_log.dropped++; return;}
  p=&vxh_log.records[(WORD)vxh_log.count]; _fmemset(p,0,sizeof(*p));
  p->seq=vxh_log.count++; p->rop=rop; p->bpp=wBpp; p->x=x; p->y=y; p->w=w; p->h=h;
@@ -242,6 +242,7 @@ static DWORD vx_pc; /* DS is not SS in this driver: a near pointer must not poin
 static int vx_solid(LPBRUSH brush) {
  DIB_Brush32 __far *b=(DIB_Brush32 __far *)brush; DIB_Brush8 __far *b8=(DIB_Brush8 __far *)brush; int k;
  if(!brush) return 0;
+ if((wBpp==8?b8->dp8BrushStyle:b->dp32BrushStyle)==BS_HOLLOW) return 0; /* .637: a hollow brush draws nothing, whatever its flags say (below: vx_try_blit) */
  if(!(b->dp32BrushFlags&COLORSOLID)) { /* v10.122: a brush whose 64 realized pixels are one colour is solid in effect (VX2GDI: a 16bpp solid brush was not flagged COLORSOLID); a dithered one is not */
   if(wBpp==8||b->dp32BrushBpp!=(wBpp==16?20:32)||b->dp32BrushStyle==BS_HATCHED||b->dp32BrushStyle==BS_HOLLOW||(b->dp32BrushFlags&PATTERNMONO)) return 0;
   if(wBpp==16) {WORD __far *pb=(WORD __far *)b->dp32BrushBits; for(k=1;k<64;k++) if(pb[k]!=pb[0]) return 0; vx_pc=pb[0]; return 1;}
@@ -462,6 +463,11 @@ static WORD vx_try_blit(LPDIBENGINE dst,WORD dx,WORD dy,LPPDEVICE src,
     break;
   }
   if(pattern) vxh_capture(dx,dy,w,h,rop,brush,dm);
+  /* .637 (InstallShield's wizard: its title and subtitle statics, WM_CTLCOLORSTATIC answered with the hollow brush, came out as filled
+   * boxes over the banner, black at 32 bpp and grey at 16; board, VXHOLLOW on .635 at 32 bpp: 20 of 42 cases failed): the hollow brush
+   * arrives flagged COLORSOLID, and the solid path filled with its colour field (0 at 32 bpp, stale realized pixels at 16 and 8). The
+   * style decides before the flags: the call is left to DIBENG, which draws nothing with it. */
+  if(pattern&&brush&&(wBpp==8?((DIB_Brush8 __far *)brush)->dp8BrushStyle:b->dp32BrushStyle)==BS_HOLLOW) return VX2D_SKIP;
   /* v10.84: hatches and 1-bit bitmap brushes draw with their draw mode colours; DIBENG's treatment of those with ROPs other than PATCOPY/PATINVERT is not measured, so they stay with DIBENG for the other ROPs. Solid and colour-pattern brushes take every source-free ROP (VX2ROP T1/T3). */
   if(pattern&&q.rop!=0xF0&&q.rop!=0x5A&&brush&&!(b->dp32BrushFlags&COLORSOLID)&&(b->dp32BrushStyle==BS_HATCHED||(b->dp32BrushFlags&PATTERNMONO))) return VX2D_SKIP;
   if(pattern&&wBpp==8) {

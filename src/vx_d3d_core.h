@@ -10,6 +10,7 @@
 #define VX_D3D_RS_BLENDOP 171 /* v10.304: Direct3D 8's D3DRS_BLENDOP (1 ADD, 2 SUBTRACT, 3 REVSUBTRACT, 4 MIN, 5 MAX; 0 = ADD), set by the OpenGL ICD */
 #define VX_D3D_RS_BLENDFACTOR 193 /* v10.304: Direct3D 9's D3DRS_BLENDFACTOR (ARGB) for blend factors 14-17, set by the ICD */
 #define VX_D3D_RS_LOGICOP 255
+#define VX_D3D_RS_LEGACY_TB 254 /* .600: not a Direct3D state: 1 while stage 0's operations were last set by D3DRENDERSTATE_TEXTUREMAPBLEND (vx_d3d_core.c legacy_rs); kept in the state so the context's size is as recorded streams have it */
 #define VX_D3D_TSS_CARG0 26  /* v10.304: Direct3D 8's COLORARG0 / ALPHAARG0, for D3DTOP_LERP (26) on stage 0 (the ICD) */
 #define VX_D3D_TSS_AARG0 27
 #define VX_D3D_TSS_DOT3RGB 29 /* v10.317: the ICD's GL_DOT3_RGB: DOTPRODUCT3 (24) into colour only, alpha by the stage's ALPHAOP */
@@ -73,6 +74,7 @@ typedef struct vx_d3d_services {
 void vx_d3d_init(vx_d3d_context *,const vx3dn_surface *,const vx3dn_surface *,uint32_t);
 uint32_t vx_d3d_dp2(vx_d3d_context *,const vx_d3d_input *,const vx_d3d_services *,uint32_t *);
 /* .550: the queue held across DrawPrimitives2 calls (vx_d3d_core.c, cq_hold) */
+uint32_t vx_d3d_quad(const vx3dn_surface *,const vx3dn_rect *,const vx3dn_surface *,const float *,int,const vx_d3d_services *,uint32_t);extern uint32_t vx_d3d_quad_stat[3]; /* .628 */
 extern uint32_t vx_d3d_hold_on,vx_d3d_hold_stat[6];uint32_t vx_d3d_held(void);uint32_t vx_d3d_hold_send(const vx_d3d_services *);void vx_d3d_hold_drop(void);int vx_d3d_hold_is(const vx_d3d_context *);
 int vx_d3d_state_adopt(vx_d3d_context *,uint32_t id,uint32_t value); /* v10.428 */
 extern uint32_t vx_d3d_rs_synced;

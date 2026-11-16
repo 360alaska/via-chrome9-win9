@@ -986,6 +986,28 @@ class Contract(unittest.TestCase):
  def test_address_sets_both_coordinates(self):
   self.assertEqual(self.run_dp2(cmd(25,1,struct.pack('<HHI',0,12,2))),(0,0))
   self.assertEqual((self.context.state.tss[0][13],self.context.state.tss[0][14]),(2,2))
+ def test_legacy_texture_render_states_reach_stage_0(self):
+  # .600: the texture states of the interfaces before DirectX 6 are render states; each is written through to stage 0
+  t=self.context.state.tss[0]
+  self.assertEqual(self.run_dp2(rs((17,2),(18,2))),(0,0));self.assertEqual((t[16],t[17],t[18]),(2,2,1)) # TEXTUREMAG / TEXTUREMIN LINEAR
+  self.assertEqual(self.run_dp2(rs((17,1),(18,1))),(0,0));self.assertEqual((t[16],t[17],t[18]),(1,1,1)) # NEAREST
+  for v,want in ((3,(1,2)),(4,(2,2)),(5,(1,3)),(6,(2,3))):
+   self.assertEqual(self.run_dp2(rs((18,v))),(0,0));self.assertEqual((t[17],t[18]),want,v) # the four mip forms
+  self.assertEqual(self.run_dp2(rs((3,3))),(0,0));self.assertEqual((t[12],t[13],t[14]),(3,3,3)) # TEXTUREADDRESS CLAMP
+  self.assertEqual(self.run_dp2(rs((44,1),(45,2),(43,0x112233))),(0,0));self.assertEqual((t[13],t[14],t[15]),(1,2,0x112233))
+  # TEXTUREMAPBLEND: DECAL, COPY, DECALALPHA, MODULATEALPHA, ADD
+  for v,want in ((1,(2,2)),(7,(2,2)),(3,(13,3)),(4,(4,4)),(8,(7,3))):
+   self.assertEqual(self.run_dp2(rs((21,v))),(0,0));self.assertEqual((t[1],t[4]),want,v);self.assertEqual((t[2],t[3],t[5],t[6]),(2,1,2,1))
+  self.assertEqual(self.context.state.rs[254],1)
+  # MODULATE: the alpha is the texture's when its format has alpha, else the diffuse's; it follows the texture
+  self.assertEqual(self.run_dp2(rs((1,0),(21,2))),(0,0));self.assertEqual((t[1],t[4]),(4,3)) # no texture: the diffuse's
+  self.assertEqual(self.run_dp2(rs((1,5))),(0,0));self.assertEqual(t[4],2) # handle 5: ARGB8888: the texture's alpha
+  self.assertEqual(self.run_dp2(rs((1,6))),(0,0));self.assertEqual(t[4],3) # handle 6: RGB565: the diffuse's
+  self.assertEqual(self.run_dp2(cmd(25,1,struct.pack('<HHI',0,0,5))),(0,0));self.assertEqual(t[4],2) # the texture set as a stage state: followed too
+  # a stage state for stage 0's operations ends TEXTUREMAPBLEND's word
+  self.assertEqual(self.run_dp2(cmd(25,1,struct.pack('<HHI',0,4,2))),(0,0));self.assertEqual(self.context.state.rs[254],0)
+  self.assertEqual(self.run_dp2(rs((1,0))),(0,0));self.assertEqual(t[4],2) # a texture change no longer touches the alpha operation
+  seen=(C.c_uint32*8).in_dll(lib,'vx_d3d_rs_seen');self.assertTrue(seen[0]&(1<<17) and seen[0]&(1<<21) and seen[0]&(1<<3))
  def test_xp_programs_selected_and_emitted(self):
   # v10.172: DirectX 7's default stage (MODULATE texture x current, alpha = texture) -> XP's two-instruction program, 10-dword vertices
   t=self.context.state.tss[0];t[0]=5

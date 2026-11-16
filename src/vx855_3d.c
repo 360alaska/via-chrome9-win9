@@ -646,6 +646,7 @@ unsigned long VX3D_test(const vx3d_request *request,vx3d_report *r) {
    _PageFree((void*)sf_allocation,0); sf_allocation=0; r->sf_flags|=0x20000;
   }
  } else if(request->probe>=VX3D_TRANSPORT_FIRST) vx3d_run_transport(&io,r,arena_backup,queue_backup);
+ else if(request->probe==1&&request->lab_cmd==0x33574152UL) vx3d_run_raw(&io,r,arena_backup,request); /* .604: 'RAW3', the tool's own words after the fixed set-up (VX93D) */
  else if(request->probe<2) vx3d_run(&io,r,arena_backup);
  else vx3d_run_probe(&io,r,arena_backup);
 finish:

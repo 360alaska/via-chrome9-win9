@@ -391,10 +391,12 @@ uint32_t vx3dn_vprof[8],vx3dn_vprof_n;
 /* v10.221: how many idle status reads in a row count as idle (ACCEL_D3D_IDLE_READS, default 8; TEXDBG 0x80 + n sets n = 1..32) */
 uint32_t vx3dn_idle_stable=8; /* v10.222: 8 (board, VXDISCO v1.6: 32, 8, 4 and 2 drew the same frame; 8 saved 22% of the VxD's time) */
 extern void (*vx3dn_write_n)(const uint32_t *w,uint32_t n);
+void (*vx3dn_v900_wait)(void);
 static int idle(const vx3dn_io *io,uint32_t *last) {
  uint32_t n,start,stable=0,need=vx3dn_idle_stable<1?1:vx3dn_idle_stable;
  /* v10.238: under the VxD's fetch capture every read is 0 (idle): the waits between bursts are in the fetched stream's order, not here */
- if(vx3dn_write_n){*last=0;return 1;}
+ /* .614: on the VX900 the fetched stream gets CE's wait words after every burst (vx3dn_v900_wait, the VxD's: see cap_v900_wait) */
+ if(vx3dn_write_n){if(vx3dn_v900_wait&&vx3dn_stage>=3)vx3dn_v900_wait();*last=0;return 1;}
  start=io->milliseconds(io->context);
  for(n=0;n<1000000UL;n++) {
   *last=io->read(io->context,0x400);
@@ -432,6 +434,52 @@ volatile uint32_t vx3dn_shadow=1;uint32_t vx3dn_sh_ok,vx3dn_sh_stat[2];static ui
 #define REG1(io,r,v) do{uint32_t r1_=(uint32_t)(r),v1_=(uint32_t)(v)&0xFFFFFFUL;if(SH1(r1_)){if(vx3dn_sh_ok&&((sh_m[r1_>>5]>>(r1_&31))&1)&&sh_v[r1_]==v1_){vx3dn_sh_stat[1]++;break;}\
  sh_v[r1_]=v1_;sh_m[r1_>>5]|=1UL<<(r1_&31);}REGL(io,r1_,v1_);}while(0)
 void vx3dn_sh_forget(void) {uint32_t k;for(k=0;k<8;k++)sh_m[k]=0;}
+/* .605: the VX900's vertex input (Chrome9 HD; the supplement, 9.9-9.11). The chip takes no attribute-order words: each input of the vertex
+ * is described (04/01 + i = input register << 8 | format), 04/00 = A80000 | (inputs - 1) << 8 | words a vertex, 04/12 has a bit an input,
+ * 04/60-62 hold the input count, and a vertex program (selector 31030000, four words an instruction) moves the inputs to the outputs:
+ * 1 the screen position, 2 diffuse, 3 specular, 8 + n texture set n. The chip applies no clip-to-screen offset to these vertices
+ * (04/41-45 do nothing: VIA's drivers do the screen transform in the program), so the first instruction adds the 786432.0 itself:
+ * output 1 = input 0 x 1.0 + constant 0 (0008014C 00206490 0040014C 0004021F), constant 0 = (786432, 786432, 0, 0) by selector
+ * 32030000. The vertex words are then the VX855's, unchanged. c[] is the VX855's attribute list of the layout (0-3 X Y Z W, 5 diffuse,
+ * 6 specular, 8-0B / 0C-0F / 10-13 texture sets A / B / C); 04/25 and 04/28 take a bit an attribute at 23 - code, as there.
+ * Board (Gigabyte, VX93D v1.3-v1.6 on .604): 5, 7 and 8 words a vertex drew, with the offset by the program, with this file's whole
+ * state set-up and pixel program (01/01 = CE1540), depth, the list word 0 and the strip word 386300. Not yet on the board: two and
+ * three texture sets, three-part sets, and what the texture and specular outputs give the pixel stage. Only by register writes
+ * (vx3dn_fetch is 0 on this chip: the command fetcher's and the ring's rules there are not known). */
+uint32_t vx3dn_chip900,vx3dn_v900_stat,vx3dn_v900_ix[2]; /* ix (.627): packets drawn by index on the VX900, their vertices; stat: layouts written */
+static void v900_layout(const vx3dn_io *io,const uint32_t *c,uint32_t nc) {
+ uint32_t prog[4*8],np=0,desc[8],n=0,k=0,mask=0,j;
+ for(j=0;j<nc;j++)mask|=1UL<<(23-c[j]);
+ while(k<nc&&n<8) {
+  uint32_t a=c[k],len=1,in=0x00080000UL|(n<<14);
+  if(a<4) { /* the position: the run 0 1 2 3 */
+   while(k+len<nc&&c[k+len]<4)len++;
+   desc[n]=(n<<8)|0xC2UL;
+   prog[np++]=in|0x14CUL;prog[np++]=0x00206490UL;prog[np++]=0x0040014CUL;prog[np++]=0x0004021FUL;
+  } else if(a==5||a==6) { /* a D3DCOLOR; VIA's programs clamp the two colours (bit 14) */
+   desc[n]=(n<<8)|0xD1UL;
+   prog[np++]=in|0x14CUL;prog[np++]=0;prog[np++]=0;prog[np++]=0x0008420FUL|((a==5?2UL:3UL)<<4);
+  } else { /* a texture set: two or three floats */
+   uint32_t set=(a-8)>>2;
+   while(k+len<nc&&c[k+len]>=8&&((c[k+len]-8)>>2)==set)len++;
+   desc[n]=(n<<8)|(len>=3?0x82UL:0x42UL);
+   prog[np++]=in|(len>=3?0x148UL:0x124UL);prog[np++]=0;prog[np++]=0;prog[np++]=0x00080200UL|((8+set)<<4)|(len>=3?7UL:3UL);
+  }
+  k+=len;n++;
+ }
+ if(!n)return;
+ vx3dn_v900_stat++;
+ type(io,4);
+ REG(io,0x00,0xA80000UL|((n-1)<<8)|nc);
+ for(j=0;j<8;j++)REG(io,0x01+j,j<n?desc[j]:0);
+ REG(io,0x12,(1UL<<n)-1);REG(io,0x25,mask);REG(io,0x28,mask);
+ REG(io,0x60,0x800000UL|(n-1));REG(io,0x61,0x800000UL);REG(io,0x62,0x004000UL|((n-1)<<20)|(n-1));
+ wr(io,0x43C,0x32030000UL);DAT(io,0x49400000UL);DAT(io,0x49400000UL);DAT(io,0);DAT(io,0);
+ wr(io,0x43C,0x31030000UL);for(j=0;j<np;j++)DAT(io,prog[j]);
+}
+static const uint32_t v900_c5[5]={0,1,2,3,5},v900_c7[7]={0,1,2,3,5,8,9},v900_c9[9]={0,1,2,3,5,6,8,9,10},
+ v900_c10[10]={0,1,2,3,5,6,8,9,12,13},v900_c12[12]={0,1,2,3,5,6,8,9,12,13,16,17};
+#define V900L(c,n) do{if(vx3dn_chip900){LW_SAVE();v900_layout(io,c,n);LW_LOAD();}}while(0)
 static void setup(const vx3dn_packet *p,const vx3dn_io *io) {
  static const uint32_t fe[16]={0x000E1004UL,0x08000249UL,0x0A0002C9UL,0x0B0002FBUL,
   0x0C000000UL,0x0D0002CBUL,0x0E000009UL,0x10000049UL,0x110002FFUL,0x12000008UL,
@@ -532,6 +580,7 @@ static void setup(const vx3dn_packet *p,const vx3dn_io *io) {
  REGL(io,0x43,0x800000);REGL(io,0x44,0x400000);REGL(io,0x45,0x493F);
  REGL(io,0x46,0x800000);REGL(io,0x47,0);REGL(io,0x48,0x3F);
  if(!(vx3dn_cgroups&2)){REGL(io,0x50,0);REGL(io,0x51,0);REGL(io,0x52,0x147FFF);}
+ if(!textured(p)&&!xp_path(p))V900L(v900_c5,5); /* .605: the layout the draw ends with only (texture_setup's and xp_setup's follow) */
  /* No texturing. Invalidate/release the texture cache strobe. */
  WRL(io,0x43C,0xFE020000UL);
  /* Clear the documented shared texture/user-clip registers used by the
@@ -683,6 +732,7 @@ static void texture_setup(const vx3dn_packet *p,const vx3dn_io *io,int units_onl
  WRL(io,0x43C,0x20030000UL);DATL(io,0x01C00530UL);DATL(io,0x301C0053UL);DATL(io,0x00F20005UL);DATL(io,0x000D0820UL);
  {uint32_t sb;LW_SAVE();sb=stip_pre(io,p);LW_LOAD();TYPEL(io,1);REGL(io,0x01,0xCE1540UL|zbits(p)|sb);vx3dn_r01=1;}
  TYPEL(io,4);REGL(io,0x00,0xA80007UL);REGL(io,0x01,0x020100);REGL(io,0x02,0x080503);REGL(io,0x03,0x09);REGL(io,0x25,0xF4C000UL);REGL(io,0x28,0xFDC000UL);
+ if(!xp_path(p))V900L(v900_c7,7); /* .605 */
  LW_SAVE();
 }
 /* v10.172: XP's program path (section 16 of the cookbook). The program goes in with the pixel shader disabled, as texture_setup does;
@@ -755,16 +805,17 @@ static void xp_setup(const vx3dn_packet *p,const vx3dn_io *io) {
   for(k2=6;k2<nc;k2++)m|=1UL<<(23-c[k2]);
   TYPEL(io,4);REGL(io,0x00,0xA80000UL|nc);
   for(k2=0;k2<nc;k2+=3)REGL(io,1+k2/3,c[k2]|(k2+1<nc?c[k2+1]<<8:0)|(k2+2<nc?c[k2+2]<<16:0));
-  REGL(io,0x25,0xF60000UL|m);REGL(io,0x28,0xFF0000UL|m);REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);LW_SAVE();return;}
+  REGL(io,0x25,0xF60000UL|m);REGL(io,0x28,0xFF0000UL|m);REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);V900L(c,nc);LW_SAVE();return;}
  if(full(p)&&p->stages.layout){TYPEL(io,4);REGL(io,0x00,0xA80009UL);REGL(io,0x01,0x020100UL);REGL(io,0x02,0x060503UL);REGL(io,0x03,0x0A0908UL);REGL(io,0x04,0x00000DUL);
-  REGL(io,0x25,0xF6E000UL);REGL(io,0x28,0xFFE000UL);REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);LW_SAVE();return;} /* v10.208: T150/T151 */
+  REGL(io,0x25,0xF6E000UL);REGL(io,0x28,0xFFE000UL);REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);V900L(v900_c9,9);LW_SAVE();return;} /* v10.208: T150/T151 */
  if(c3_layout(p)){TYPEL(io,4);REGL(io,0x00,0xA8000CUL);REGL(io,0x01,0x020100UL);REGL(io,0x02,0x060503UL);REGL(io,0x03,0x0C0908UL);REGL(io,0x04,0x11100DUL);
-  REGL(io,0x25,0xF6CCC0UL);REGL(io,0x28,0xFFCCC0UL);REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);LW_SAVE();return;} /* v10.311; v10.312: the probe's */
+  REGL(io,0x25,0xF6CCC0UL);REGL(io,0x28,0xFFCCC0UL);REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);V900L(v900_c12,12);LW_SAVE();return;} /* v10.311; v10.312: the probe's */
  TYPEL(io,4);REGL(io,0x00,0xA8000AUL);REGL(io,0x01,0x020100UL);REGL(io,0x02,0x060503UL);REGL(io,0x03,0x0C0908UL);REGL(io,0x04,0x00000DUL);
  /* v10.209: 04/28 (HCM p160) says which vertex parameters the vertex carries; the rest take defaults. Bits 11:10 are coordinate set 1
   * (TextureB) S and T: with them clear, texture 1 on set 1 read (0, 0) (board, v10.208). XP sends FFCC00 for a unit on set 1 (CLXP3D T24). */
  {uint32_t n=units(p),u,b=0;if(full(p)&&n>1)for(u=0;u<n;u++)if(p->stages.set[u])b=0xC00UL;
  REGL(io,0x25,0xF6CC00UL);REGL(io,0x28,0xFFC000UL|b);}REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);
+ V900L(v900_c10,10); /* .605 */
  LW_SAVE();
 }
 /* v10.174: the wrap experiment (four quads). The mode's writes are the last ones on the draw, after texture setup:
@@ -863,6 +914,17 @@ uint32_t vx3dn_topo,vx3dn_strip_hw=1,vx3dn_strip_stat[3]; /* stat: strip runs, s
  * profile). */
 uint32_t (*vx3dn_varena)(uint32_t bytes);void (*vx3dn_vwrite)(uint32_t off,const uint32_t *w,uint32_t n);
 uint32_t vx3dn_va_base,vx3dn_va_bytes,vx3dn_ix_stat[6],vx3dn_ixp[8];
+/* .628: the seam cover (ACCEL_D3D_SEAM, a tuning value under test: 0 off, else x + 256 * y, each 0..255 sixteenths of a pixel: 513 = 1/16 right and 2/16 down, 4112 = one whole pixel each way). Maps built
+ * from pieces that share an edge but not its vertices (GTA3's) leave single pixels undrawn along the edge on every card: each piece's
+ * corners are rounded to the engine's 1/16-pixel grid by themselves, and a pixel centre can fall between the two rounded edges. SkyGFX's
+ * "seam fixer" for the same games redraws the finished frame moved by a pixel where nothing was drawn; a driver cannot know when a game's
+ * world is finished and its 2D begins, so here each index burst of an opaque packet (depth test and depth write on, no
+ * blending, no stencil) drawn from the vertex area is sent a second time with the screen offset moved by that many sixteenths: the gap
+ * moves with it, off the pixel centre it had left out, and the copy fills it (.631: the copy first and without depth write, under the
+ * surface and under everything drawn later). The offset: the VX855's 04/41 and 04/44 (the low 24 bits of the X and Y offsets, 786432.0 = 49400000: one in the last
+ * place is 1/16 pixel); the VX900's constant 0 (selector 32030000). Only index words are sent again (the vertices are in the area).
+ * vx3dn_seam_stat: [0] packets drawn twice, [1] indices sent again. */
+uint32_t vx3dn_seam,vx3dn_seam_stat[2];
 /* .555: the index bursts in the form XP's driver sends (s3ginv.dll, VX855: its indexed list at 0x11B030, the head at 0x118350, 04/20's
  * index bits built at 0xD8AA0), always: 04/20 = 1 and the indices 16 bits each, two a data word, the first in the low half (XP copies
  * the application's 16-bit indices as they are); one head for up to VX3DN_IX_LONG data words (XP: one 04/24 for the whole draw).
@@ -906,7 +968,7 @@ static void burst_head_x(const vx3dn_io *io,uint32_t topo,uint32_t mode,uint32_t
 uint32_t vx3dn_texrun_stat[2];
 static void tex_run(const vx3dn_packet *p,const vx3dn_io *io,const vx3dn_texrun *r) {
  vx3dn_packet *q=(vx3dn_packet*)p;vx3dn_surface s0=q->tex.surface;uint32_t f0=q->tex.filter,u0=q->tex.address_u,v0=q->tex.address_v;vx3dn_mip m0=q->mip;
- type(io,4);REG(io,0x20,0);REG(io,0x21,0);REG(io,0x22,0);REG(io,0x2C,0);vx3dn_topo=0xFFFFFFFFUL;
+ type(io,4);REG(io,0x20,0);if(!vx3dn_chip900){REG(io,0x21,0);REG(io,0x22,0);}REG(io,0x2C,0);vx3dn_topo=0xFFFFFFFFUL;
  q->tex.surface=r->surface;q->tex.filter=r->filter;q->tex.address_u=r->address_u;q->tex.address_v=r->address_v;q->mip=r->mip;
  tex_strobe(io);texture_setup(q,io,1);
  q->tex.surface=s0;q->tex.filter=f0;q->tex.address_u=u0;q->tex.address_v=v0;q->mip=m0;
@@ -981,25 +1043,54 @@ uint32_t vx3dn_execute(const vx3dn_packet *p,const vx3dn_io *io,uint32_t *last) 
   if(!f.xp||f.nw!=10||(mode!=0xCE02UL&&mode!=0x9E02UL))return VX3DN_BAD_HERE;
   vx3dn_geo[2]+=ni/3;vx3dn_ix_stat[3]+=ni;
   {const uint32_t ta=vx3dn_tsc?vx3dn_tsc():0;
-  off=va_get(bytes);
+  /* .627: the VX900 by index too. Board (VX93D INDEX v1.9 on .625): the vertex buffer's base (1 KB units, bits 31:10) and pitch in words
+   * (bits 8:0) are one table word for every vertex input, the words in a row under selector 30030000 (an input's own selector, + 1, + 4
+   * or + 8, drew the colour from the start of video memory); each input's descriptor takes its offset in the vertex, in words, at bits
+   * 19:12; 04/20 = 1 with two 16-bit indices a word; 04/2C the largest index; 04/21 and 04/22 are not this chip's and are not written.
+   * So: a KB more is asked of the vertex area and the slot rounded up to a KB; the 10-word layout's five descriptors get their
+   * offsets (the 8-word form: texture B's input reads A's u v, as the inline copy does), the table five words; after the draw the
+   * descriptors are written without offsets again, as v900_layout leaves them for vertices in the command. */
+  off=va_get(vx3dn_chip900?bytes+1023UL:bytes);
+  if(vx3dn_chip900&&off!=0xFFFFFFFFUL)off=(off+1023UL)&~1023UL;
   if(off!=0xFFFFFFFFUL) {
    uint32_t t0=vx3dn_tsc?vx3dn_tsc():0,tb2=0;
    const uint32_t vb=vs*4UL; /* .524: the stride, 32 bytes for the 8-word form (the .522 probe's E1-E3 forms removed) */
    if(vx3dn_vwrite)vx3dn_vwrite(off,p->pre.w,n*vs);else for(k=0;k<n*vs;k++)io->write_fb(io->context,off+k*4,p->pre.w[k]); /* .523: the HAL's words as they are */
-   if(vs==8&&vx3dn_lay8!=1){type(io,4);vx3dn_lay8=1;REG(io,0x00,0xA80008UL);REG(io,0x01,0x020100UL);REG(io,0x02,0x060503UL);REG(io,0x03,0x000908UL);REG(io,0x04,0);REG(io,0x25,0xF6C000UL);REG(io,0x28,0xFFC000UL);vx3dn_v8_lay++;}
+   if(vx3dn_chip900){uint32_t e=off|vs;type(io,4);REG(io,0x01,0x0000C2UL);REG(io,0x02,0x0041D1UL);REG(io,0x03,0x0052D1UL);REG(io,0x04,0x006342UL);REG(io,0x05,vs==8?0x006442UL:0x008442UL);
+    wr(io,0x43C,0x30030000UL);for(k=0;k<5;k++)DAT(io,e);vx3dn_v900_ix[0]++;vx3dn_v900_ix[1]+=n;}
+   else if(vs==8&&vx3dn_lay8!=1){type(io,4);vx3dn_lay8=1;REG(io,0x00,0xA80008UL);REG(io,0x01,0x020100UL);REG(io,0x02,0x060503UL);REG(io,0x03,0x000908UL);REG(io,0x04,0);REG(io,0x25,0xF6C000UL);REG(io,0x28,0xFFC000UL);vx3dn_v8_lay++;}
    if(vs==8)vx3dn_v8_pk++;
    if(vx3dn_tsc)vx3dn_ix_stat[5]+=(vx3dn_tsc()-t0+8)>>4;
    vx3dn_geo[0]+=n*vs;vx3dn_geo[1]+=n;vx3dn_ix_stat[2]+=n;
    if(vx3dn_tsc){tb2=vx3dn_tsc();vx3dn_ixp[4]+=(tb2-ta+128)>>8;}
    {uint32_t rk=0,rend=p->runs.n?p->runs.r[0].at:ni; /* .528: texture runs */
    if(p->runs.n)vx3dn_texrun_stat[0]++;
+   /* .631: the moved copy goes UNDER the surface: it is drawn first and writes no depth (01/01 with the depth-write bit, 4, clear), then the
+    * burst is drawn as always. So the surface itself is never changed by its copy, and whatever is drawn afterwards at that pixel, nearer
+    * or farther, replaces the copy: it stays only where nothing else comes, which is the gap. (.630 drew it second with a strict depth
+    * test and depth write: its one-pixel rim then stood in front of farther things drawn later.) Only for a depth test that orders
+    * (LESS, LESSEQUAL, GREATER, GREATEREQUAL) and without the polygon stipple (it is a bit of 01/01 too). */
+   {const uint32_t zf=p->z_func;
+    const uint32_t seam=(vx3dn_seam&&(zf==2||zf==4||zf==5||zf==7)&&p->z_enable&&p->z_write&&!p->blend&&!stenciled(p)&&!p->stipple.on)?vx3dn_seam:0,sx=seam&255UL,sy=(seam>>8)&255UL;if(seam)vx3dn_seam_stat[0]++;
    {const uint32_t cap=VX3DN_IX_LONG*2UL,r21=off&0xFFFFFFUL,r22=(vb<<8)|(off>>24); /* .555: the indices a burst; .522: vb the stride */
    for(v=0;v<ni;v+=s){const uint16_t *q;uint32_t nd,full2;
     if(v==rend){tex_run(p,io,&p->runs.r[rk]);rk++;rend=rk<p->runs.n?p->runs.r[rk].at:ni;}
     s=rend-v<cap?rend-v:cap;
-    type(io,4);REG(io,0x21,r21);REG(io,0x22,r22);REG(io,0x2C,n-1);REG(io,0x2D,0);REG(io,0x2E,0);
-    REG(io,0x20,1);REG(io,0x23,mode);REG(io,0x24,s);type(io,0);
+    type(io,4);if(!vx3dn_chip900){REG(io,0x21,r21);REG(io,0x22,r22);}REG(io,0x2C,n-1);REG(io,0x2D,0);REG(io,0x2E,0);
+    REG(io,0x20,1);
     q=ix+v;nd=(s+1)>>1;full2=s>>1; /* two indices a word; an odd burst's last word has a 0 above its index */
+    if(seam){ /* .631: the same indices first, moved by sx, sy sixteenths of a pixel, without depth write; then everything as it was */
+     type(io,1);REG(io,0x01,0xCE1548UL);
+     if(vx3dn_chip900){wr(io,0x43C,0x32030000UL);DAT(io,0x49400000UL+sx);DAT(io,0x49400000UL+sy);DAT(io,0);DAT(io,0);type(io,4);}
+     else{type(io,4);REG(io,0x41,0x400000UL+sx);REG(io,0x44,0x400000UL+sy);}
+     REG(io,0x23,mode);REG(io,0x24,s);type(io,0);
+     for(k=0;k<full2;k++)DAT(io,(uint32_t)q[2*k]|((uint32_t)q[2*k+1]<<16));if(s&1)DAT(io,q[s-1]);
+     if(vx3dn_chip900){wr(io,0x43C,0x32030000UL);DAT(io,0x49400000UL);DAT(io,0x49400000UL);DAT(io,0);DAT(io,0);}
+     else{type(io,4);REG(io,0x41,0x400000UL);REG(io,0x44,0x400000UL);}
+     type(io,1);REG(io,0x01,0xCE154CUL);
+     vx3dn_seam_stat[1]+=s;vx3dn_stage=3+v/VX3DN_BURST_MAX;if(!idle(io,last))return VX3DN_LOST;
+     type(io,4);}
+    REG(io,0x23,mode);REG(io,0x24,s);type(io,0);
     vx3dn_ix16_stat[0]++;vx3dn_ix16_stat[1]+=nd;vx3dn_ix16_stat[2]+=s;
     if(vx3dn_wform==3&&vx3dn_wp<vx3dn_wend&&(uint32_t)(vx3dn_wend-vx3dn_wp)>=nd){uint32_t *d=vx3dn_wp; /* .546: through a local pointer (Watcom
       * keeps globals in memory across stores through a pointer) */
@@ -1008,9 +1099,9 @@ uint32_t vx3dn_execute(const vx3dn_packet *p,const vx3dn_io *io,uint32_t *last) 
      if(s&1)d[full2]=q[s-1];
      vx3dn_wp=d+nd;}
     else{for(k=0;k<full2;k++)DAT(io,(uint32_t)q[2*k]|((uint32_t)q[2*k+1]<<16));if(s&1)DAT(io,q[s-1]);}
-    vx3dn_stage=3+v/VX3DN_BURST_MAX;if(!idle(io,last))return VX3DN_LOST;}}}
+    vx3dn_stage=3+v/VX3DN_BURST_MAX;if(!idle(io,last))return VX3DN_LOST;}}}}
    {uint32_t tc2=vx3dn_tsc?vx3dn_tsc():0;
-   type(io,4);REG(io,0x20,0);REG(io,0x21,0);REG(io,0x22,0);REG(io,0x2C,0);vx3dn_topo=0xFFFFFFFFUL; /* .523: vx3dn_lay8 says which layout the engine has */
+   type(io,4);REG(io,0x20,0);if(vx3dn_chip900){REG(io,0x01,0x0000C2UL);REG(io,0x02,0x0001D1UL);REG(io,0x03,0x0002D1UL);REG(io,0x04,0x000342UL);REG(io,0x05,0x000442UL);}else{REG(io,0x21,0);REG(io,0x22,0);}REG(io,0x2C,0);vx3dn_topo=0xFFFFFFFFUL; /* .523: vx3dn_lay8 says which layout the engine has */
    if(vx3dn_tsc){vx3dn_ixp[5]+=(tc2-tb2+128)>>8;vx3dn_ixp[6]+=(vx3dn_tsc()-tc2+128)>>8;vx3dn_ixp[7]++;}}
    vx3dn_ix_stat[0]++;
    return VX3DN_OK;

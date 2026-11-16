@@ -1,6 +1,6 @@
 {
   "scope": "Contract tests of compiled portable DP2 and native-emitter C, no GPU emulation.",
-  "tests": 97,
+  "tests": 98,
   "failures": 0,
   "errors": 0
 }

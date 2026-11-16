@@ -1082,6 +1082,196 @@ static int prim_draw(D3DPRIMITIVETYPE t,const float *xy,int n,DWORD c) {
 static int any_near(const int *xy,int n,DWORD want) {DWORD g[8];int k;if(!read_points(xy,g,n))return 0;for(k=0;k<n;k++)if(near_rgb(g[k],want))return 1;return 0;}
 static int one_point(int x,int y,DWORD *out) {int xy[2];xy[0]=x;xy[1]=y;return read_points(xy,out,1);}
 static int clear(DWORD flags,DWORD c,float z) {return note("   Clear",IDirect3DDevice7_Clear(dev,0,0,flags,c,z,0));}
+/* v2.90 (.622): --seam. Board, .619, GTA3: single light pixels and short lines that come and go where two textures meet, on the VX900
+ * all over the game, on the VX855 now and then; the same at 16 and 32 bits. One test for each cause suspected, every pixel read back:
+ *  1 a texture changed between two indexed draws of one scene (the HAL keeps one packet open across it: texture runs): eight stripes,
+ *    green and blue textures in turn, 40 frames at changing sub-pixel positions. A pixel of the other texture inside a stripe is the
+ *    texture switched under triangles still being drawn; a clear-colour pixel is a gap.
+ *  2 triangles that share their vertices, drawn additively: every pixel inside must be drawn exactly once (0 = a gap, twice = an
+ *    overlap). The engine's fill rule, at changing sub-pixel positions.
+ *  3 neighbours that share an edge but not its vertices (one long edge against fifteen short ones), the edge vertical: on an exact
+ *    rasterizer still once everywhere.
+ *  4 the same with the edge slanted: the short edges' ends are not exactly on the long edge, so a few gaps or overlaps are possible on
+ *    any rasterizer. Counted, not judged: the number to compare between the chips. */
+static int seam_lock(DDSURFACEDESC2 *s) {memset(s,0,sizeof(*s));s->dwSize=sizeof(*s);return SUCCEEDED(IDirectDrawSurface7_Lock(rt,0,s,DDLOCK_WAIT|DDLOCK_READONLY,0));}
+static LPDIRECTDRAWSURFACE7 seam_texture(DWORD c,const char *what) {
+ DDSURFACEDESC2 s;DWORD x,y;LPDIRECTDRAWSURFACE7 t=make_texture(32,32,0,DDSCAPS_VIDEOMEMORY,0,what);
+ if(!t)return 0;
+ memset(&s,0,sizeof(s));s.dwSize=sizeof(s);
+ if(FAILED(IDirectDrawSurface7_Lock(t,0,&s,DDLOCK_WAIT|DDLOCK_WRITEONLY,0))){IDirectDrawSurface7_Release(t);return 0;}
+ for(y=0;y<32;y++)for(x=0;x<32;x++)((DWORD*)((BYTE*)s.lpSurface+y*s.lPitch))[x]=c;
+ IDirectDrawSurface7_Unlock(t,0);return t;
+}
+static void seam_v(tl_vertex *v,float x,float y,DWORD c,float tu,float tv) {memset(v,0,sizeof(*v));v->x=x;v->y=y;v->z=0.5f;v->rhw=1;v->color=c;v->u=tu;v->v=tv;}
+static DWORD seam_runs(void) {DWORD in[2],o[8],gt=0;in[0]=0xBC;in[1]=0xF5;memset(o,0,sizeof(o));if(endpoint==INVALID_HANDLE_VALUE||!DeviceIoControl(endpoint,0x85500022UL,in,8,o,32,&gt,0))return 0;return o[3];}
+static int seam_once(DWORD p) {DWORD r=(p>>16)&255;return r>=0x30&&r<=0x58;}
+static void seam_add_state(int on) {
+ IDirect3DDevice7_SetRenderState(dev,D3DRENDERSTATE_ALPHABLENDENABLE,on?TRUE:FALSE);
+ IDirect3DDevice7_SetRenderState(dev,D3DRENDERSTATE_SRCBLEND,D3DBLEND_ONE);IDirect3DDevice7_SetRenderState(dev,D3DRENDERSTATE_DESTBLEND,on?D3DBLEND_ONE:D3DBLEND_ZERO);
+}
+static void seam_count(const DDSURFACEDESC2 *s,int x0,int x1,int y0,int y1,DWORD *gap,DWORD *twice,int frame,const char *what,int *shown) {
+ int x,y;
+ for(y=y0;y<y1;y++)for(x=x0;x<x1;x++){DWORD p=rgb(s,(DWORD)x,(DWORD)y),r=(p>>16)&255;
+  if(seam_once(p))continue;
+  if(r<0x30)(*gap)++;else (*twice)++;
+  if(*shown<6){fprintf(logfile,"      %s, frame %d: (%d,%d) = %06lX (%s)\n",what,frame,x,y,(unsigned long)p,r<0x30?"not drawn":"drawn twice");(*shown)++;}}
+}
+static void seam_tests(void) {
+ static tl_vertex v[512];static WORD ix[2048];LPDIRECTDRAWSURFACE7 tex[2]={0,0};DDSURFACEDESC2 s;
+ const DWORD col[2]={0x0000FF00UL,0x000000FFUL},back=0x00FF00FFUL;int f,k,j,shown;DWORD wrong=0,gap=0,other=0,edge_gap=0,edge_other=0,total=0;
+ fprintf(logfile,"== seam: stray pixels where textures or triangles meet (v2.91)\n");
+ IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_MAGFILTER,D3DTFG_LINEAR);IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_MINFILTER,D3DTFN_LINEAR);
+ IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_MIPFILTER,D3DTFP_NONE);
+ IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);
+ tex[0]=seam_texture(0xFF00FF00UL,"seam green");tex[1]=seam_texture(0xFF0000FFUL,"seam blue");
+ /* 1: eight stripes of 26 pixels, six quads each, the texture changed before every stripe */
+ if(tex[0]&&tex[1]) {
+  IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_COLORARG1,D3DTA_TEXTURE);
+  shown=0;
+  {DWORD runs0=seam_runs();
+  for(f=0;f<40;f++) {
+   float ox=20.0f+f*0.173f,oy=12.0f+f*0.091f;int nv=0,ni=0;
+   IDirect3DDevice7_Clear(dev,0,0,D3DCLEAR_TARGET,0xFF000000UL|back,1.0f,0);
+   if(FAILED(IDirect3DDevice7_BeginScene(dev))){check("   seam 1: BeginScene",0);break;}
+   for(k=0;k<8;k++) {
+    nv=0;ni=0;
+    for(j=0;j<=6;j++){seam_v(&v[nv++],ox+k*26.0f,oy+j*27.0f,0xFFFFFFFFUL,0,j*0.75f);seam_v(&v[nv++],ox+(k+1)*26.0f,oy+j*27.0f,0xFFFFFFFFUL,2.5f,j*0.75f);}
+    for(j=0;j<6;j++){WORD a=(WORD)(j*2);ix[ni++]=a;ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+2);ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+3);ix[ni++]=(WORD)(a+2);}
+    IDirect3DDevice7_SetTexture(dev,0,tex[k&1]);
+    IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,v,nv,ix,ni,0);
+   }
+   IDirect3DDevice7_EndScene(dev);
+   if(!seam_lock(&s)){check("   seam 1: Lock",0);break;}
+   {int x,y,y0=(int)(oy+2.0f),y1=(int)(oy+6*27.0f-2.0f);
+    for(y=y0;y<y1;y++)for(x=(int)(ox+2.0f);x<(int)(ox+8*26.0f-2.0f);x++){
+     float rel=((float)x+0.5f-ox)/26.0f;int st=(int)rel;float fr=(rel-(float)st)*26.0f;int edge=fr<1.5f||fr>24.5f;DWORD p=rgb(&s,(DWORD)x,(DWORD)y);int bad=0;const char *why="";
+     total++;
+     if(edge){if(near_rgb(p,col[0])||near_rgb(p,col[1]))continue;if(near_rgb(p,back)){edge_gap++;why="a gap on a stripe's edge";}else{edge_other++;why="another colour on a stripe's edge";}bad=1;}
+     else if(near_rgb(p,col[st&1]))continue;
+     else if(near_rgb(p,col[(st+1)&1])){wrong++;why="the other texture";bad=1;}
+     else if(near_rgb(p,back)){gap++;why="not drawn";bad=1;}
+     else{other++;why="another colour";bad=1;}
+     if(bad&&shown<8){fprintf(logfile,"      frame %d: (%d,%d) = %06lX in stripe %d: %s\n",f,x,y,(unsigned long)p,st,why);shown++;}}}
+   IDirectDrawSurface7_Unlock(rt,0);
+  }
+  IDirect3DDevice7_SetTexture(dev,0,0);
+  fprintf(logfile,"   1 the driver changed texture inside an open packet %lu time(s) in this test (0: each change began a new packet: ACCEL_D3D_TEXRUNS 0, or the path was not taken)\n",(unsigned long)(seam_runs()-runs0));}
+  fprintf(logfile,"   1 texture changed between draws: %lu pixels read in 40 frames; inside a stripe: %lu of the other texture, %lu not drawn, %lu another colour; on the stripes' edges: %lu not drawn, %lu another colour\n",
+   (unsigned long)total,(unsigned long)wrong,(unsigned long)gap,(unsigned long)other,(unsigned long)edge_gap,(unsigned long)edge_other);
+  check("   1 no pixel of the other texture inside a stripe",wrong==0);
+  check("   1 no pixel left undrawn or in another colour",gap==0&&other==0&&edge_gap==0&&edge_other==0);
+ } else check("   seam textures created",0);
+ if(tex[0])IDirectDrawSurface7_Release(tex[0]);if(tex[1])IDirectDrawSurface7_Release(tex[1]);
+ IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);IDirect3DDevice7_SetTextureStageState(dev,0,D3DTSS_COLORARG1,D3DTA_DIFFUSE);
+ seam_add_state(1);
+ /* 2: a 12 x 9 grid of quads, the inner vertices moved about, every vertex shared */
+ {DWORD g2=0,t2=0;unsigned long seed=12345;shown=0;
+  for(f=0;f<30;f++) {
+   int nv=0,ni=0,i;
+   for(j=0;j<=9;j++)for(i=0;i<=12;i++){float jx=0,jy=0;
+    if(i>0&&i<12&&j>0&&j<9){seed=seed*1103515245UL+12345UL;jx=(float)((seed>>16)&1023)/1023.0f*10.0f-5.0f;seed=seed*1103515245UL+12345UL;jy=(float)((seed>>16)&1023)/1023.0f*10.0f-5.0f;}
+    seam_v(&v[nv++],20.3f+f*0.21f+i*18.0f+jx,10.7f+f*0.13f+j*18.0f+jy,0xFF404040UL,0,0);}
+   for(j=0;j<9;j++)for(i=0;i<12;i++){WORD a=(WORD)(j*13+i);ix[ni++]=a;ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+13);ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+14);ix[ni++]=(WORD)(a+13);}
+   IDirect3DDevice7_Clear(dev,0,0,D3DCLEAR_TARGET,0xFF000000UL,1.0f,0);
+   if(FAILED(IDirect3DDevice7_BeginScene(dev)))break;
+   IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,v,nv,ix,ni,0);IDirect3DDevice7_EndScene(dev);
+   if(!seam_lock(&s))break;
+   seam_count(&s,34,226,24,168,&g2,&t2,f,"2",&shown);IDirectDrawSurface7_Unlock(rt,0);
+  }
+  fprintf(logfile,"   2 shared vertices, 30 frames: %lu pixels not drawn, %lu drawn twice\n",(unsigned long)g2,(unsigned long)t2);
+  check("   2 every pixel inside a mesh of shared vertices drawn exactly once",g2==0&&t2==0);}
+ /* 3 and 4: one quad with a long right edge, fifteen quads against it whose corners lie on that edge */
+ for(k=0;k<2;k++) {
+  DWORD g3=0,t3=0;float lean=k?20.0f:0.0f;shown=0;
+  for(f=0;f<30;f++) {
+   float ox=f*0.19f,oy=f*0.11f,xt=120.4f+ox-lean*0.5f,xb=120.4f+ox+lean*0.5f,y0=20.3f+oy,y1=170.3f+oy;int nv=0,ni=0;
+   seam_v(&v[nv++],30.0f+ox,y0,0xFF404040UL,0,0);seam_v(&v[nv++],xt,y0,0xFF404040UL,0,0);seam_v(&v[nv++],30.0f+ox,y1,0xFF404040UL,0,0);seam_v(&v[nv++],xb,y1,0xFF404040UL,0,0);
+   ix[ni++]=0;ix[ni++]=1;ix[ni++]=2;ix[ni++]=1;ix[ni++]=3;ix[ni++]=2;
+   for(j=0;j<=15;j++){float t=(float)j/15.0f;seam_v(&v[nv++],xt+(xb-xt)*t,y0+(y1-y0)*t,0xFF404040UL,0,0);seam_v(&v[nv++],220.0f+ox,y0+(y1-y0)*t,0xFF404040UL,0,0);}
+   for(j=0;j<15;j++){WORD a=(WORD)(4+j*2);ix[ni++]=a;ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+2);ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+3);ix[ni++]=(WORD)(a+2);}
+   IDirect3DDevice7_Clear(dev,0,0,D3DCLEAR_TARGET,0xFF000000UL,1.0f,0);
+   if(FAILED(IDirect3DDevice7_BeginScene(dev)))break;
+   IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,v,nv,ix,ni,0);IDirect3DDevice7_EndScene(dev);
+   if(!seam_lock(&s))break;
+   seam_count(&s,40,214,(int)(y0+2.0f),(int)(y1-2.0f),&g3,&t3,f,k?"4":"3",&shown);IDirectDrawSurface7_Unlock(rt,0);
+  }
+  fprintf(logfile,"   %d a long edge against fifteen short ones, the edge %s, 30 frames: %lu pixels not drawn, %lu drawn twice%s\n",3+k,k?"slanted":"vertical",(unsigned long)g3,(unsigned long)t3,k?" (counted, not judged)":"");
+  if(!k)check("   3 a vertical edge shared without its vertices: every pixel drawn exactly once",g3==0&&t3==0);
+ }
+ /* 5 (v2.91, .623): the same corners sent by different kinds of draw. Board, .622: the dots sit at corners (the corner of a garage door),
+  * and a build before the VX900's 3D work (.602) does not show them. Two halves meet along a crooked line of 16 corners; each corner
+  * has the same x, y, z and rhw words in both halves. The left half is always one indexed list; the right half is drawn as fans, as a
+  * strip, as a plain list, and as an indexed list out of a large, thinly used vertex array. If the driver turns the same corner into
+  * different positions on different paths, pixels at the corners and along the line are missed or drawn twice. */
+ seam_add_state(1);
+ {static const char *how[4]={"fans","one strip","a plain list","an indexed list from a thinly used array"};static tl_vertex e[16],r[16],big[512];int m;
+  for(m=0;m<4;m++) {
+   DWORD g5=0,t5=0;unsigned long seed=777;shown=0;
+   for(f=0;f<30;f++) {
+    float ox=f*0.17f,oy=f*0.07f;int nv=0,ni=0;
+    for(j=0;j<16;j++){float jx;seed=seed*1103515245UL+12345UL;jx=(float)((seed>>16)&1023)/1023.0f*12.0f-6.0f;
+     seam_v(&e[j],128.3f+ox+jx,20.2f+oy+j*10.0f,0xFF404040UL,0,0);e[j].rhw=0.25f+0.05f*(float)((j*7)%13);e[j].z=0.1f+0.05f*(float)(j%9);
+     seam_v(&r[j],226.0f+ox,20.2f+oy+j*10.0f,0xFF404040UL,0,0);r[j].rhw=0.9f-0.04f*(float)(j%11);r[j].z=0.3f;}
+    for(j=0;j<16;j++){seam_v(&v[nv],30.0f+ox,20.2f+oy+j*10.0f,0xFF404040UL,0,0);v[nv].rhw=0.5f+0.03f*(float)(j%7);nv++;v[nv++]=e[j];}
+    for(j=0;j<15;j++){WORD a=(WORD)(j*2);ix[ni++]=a;ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+2);ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+3);ix[ni++]=(WORD)(a+2);}
+    IDirect3DDevice7_Clear(dev,0,0,D3DCLEAR_TARGET,0xFF000000UL,1.0f,0);
+    if(FAILED(IDirect3DDevice7_BeginScene(dev)))break;
+    IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,v,nv,ix,ni,0);
+    if(m==0)for(j=0;j<15;j++){tl_vertex q[4];q[0]=e[j];q[1]=r[j];q[2]=r[j+1];q[3]=e[j+1];IDirect3DDevice7_DrawPrimitive(dev,D3DPT_TRIANGLEFAN,D3DFVF_TLVERTEX,q,4,0);}
+    else if(m==1){static tl_vertex q[32];for(j=0;j<16;j++){q[j*2]=e[j];q[j*2+1]=r[j];}IDirect3DDevice7_DrawPrimitive(dev,D3DPT_TRIANGLESTRIP,D3DFVF_TLVERTEX,q,32,0);}
+    else if(m==2){static tl_vertex q[90];int n=0;for(j=0;j<15;j++){q[n++]=e[j];q[n++]=r[j];q[n++]=e[j+1];q[n++]=r[j];q[n++]=r[j+1];q[n++]=e[j+1];}IDirect3DDevice7_DrawPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,q,(DWORD)n,0);}
+    else{static WORD bi[96];int n=0;memset(big,0,sizeof(big));for(j=0;j<512;j++){big[j].rhw=1;}
+     for(j=0;j<16;j++){big[j*31]=e[j];big[j*31+13]=r[j];}
+     for(j=0;j<15;j++){WORD a=(WORD)(j*31),b=(WORD)(j*31+13),c=(WORD)((j+1)*31),d=(WORD)((j+1)*31+13);bi[n++]=a;bi[n++]=b;bi[n++]=c;bi[n++]=b;bi[n++]=d;bi[n++]=c;}
+     IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,big,512,bi,(DWORD)n,0);}
+    IDirect3DDevice7_EndScene(dev);
+    if(!seam_lock(&s))break;
+    seam_count(&s,40,216,(int)(20.2f+oy+2.0f),(int)(20.2f+oy+148.0f),&g5,&t5,f,"5",&shown);IDirectDrawSurface7_Unlock(rt,0);
+   }
+   fprintf(logfile,"   5 the same corners in an indexed list and in %s, 30 frames: %lu pixels not drawn, %lu drawn twice\n",how[m],(unsigned long)g5,(unsigned long)t5);
+   {char line[160];sprintf(line,"   5 an indexed list against %s: every pixel drawn exactly once",how[m]);check(line,g5==0&&t5==0);}
+  }}
+ seam_add_state(0);fflush(logfile);
+}
+/* v2.94 (.628): part 6 of --seam, the seam cover (ACCEL_D3D_SEAM). Part 4's picture (a long slanted edge against fifteen short ones that
+ * share it without its vertices) drawn as GTA3 draws its map: an indexed list, opaque, depth test and depth write on. With the value 0
+ * the pixels left undrawn are counted as part 4 counts them; with it set (SEAMON.BAT: 513 = 1/16 pixel right, 2/16 down; SEAM1PX.BAT: 4112 = one pixel each way) the driver sends
+ * each burst a second time moved by that much, and the count should fall to nothing. The VxD's own counters say whether it did. */
+static void seam_cover_test(void) {
+ static tl_vertex v[40];static WORD ix[100];DDSURFACEDESC2 s;DWORD in[2],o0[8],o1[8],gt=0,gaps=0,frames=0;int f,j,x,y;HDC dc=GetDC(0);int bpp=GetDeviceCaps(dc,BITSPIXEL);ReleaseDC(0,dc);
+ fprintf(logfile,"== seam, part 6 (v2.96): the seam cover\n");
+ drop_device();if(!setup_z(bpp==16?2:1)){check("   6 a device with a depth buffer",0);return;}
+ rs_set(D3DRENDERSTATE_ZENABLE,TRUE);rs_set(D3DRENDERSTATE_ZWRITEENABLE,TRUE);rs_set(D3DRENDERSTATE_ZFUNC,D3DCMP_LESSEQUAL);rs_set(D3DRENDERSTATE_ALPHABLENDENABLE,FALSE);
+ /* v2.95: textured, as GTA3's map is (board, v2.94 on .629: untextured, the draw did not go by index from the vertex area and the cover
+  * never ran: 0 packets drawn twice with the value set). The texture's four quadrants are red, green, blue and white: no black. */
+ {LPDIRECTDRAWSURFACE7 st=make_texture(32,32,0,DDSCAPS_VIDEOMEMORY,0,"seam cover");
+  if(!st){check("   6 the texture",0);return;}
+  IDirect3DDevice7_SetTexture(dev,0,st);ts(D3DTSS_COLOROP,D3DTOP_SELECTARG1);ts(D3DTSS_COLORARG1,D3DTA_TEXTURE);ts(D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);ts(D3DTSS_ALPHAARG1,D3DTA_TEXTURE);
+  ts(D3DTSS_MAGFILTER,D3DTFG_POINT);ts(D3DTSS_MINFILTER,D3DTFN_POINT);IDirectDrawSurface7_Release(st);}
+ memset(o0,0,sizeof(o0));memset(o1,0,sizeof(o1));in[0]=0xBC;in[1]=0x445;
+ if(endpoint!=INVALID_HANDLE_VALUE)DeviceIoControl(endpoint,0x85500022UL,in,8,o0,32,&gt,0);
+ /* v2.96: the scan begins at x 44, not 40. The shape's left edge is at 30 + 0.19 f, past 40 from frame 53 on, and v2.95 counted the
+  * columns left of it (board, .631 VX855: 1168 = 8 columns of 146 rows, all at x 40 and 41; the cover off counted 1251, the seam's own 83 more). */
+ for(f=0;f<60;f++) {
+  float ox=f*0.19f,oy=f*0.11f,lean=20.0f+(float)(f%7)*3.0f,xt=120.4f+ox-lean*0.5f,xb=120.4f+ox+lean*0.5f,y0=20.3f+oy,y1=170.3f+oy;int nv=0,ni=0;
+  seam_v(&v[nv++],30.0f+ox,y0,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],xt,y0,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],30.0f+ox,y1,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],xb,y1,0xFFFFFFFFUL,0.3f,0.3f);
+  ix[ni++]=0;ix[ni++]=1;ix[ni++]=2;ix[ni++]=1;ix[ni++]=3;ix[ni++]=2;
+  for(j=0;j<=15;j++){float t=(float)j/15.0f;seam_v(&v[nv++],xt+(xb-xt)*t,y0+(y1-y0)*t,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],220.0f+ox,y0+(y1-y0)*t,0xFFFFFFFFUL,0.3f,0.3f);}
+  for(j=0;j<15;j++){WORD a=(WORD)(4+j*2);ix[ni++]=a;ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+2);ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+3);ix[ni++]=(WORD)(a+2);}
+  IDirect3DDevice7_Clear(dev,0,0,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0xFF000000UL,1.0f,0);
+  if(FAILED(IDirect3DDevice7_BeginScene(dev)))break;
+  IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,v,nv,ix,ni,0);IDirect3DDevice7_EndScene(dev);
+  if(!seam_lock(&s))break;
+  for(y=(int)(y0+2.0f);y<(int)(y1-2.0f);y++)for(x=44;x<214;x++)if(!(rgb(&s,(DWORD)x,(DWORD)y)&0xFFFFFFUL)){gaps++;if(gaps<=6)fprintf(logfile,"      6, frame %d: (%d,%d) not drawn\n",f,x,y);}
+  IDirectDrawSurface7_Unlock(rt,0);frames++;
+ }
+ if(endpoint!=INVALID_HANDLE_VALUE)DeviceIoControl(endpoint,0x85500022UL,in,8,o1,32,&gt,0);
+ fprintf(logfile,"   6 ACCEL_D3D_SEAM is %lu (0 = off; x + 256 * y sixteenths of a pixel); the driver drew %lu packet(s) twice in this part (%lu indices sent again)\n",(unsigned long)o1[2],(unsigned long)(o1[3]-o0[3]),(unsigned long)(o1[4]-o0[4]));
+ fprintf(logfile,"   6 a long slanted edge against fifteen short ones, opaque with depth, %lu frames: %lu pixels not drawn\n",(unsigned long)frames,(unsigned long)gaps);
+ if(o1[2])check("   6 with the seam cover on, no pixel is left undrawn",frames==60&&gaps==0&&o1[3]!=o0[3]);
+ else fprintf(logfile,"   6 (the cover is off: the count above is the game's own gaps on this chip; run SEAMON.BAT, restart and run this again)\n");
+ fflush(logfile);
+}
 static void raster_tests(void) {
  static const DWORD fsrc[]={D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLEND_ONE,D3DBLEND_SRCCOLOR,D3DBLEND_INVSRCCOLOR,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,
   D3DBLEND_DESTALPHA,D3DBLEND_INVDESTALPHA,D3DBLEND_DESTCOLOR,D3DBLEND_INVDESTCOLOR,D3DBLEND_SRCALPHASAT,D3DBLEND_BOTHSRCALPHA,D3DBLEND_BOTHINVSRCALPHA,
@@ -1962,6 +2152,170 @@ static void modes_test(int sys) {
  cnote("   SetCooperativeLevel(NORMAL)",IDirectDraw_SetCooperativeLevel(r.d1,window,DDSCL_NORMAL));
  IDirectDraw_Release(r.d1);commit();commit_lines=0;
 }
+/* v2.92 (.627): VXDX7 --ss, the supersampling test. Nothing in the driver is changed by it: it measures what a scene costs when it is
+ * drawn at 1280 x 960 instead of 640 x 480 (a hidden colour target with its own depth buffer), and what shrinking the big picture to
+ * 640 x 480 costs and looks like, by the two ways there are: a stretching Blt, and a quad textured with the big target (bilinear).
+ * The scene: clear, four whole-target textured layers back to front (each drawn), two behind them (depth test fails), 300 small
+ * shaded triangles; the same vertices at both sizes, so the difference between the two times is the pixels. Pictures: SS640.BMP (drawn
+ * at 640 x 480), SSBLT.BMP (drawn big, shrunk by the Blt), SSTEX.BMP (drawn big into a texture target, shrunk by the quad). */
+static double ss_ms(void) {LARGE_INTEGER c,f;QueryPerformanceCounter(&c);QueryPerformanceFrequency(&f);return (double)c.QuadPart*1000.0/(double)f.QuadPart;}
+static LPDIRECTDRAWSURFACE7 ss_surface(DWORD w,DWORD h,DWORD caps,const char *what) {
+ DDSURFACEDESC2 s;LPDIRECTDRAWSURFACE7 p=0;HRESULT hr;
+ memset(&s,0,sizeof(s));s.dwSize=sizeof(s);s.dwFlags=DDSD_CAPS|DDSD_WIDTH|DDSD_HEIGHT;s.dwWidth=w;s.dwHeight=h;s.ddsCaps.dwCaps=caps|DDSCAPS_VIDEOMEMORY;
+ hr=IDirectDraw7_CreateSurface(dd,&s,&p,0);
+ fprintf(logfile,"   CreateSurface(%s, %lu x %lu, caps %08lX) = %08lX\n",what,(unsigned long)w,(unsigned long)h,(unsigned long)(caps|DDSCAPS_VIDEOMEMORY),(unsigned long)hr);fflush(logfile);
+ return SUCCEEDED(hr)?p:0;
+}
+static LPDIRECTDRAWSURFACE7 ss_zbuf(LPDIRECTDRAWSURFACE7 t,DWORD w,DWORD h,int bits) {
+ DDSURFACEDESC2 s;LPDIRECTDRAWSURFACE7 z=0;HRESULT hr;
+ memset(&s,0,sizeof(s));s.dwSize=sizeof(s);s.dwFlags=DDSD_CAPS|DDSD_WIDTH|DDSD_HEIGHT|DDSD_PIXELFORMAT;s.dwWidth=w;s.dwHeight=h;
+ s.ddsCaps.dwCaps=DDSCAPS_ZBUFFER|DDSCAPS_VIDEOMEMORY;s.ddpfPixelFormat.dwSize=sizeof(DDPIXELFORMAT);s.ddpfPixelFormat.dwFlags=DDPF_ZBUFFER;
+ s.ddpfPixelFormat.dwZBufferBitDepth=(DWORD)bits;s.ddpfPixelFormat.dwZBitMask=bits==16?0xFFFFUL:0xFFFFFFFFUL;
+ hr=IDirectDraw7_CreateSurface(dd,&s,&z,0);
+ fprintf(logfile,"   CreateSurface(depth %d bits, %lu x %lu) = %08lX\n",bits,(unsigned long)w,(unsigned long)h,(unsigned long)hr);
+ if(FAILED(hr))return 0;
+ hr=IDirectDrawSurface7_AddAttachedSurface(t,z);fprintf(logfile,"   AddAttachedSurface(depth) = %08lX\n",(unsigned long)hr);fflush(logfile);
+ if(FAILED(hr)){IDirectDrawSurface7_Release(z);return 0;}
+ return z;
+}
+static void ss_quad(tl_vertex *v,float x0,float y0,float x1,float y1,float z,DWORD c,float u1,float v1) {
+ memset(v,0,sizeof(tl_vertex)*6);
+ v[0].x=x0;v[0].y=y0; v[1].x=x1;v[1].y=y0;v[1].u=u1; v[2].x=x0;v[2].y=y1;v[2].v=v1;
+ v[3]=v[1]; v[4].x=x1;v[4].y=y1;v[4].u=u1;v[4].v=v1; v[5]=v[2];
+ {int k;for(k=0;k<6;k++){v[k].z=z;v[k].rhw=1;v[k].color=c;}}
+}
+static int ss_device(LPDIRECTDRAWSURFACE7 t,DWORD w,DWORD h,IDirect3DDevice7 **out) {
+ D3DVIEWPORT7 vp;HRESULT hr=IDirect3D7_CreateDevice(d3d,&IID_IDirect3DHALDevice,t,out);
+ fprintf(logfile,"   CreateDevice(HAL, %lu x %lu target) = %08lX\n",(unsigned long)w,(unsigned long)h,(unsigned long)hr);fflush(logfile);
+ if(FAILED(hr)){*out=0;return 0;}
+ memset(&vp,0,sizeof(vp));vp.dwWidth=w;vp.dwHeight=h;vp.dvMaxZ=1;IDirect3DDevice7_SetViewport(*out,&vp);
+ IDirect3DDevice7_SetRenderState(*out,D3DRENDERSTATE_LIGHTING,FALSE);IDirect3DDevice7_SetRenderState(*out,D3DRENDERSTATE_CULLMODE,D3DCULL_NONE);
+ IDirect3DDevice7_SetRenderState(*out,D3DRENDERSTATE_CLIPPING,FALSE);
+ return 1;
+}
+static int ss_frame(IDirect3DDevice7 *d,LPDIRECTDRAWSURFACE7 tex,DWORD w,DWORD h,int frame) {
+ static tl_vertex q[6],tri[900];static const float lz[6]={.90F,.70F,.50F,.30F,.95F,.96F};static const DWORD lc[6]={0xFFFFFFFFUL,0xFFC0FFC0UL,0xFFFFC0C0UL,0xFFC0C0FFUL,0xFF00FF00UL,0xFFFF00FFUL};
+ float sx=(float)w/640.0F,sy=(float)h/480.0F;int k;HRESULT hr;
+ if(FAILED(IDirect3DDevice7_Clear(d,0,0,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0xFF102040UL,1,0)))return 0;
+ if(FAILED(IDirect3DDevice7_BeginScene(d)))return 0;
+ IDirect3DDevice7_SetRenderState(d,D3DRENDERSTATE_ZENABLE,TRUE);IDirect3DDevice7_SetRenderState(d,D3DRENDERSTATE_ZWRITEENABLE,TRUE);IDirect3DDevice7_SetRenderState(d,D3DRENDERSTATE_ZFUNC,D3DCMP_LESSEQUAL);
+ IDirect3DDevice7_SetTexture(d,0,tex);
+ IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_COLOROP,D3DTOP_MODULATE);IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_COLORARG1,D3DTA_TEXTURE);IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_COLORARG2,D3DTA_DIFFUSE);
+ IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_MAGFILTER,D3DTFG_LINEAR);IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_MINFILTER,D3DTFN_LINEAR);
+ hr=0;
+ for(k=0;k<6;k++){float in=(float)(k<4?k:0)*20.0F; /* each layer a little smaller, so every one shows in the picture */
+  ss_quad(q,in*sx,in*sy,(640.0F-in)*sx,(480.0F-in)*sy,lz[k],lc[k],4.0F,3.0F);hr|=IDirect3DDevice7_DrawPrimitive(d,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,q,6,0);}
+ IDirect3DDevice7_SetTexture(d,0,0);IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_COLOROP,D3DTOP_SELECTARG2);
+ for(k=0;k<300;k++){float x=(float)(20+(k%20)*30+(frame%8)),y=(float)(20+(k/20)*29),z=.2F;tl_vertex *t=tri+3*k;memset(t,0,sizeof(tl_vertex)*3);
+  t[0].x=x*sx;t[0].y=y*sy;t[1].x=(x+24)*sx;t[1].y=(y+3)*sy;t[2].x=(x+5)*sx;t[2].y=(y+24)*sy;
+  t[0].z=t[1].z=t[2].z=z;t[0].rhw=t[1].rhw=t[2].rhw=1;t[0].color=0xFFFF0000UL;t[1].color=0xFF00FF00UL;t[2].color=0xFF0000FFUL;}
+ hr|=IDirect3DDevice7_DrawPrimitive(d,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,tri,900,0);
+ IDirect3DDevice7_EndScene(d);
+ return SUCCEEDED(hr);
+}
+static int ss_wait(LPDIRECTDRAWSURFACE7 t,DWORD x,DWORD y,DWORD *px) { /* a Lock: the engine has finished everything sent */
+ DDSURFACEDESC2 s;memset(&s,0,sizeof(s));s.dwSize=sizeof(s);
+ if(FAILED(IDirectDrawSurface7_Lock(t,0,&s,DDLOCK_WAIT|DDLOCK_READONLY,0)))return 0;
+ if(px)*px=rgb(&s,x,y);IDirectDrawSurface7_Unlock(t,0);return 1;
+}
+static void ss_bmp(LPDIRECTDRAWSURFACE7 t,const char *name) { /* a 640 x 480 surface as a 24-bit picture */
+ DDSURFACEDESC2 s;FILE *f;BITMAPFILEHEADER fh;BITMAPINFOHEADER ih;static BYTE row[640*3];int x,y;
+ memset(&s,0,sizeof(s));s.dwSize=sizeof(s);
+ if(FAILED(IDirectDrawSurface7_Lock(t,0,&s,DDLOCK_WAIT|DDLOCK_READONLY,0))){fprintf(logfile,"   %s: the surface could not be locked\n",name);return;}
+ f=fopen(name,"wb");
+ if(f){memset(&fh,0,sizeof(fh));memset(&ih,0,sizeof(ih));fh.bfType=0x4D42;fh.bfOffBits=sizeof(fh)+sizeof(ih);fh.bfSize=fh.bfOffBits+640UL*480UL*3UL;
+  ih.biSize=sizeof(ih);ih.biWidth=640;ih.biHeight=480;ih.biPlanes=1;ih.biBitCount=24;fwrite(&fh,sizeof(fh),1,f);fwrite(&ih,sizeof(ih),1,f);
+  for(y=479;y>=0;y--){for(x=0;x<640;x++){DWORD c=rgb(&s,(DWORD)x,(DWORD)y);row[x*3]=(BYTE)c;row[x*3+1]=(BYTE)(c>>8);row[x*3+2]=(BYTE)(c>>16);}fwrite(row,1,sizeof(row),f);}
+  fclose(f);fprintf(logfile,"   %s written\n",name);}
+ IDirectDrawSurface7_Unlock(t,0);
+}
+static int ss_checker(LPDIRECTDRAWSURFACE7 t,DWORD w,DWORD h) { /* white and black pixels in turn: shrunk by two with a filter, every pixel is mid grey */
+ DDSURFACEDESC2 s;DWORD x,y;memset(&s,0,sizeof(s));s.dwSize=sizeof(s);
+ if(FAILED(IDirectDrawSurface7_Lock(t,0,&s,DDLOCK_WAIT,0)))return 0;
+ for(y=0;y<h;y++){BYTE *p=(BYTE*)s.lpSurface+y*s.lPitch;
+  if(s.ddpfPixelFormat.dwRGBBitCount==32)for(x=0;x<w;x++){DWORD c=((x^y)&1)?0xFFFFFFFFUL:0xFF000000UL;memcpy(p+x*4,&c,4);}
+  else for(x=0;x<w;x++){WORD c=(WORD)(((x^y)&1)?0xFFFF:0);memcpy(p+x*2,&c,2);}}
+ IDirectDrawSurface7_Unlock(t,0);return 1;
+}
+static const char *ss_grey(DWORD c) {DWORD r=(c>>16)&255,g=(c>>8)&255,b=c&255;
+ return (r>=88&&r<=168&&g>=88&&g<=168&&b>=88&&b<=168)?"mid grey: FILTERED":(r>200&&g>200&&b>200)||(r<56&&g<56&&b<56)?"white or black: NOT filtered (one pixel of four kept)":"another colour";}
+#define SS_FRAMES 40
+static DWORD ss_zw,ss_zh; /* v2.93: the depth buffer's size when the target is larger than the picture (0 = the picture's) */
+static double ss_scene(const char *what,LPDIRECTDRAWSURFACE7 t,DWORD w,DWORD h,int zbits,LPDIRECTDRAWSURFACE7 tex,int *ok) {
+ LPDIRECTDRAWSURFACE7 z;IDirect3DDevice7 *d=0;double t0,t1,ms=0;int k,good=1;DWORD px=0;
+ *ok=0;fprintf(logfile,"%s\n",what);
+ z=ss_zbuf(t,ss_zw?ss_zw:w,ss_zh?ss_zh:h,zbits);if(!z)return 0;
+ if(ss_device(t,w,h,&d)){
+  for(k=0;k<4&&good;k++)good=ss_frame(d,tex,w,h,k); /* the first frames apart: set-up, the texture's upload */
+  good=good&&ss_wait(t,w/2,h/2,0);
+  t0=ss_ms();for(k=0;k<SS_FRAMES&&good;k++)good=ss_frame(d,tex,w,h,k);good=good&&ss_wait(t,w/2,h/2,&px);t1=ss_ms();
+  if(good){ms=(t1-t0)/SS_FRAMES;*ok=1;fprintf(logfile,"   %d frames: %.2f ms a frame (%.1f a second); the centre pixel %06lX\n",SS_FRAMES,ms,ms>0?1000.0/ms:0.0,(unsigned long)px);}
+  else fprintf(logfile,"   a draw, clear or Lock failed\n");
+  IDirect3DDevice7_SetTexture(d,0,0);IDirect3DDevice7_Release(d);}
+ IDirectDrawSurface7_DeleteAttachedSurface(t,0,z);IDirectDrawSurface7_Release(z);fflush(logfile);
+ return ms;
+}
+static void ss_tests(void) {
+ HDC dc=GetDC(0);int bpp=GetDeviceCaps(dc,BITSPIXEL),zbits,ok0=0,ok1=0,ok2=0,k;LPDIRECTDRAWSURFACE7 t640=0,big=0,bigtex=0,tex=0,out=0;double m0=0,m1=0,m2=0,t0,t1;DWORD px=0,tw=1280,th=960;
+ ReleaseDC(0,dc);zbits=bpp==16?16:32;
+ fprintf(logfile,"\nVXDX7 --ss (v2.96): the supersampling test; the desktop has %d bits a pixel, the depth buffers %d\n",bpp,zbits);
+ tex=make_texture(256,256,0,DDSCAPS_VIDEOMEMORY,0,"the scene's texture");
+ t640=ss_surface(640,480,DDSCAPS_OFFSCREENPLAIN|DDSCAPS_3DDEVICE,"the 640 x 480 target");
+ out=ss_surface(640,480,DDSCAPS_OFFSCREENPLAIN|DDSCAPS_3DDEVICE,"the 640 x 480 target the big picture is shrunk into");
+ big=ss_surface(1280,960,DDSCAPS_OFFSCREENPLAIN|DDSCAPS_3DDEVICE,"the 1280 x 960 target");
+ bigtex=ss_surface(1280,960,DDSCAPS_TEXTURE|DDSCAPS_3DDEVICE,"a 1280 x 960 target that is also a texture");
+ if(!bigtex){tw=2048;th=1024;bigtex=ss_surface(tw,th,DDSCAPS_TEXTURE|DDSCAPS_3DDEVICE,"a 2048 x 1024 target that is also a texture (1280 x 960 of it used)");}
+ if(!tex||!t640||!out){check("the test's 640 x 480 surfaces and texture",0);goto end;}
+ m0=ss_scene("1. the scene at 640 x 480",t640,640,480,zbits,tex,&ok0);check("the scene at 640 x 480 drew",ok0);if(ok0)ss_bmp(t640,"SS640.BMP");
+ if(!big){check("a 1280 x 960 colour target can be created",0);}
+ else{m1=ss_scene("2. the scene at 1280 x 960",big,1280,960,zbits,tex,&ok1);check("the scene at 1280 x 960 drew",ok1);}
+ if(ok0&&ok1)fprintf(logfile,"   -> four times the pixels cost %.2f ms a frame more (%.2f against %.2f: %.2f times)\n",m1-m0,m1,m0,m0>0?m1/m0:0.0);
+ if(ok1){ /* 3: the stretching Blt */
+  HRESULT hr=0;fprintf(logfile,"3. shrinking 1280 x 960 to 640 x 480 by a Blt\n");
+  hr=IDirectDrawSurface7_Blt(out,0,big,0,DDBLT_WAIT,0);fprintf(logfile,"   Blt = %08lX\n",(unsigned long)hr);
+  if(SUCCEEDED(hr)){ss_wait(out,0,0,0);ss_bmp(out,"SSBLT.BMP");
+   {DDSURFACEDESC2 sb,so;DWORD bad=0,x,y,fx=0,fy=0,fa=0,fb=0; /* v2.96: the picture against the CPU's rule, counted here (a JPEG of SSBLT.BMP cannot show it) */
+    memset(&sb,0,sizeof(sb));sb.dwSize=sizeof(sb);memset(&so,0,sizeof(so));so.dwSize=sizeof(so);
+    if(SUCCEEDED(IDirectDrawSurface7_Lock(big,0,&sb,DDLOCK_WAIT|DDLOCK_READONLY,0))){
+     if(SUCCEEDED(IDirectDrawSurface7_Lock(out,0,&so,DDLOCK_WAIT|DDLOCK_READONLY,0))){
+      for(y=0;y<480;y++)for(x=0;x<640;x++){DWORD w=rgb(&sb,2*x+1,2*y+1),g=rgb(&so,x,y);if(w!=g){if(!bad){fx=x;fy=y;fa=w;fb=g;}bad++;}}
+      IDirectDrawSurface7_Unlock(out,0);
+      fprintf(logfile,"   against the CPU's choice (source pixel 2x+1, 2y+1): %lu of 307200 pixels differ",(unsigned long)bad);
+      if(bad)fprintf(logfile,"; the first at (%lu,%lu): %06lX wanted, %06lX read",(unsigned long)fx,(unsigned long)fy,(unsigned long)fa,(unsigned long)fb);
+      fprintf(logfile," (0 expected with ACCEL_STRETCH3D 0 and 1; 2 filters, so it differs)\n");}
+     IDirectDrawSurface7_Unlock(big,0);}}
+   t0=ss_ms();for(k=0;k<20;k++)IDirectDrawSurface7_Blt(out,0,big,0,DDBLT_WAIT,0);ss_wait(out,0,0,0);t1=ss_ms();
+   fprintf(logfile,"   20 Blts: %.2f ms each\n",(t1-t0)/20.0);
+   if(ss_checker(big,1280,960)&&SUCCEEDED(IDirectDrawSurface7_Blt(out,0,big,0,DDBLT_WAIT,0))&&ss_wait(out,321,241,&px))
+    fprintf(logfile,"   a one-pixel checkerboard shrunk: the pixel at (321,241) is %06lX: %s\n",(unsigned long)px,ss_grey(px));}
+  else check("the stretching Blt",0);}
+ if(bigtex){ /* 4: drawn into a texture target, shrunk by a textured quad */
+  IDirect3DDevice7 *d=0;tl_vertex q[6];float u1=1280.0F/(float)tw,v1=960.0F/(float)th;
+  char what[96];sprintf(what,"4. the scene at 1280 x 960 in a %lu x %lu texture target",(unsigned long)tw,(unsigned long)th);
+  ss_zw=tw;ss_zh=th;m2=ss_scene(what,bigtex,1280,960,zbits,tex,&ok2);ss_zw=ss_zh=0; /* v2.93: v2.92 gave the 2048 x 1024 target a 1280 x 960 depth buffer and the driver rightly refused the pair */check("the scene in the texture target drew",ok2);
+  if(ok0&&ok2)fprintf(logfile,"   -> %.2f ms a frame against %.2f at 640 x 480 (%.2f times)\n",m2,m0,m0>0?m2/m0:0.0);
+  fprintf(logfile,"5. shrinking it by a quad textured with it (bilinear)\n");
+  if(ss_device(out,640,480,&d)){int pass;
+   for(pass=0;pass<2;pass++){HRESULT hr=0;
+    if(pass==1&&!ss_checker(bigtex,1280,960))break;
+    t0=ss_ms();
+    for(k=0;k<(pass?1:20);k++){
+     IDirect3DDevice7_BeginScene(d);IDirect3DDevice7_SetRenderState(d,D3DRENDERSTATE_ZENABLE,FALSE);
+     hr|=IDirect3DDevice7_SetTexture(d,0,bigtex);
+     IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_COLORARG1,D3DTA_TEXTURE);
+     IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_MAGFILTER,D3DTFG_LINEAR);IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_MINFILTER,D3DTFN_LINEAR);
+     IDirect3DDevice7_SetTextureStageState(d,0,D3DTSS_ADDRESS,D3DTADDRESS_CLAMP);
+     ss_quad(q,-0.5F,-0.5F,639.5F,479.5F,.5F,0xFFFFFFFFUL,u1,v1);hr|=IDirect3DDevice7_DrawPrimitive(d,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,q,6,0);
+     IDirect3DDevice7_EndScene(d);}
+    ss_wait(out,321,241,&px);t1=ss_ms();
+    if(pass==0){fprintf(logfile,"   SetTexture and the quad = %08lX; 20 quads: %.2f ms each\n",(unsigned long)hr,(t1-t0)/20.0);check("the quad textured with the big target",SUCCEEDED(hr));ss_bmp(out,"SSTEX.BMP");}
+    else fprintf(logfile,"   a one-pixel checkerboard shrunk: the pixel at (321,241) is %06lX: %s\n",(unsigned long)px,ss_grey(px));}
+   IDirect3DDevice7_SetTexture(d,0,0);IDirect3DDevice7_Release(d);}
+ }else fprintf(logfile,"4. no target that is also a texture could be created (1280 x 960 or 2048 x 1024): the quad cannot be tried\n");
+ if(ok0&&(ok1||ok2))fprintf(logfile,"SUMMARY: 640 x 480 %.2f ms a frame; 1280 x 960 %.2f ms; in a texture target %.2f ms (0 = not run)\n",m0,m1,m2);
+end:
+ if(tex)IDirectDrawSurface7_Release(tex);if(bigtex)IDirectDrawSurface7_Release(bigtex);if(big)IDirectDrawSurface7_Release(big);if(out)IDirectDrawSurface7_Release(out);if(t640)IDirectDrawSurface7_Release(t640);
+}
 int main(int argc,char **argv) {
  HRESULT (WINAPI *create)(GUID *,void **,REFIID,IUnknown *);WNDCLASSA wc;
  int with_depth=argc==2&&!strcmp(argv[1],"--draw");
@@ -1969,6 +2323,8 @@ int main(int argc,char **argv) {
  int do_flip=argc==2&&!strcmp(argv[1],"--flip");
  int do_tex=argc==1||(argc>=2&&!strcmp(argv[1],"--texture")); /* v2.38: no argument runs --texture; --query is the old default */
  int do_raster=argc==2&&!strcmp(argv[1],"--raster");
+ int do_seam=argc==2&&!strcmp(argv[1],"--seam"); /* v2.90 */
+ int do_ss=argc==2&&!strcmp(argv[1],"--ss"); /* v2.92 */
  int do_stencil=argc==2&&!strcmp(argv[1],"--stencil"); /* v2.67 */
  int do_splane=argc==2&&!strcmp(argv[1],"--splane"); /* v2.69 */
  int do_enum=argc==2&&!strcmp(argv[1],"--enum");
@@ -1978,7 +2334,7 @@ int main(int argc,char **argv) {
  {int k;for(k=1;k<argc;k++)if(!strcmp(argv[k],"--nohang"))no_hang=1;} /* v2.72 */
  if(argc==2&&no_hang)do_tex=1; /* VXDX7 --nohang: the texture tests without the hang */
  logfile=fopen("VXDX7.TXT","w");if(!logfile)return 1;
- fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.88, driver .533); mode=%s%s. No software device fallback.\n",do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
+ fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.96); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
  code_probe("at start, before DirectDraw");
  ddlib=LoadLibraryA("DDRAW.DLL");if(!ddlib){fprintf(logfile,"DDRAW.DLL missing\n");failures++;goto done;}
  create=(HRESULT (WINAPI *)(GUID *,void **,REFIID,IUnknown *))GetProcAddress(ddlib,"DirectDrawCreateEx");
@@ -2014,6 +2370,8 @@ int main(int argc,char **argv) {
  if(do_draw){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(with_depth)&&run_tests(with_depth)&&!failures)preview();}
  if(do_tex){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))texture_tests();}
  if(do_raster){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))raster_tests();}
+ if(do_seam){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0)){seam_tests();seam_cover_test();}}
+ if(do_ss){ShowWindow(window,SW_SHOW);UpdateWindow(window);ss_tests();}
  if(do_stencil){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))stencil_tests();}
  if(do_splane){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))splane_tests();}
  if(do_enum){ShowWindow(window,SW_SHOW);UpdateWindow(window);enum_tests();}
@@ -2023,6 +2381,10 @@ int main(int argc,char **argv) {
  if(do_flip){
   DWORD (WINAPI *q)(DWORD *,DWORD)=0;DWORD o[2+8+128];
   ShowWindow(window,SW_SHOW);UpdateWindow(window);flip_test(16);flip_test(32);
+  /* v2.89 (.620): the eye's answer. A draw that reaches the buffer still on the screen shows as flashing or tearing, which no read-back sees. */
+  ShowWindow(window,SW_HIDE);
+  {int steady=MessageBoxA(0,"The spinning triangle ran twice (16 and 32 bits).\n\nWas the picture steady: no flashing, no tearing, no black frames?","VXDX7 --flip",MB_YESNO|MB_TOPMOST|MB_SETFOREGROUND)==IDYES;
+   fprintf(logfile,"the person at the screen: the spinning triangle was %s\n",steady?"steady":"NOT steady (flashing or tearing)");check("the flipped animation looked steady",steady);}
   if(halmod)q=(DWORD (WINAPI *)(DWORD *,DWORD))GetProcAddress(halmod,"VX_D3D_QueryStates");
   if(q&&q(o,sizeof(o)/sizeof(o[0])))fprintf(logfile,"HAL render-target changes in DrawPrimitives2: %lu, last handle %lu at offset %08lX; last target offset %08lX\n",(unsigned long)o[6],(unsigned long)o[7],(unsigned long)o[8],(unsigned long)o[9]);
  }

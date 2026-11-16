@@ -168,11 +168,19 @@ static void wide_line(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1,GLin
  * (barycentric, extrapolated, rhw and s * rhw linear) - and the alpha times the coverage. Culled as swrast does (the area). */
 int vxgl_gl_smooth=1;
 typedef void (*aa_attr_fn)(vxgl_ctx *c,const void *d,GLfloat gx,GLfloat gy,vxglVertex *o); /* the vertex at GL window position (gx, gy) */
-typedef struct {aa_attr_fn f;const void *d;GLint iy,x0,x1;GLfloat cov;int open;} aa_rows;
+/* .633 (FieldLines.scr: GL_LINE_SMOOTH with blending off, thousands of short wide segments, slow on every chip): the coverage only
+ * scales the fragment's alpha, so with no blending, no alpha test and no alpha written to the target it changes no pixel. Then (flat)
+ * every covered pixel is drawn whole: a row's pixels are one rectangle whatever their coverage, and a line's pixels are gathered into
+ * one span a row first (aa_span), since an x-major line is scanned by columns and gave a rectangle a pixel. The pixels drawn are the
+ * same ones. vxgl_aa_stat: lines drawn flat, their rectangles, lines drawn with coverage, their rectangles. */
+uint32_t vxgl_aa_stat[4];
+typedef struct {aa_attr_fn f;const void *d;GLint iy,x0,x1;GLfloat cov;int open,flat;} aa_rows;
+static int aa_flat(const vxgl_ctx *c) {const GLcontext *ctx=&c->gl;
+ return !ctx->Color.BlendEnabled&&!ctx->Color.AlphaEnabled&&!c->aa_atest&&(!ctx->DrawBuffer->Visual.alphaBits||!ctx->Color.ColorMask[3]);}
 static void aa_run(vxgl_ctx *c,aa_rows *r) {
  static vxglVertex q[4];GLfloat xy[8],l=(GLfloat)r->x0-0.5F,rt=(GLfloat)r->x1+0.5F,t=vxgl_sy(c,(GLfloat)(r->iy+1)),b=vxgl_sy(c,(GLfloat)r->iy);int k; /* v10.321: through vxgl_sy */
  if(!r->open)return;
- r->open=0;
+ r->open=0;vxgl_aa_stat[r->flat?1:3]++;
  r->f(c,r->d,(GLfloat)r->x0,(GLfloat)(r->iy+1),&q[0]);r->f(c,r->d,(GLfloat)(r->x1+1),(GLfloat)(r->iy+1),&q[1]); /* top: GL's y + 1 */
  r->f(c,r->d,(GLfloat)r->x0,(GLfloat)r->iy,&q[2]);r->f(c,r->d,(GLfloat)(r->x1+1),(GLfloat)r->iy,&q[3]);
  if(r->cov<1.0F)for(k=0;k<4;k++){GLubyte *a=&q[k].ub4[c->coloroffset][3];*a=ub_trunc((GLfloat)*a*r->cov);} /* (GLubyte) CLAMP(a * coverage); v10.350 without __CHP */
@@ -181,6 +189,7 @@ static void aa_run(vxgl_ctx *c,aa_rows *r) {
 }
 /* pixel (ix, iy) with coverage cov: joined to the open run when next to it in the row with the same coverage */
 static void aa_pixel(vxgl_ctx *c,aa_rows *r,GLint ix,GLint iy,GLfloat cov) {
+ if(r->flat)cov=1.0F;
  if(r->open&&iy==r->iy&&cov==r->cov){if(ix==r->x1+1){r->x1=ix;return;}if(ix==r->x0-1){r->x0=ix;return;}}
  aa_run(c,r);r->open=1;r->iy=iy;r->x0=r->x1=ix;r->cov=cov;
 }
@@ -207,7 +216,7 @@ static void aa_point(vxgl_ctx *c,const vxglVertex *v0) {
  memcpy(&base,v0,c->vertex_size>sizeof(base)?sizeof(base):c->vertex_size);
  if(atten<1.0F)base.ub4[c->coloroffset][3]=(GLubyte)((GLfloat)base.ub4[c->coloroffset][3]*atten); /* (GLchan) (alpha * alphaAtten) */
  if(c->aa_atest&&!alpha_pass(ctx,base.ub4[c->coloroffset][3]))return; /* v10.353: swrast tests the point's alpha before its coverage */
- r.f=aa_point_attr;r.d=&base;r.open=0;
+ r.f=aa_point_attr;r.d=&base;r.open=0;r.flat=aa_flat(c);
  for(y=ymin;y<=ymax;y++)for(x=xmin;x<=xmax;x++) {
   const GLfloat dx=(GLfloat)x-wx+0.5F,dy=(GLfloat)y-wy+0.5F,dist2=dx*dx+dy*dy;
   if(dist2<rmax2)aa_pixel(c,&r,x,y,dist2>=rmin2?1.0F-(dist2-rmin2)*cscale:1.0F);
@@ -235,6 +244,20 @@ static void aa_line_attr(vxgl_ctx *c,const void *d,GLfloat gx,GLfloat gy,vxglVer
  if(t>1.0F&&l->wa+t*(l->wb-l->wa)<=l->wb*0.5F)t=1.0F;
  lerp_vertex(c,l->v0,l->v1,t,o);
 }
+/* .633: a flat line's pixels, one span a row (rows AA_SPAN_BASE below 0 to AA_SPAN_ROWS - AA_SPAN_BASE; a pixel outside them, or one
+ * not next to its row's span, goes out as before: the span is closed first, so no pixel between two parts of a row is ever filled in) */
+#define AA_SPAN_ROWS 4096
+#define AA_SPAN_BASE 1024
+static GLint sp_lo[AA_SPAN_ROWS],sp_hi[AA_SPAN_ROWS];static GLubyte sp_on[AA_SPAN_ROWS];static GLint sp_min=1,sp_max=0;
+static void aa_span_row(vxgl_ctx *c,aa_rows *r,GLint k) {aa_run(c,r);r->open=1;r->iy=k-AA_SPAN_BASE;r->x0=sp_lo[k];r->x1=sp_hi[k];r->cov=1.0F;aa_run(c,r);sp_on[k]=0;}
+static void aa_span(vxgl_ctx *c,aa_rows *r,GLint ix,GLint iy) {
+ GLint k=iy+AA_SPAN_BASE;
+ if(k<0||k>=AA_SPAN_ROWS){aa_pixel(c,r,ix,iy,1.0F);return;}
+ if(sp_on[k]){if(ix==sp_hi[k]+1){sp_hi[k]=ix;return;}if(ix==sp_lo[k]-1){sp_lo[k]=ix;return;}if(ix>=sp_lo[k]&&ix<=sp_hi[k])return;aa_span_row(c,r,k);}
+ sp_on[k]=1;sp_lo[k]=sp_hi[k]=ix;if(sp_min>sp_max){sp_min=sp_max=k;}else{if(k<sp_min)sp_min=k;if(k>sp_max)sp_max=k;}
+}
+static void aa_span_end(vxgl_ctx *c,aa_rows *r) {GLint k;for(k=sp_min;k<=sp_max;k++)if(sp_on[k])aa_span_row(c,r,k);sp_min=1;sp_max=0;}
+#define AA_PIX(ix,iy,cv) do{if(r->flat)aa_span(c,r,(ix),(iy));else aa_pixel(c,r,(ix),(iy),(cv));}while(0)
 static void aa_segment(vxgl_ctx *c,aa_lineinfo *l,GLfloat hw,GLfloat t0,GLfloat t1,aa_rows *r) {
  const GLfloat absDx=l->dx<0.0F?-l->dx:l->dx,absDy=l->dy<0.0F?-l->dy:l->dy,x0=l->x0+t0*l->dx,y0=l->y0+t0*l->dy,x1=l->x0+t1*l->dx,y1=l->y0+t1*l->dy;
  const GLfloat xAdj=l->dx/l->len*hw,yAdj=l->dy/l->len*hw;int k;
@@ -246,7 +269,7 @@ static void aa_segment(vxgl_ctx *c,aa_lineinfo *l,GLfloat hw,GLfloat t0,GLfloat 
   else {xLeft=x1-hw;xRight=x0+hw;if(l->dy<=0.0F){yBot=y1-3.0F*hw;yTop=y1+hw;}else{yBot=y1-hw;yTop=y1+3.0F*hw;}}
   ixRight=(GLint)(xRight+1.0F);
   for(ix=(GLint)xLeft;ix<ixRight;ix++){const GLint iyBot=(GLint)yBot,iyTop=(GLint)(yTop+1.0F);GLint iy;
-   for(iy=iyBot;iy<iyTop;iy++){GLfloat cv=aa_line_cov(l,ix,iy);if(cv!=0.0F)aa_pixel(c,r,ix,iy,cv);}
+   for(iy=iyBot;iy<iyTop;iy++){GLfloat cv=aa_line_cov(l,ix,iy);if(cv!=0.0F)AA_PIX(ix,iy,cv);}
    yBot+=dydx;yTop+=dydx;}
  }
  else {
@@ -255,10 +278,12 @@ static void aa_segment(vxgl_ctx *c,aa_lineinfo *l,GLfloat hw,GLfloat t0,GLfloat 
   else {yBot=y1-hw;yTop=y0+hw;if(l->dx<=0.0F){xLeft=x1-3.0F*hw;xRight=x1+hw;}else{xLeft=x1-hw;xRight=x1+3.0F*hw;}}
   iyTop=(GLint)(yTop+1.0F);
   for(iy=(GLint)yBot;iy<iyTop;iy++){const GLint ixLeft=(GLint)xLeft,ixRight=(GLint)(xRight+1.0F);GLint ix;
-   for(ix=ixLeft;ix<ixRight;ix++){GLfloat cv=aa_line_cov(l,ix,iy);if(cv!=0.0F)aa_pixel(c,r,ix,iy,cv);}
+   for(ix=ixLeft;ix<ixRight;ix++){GLfloat cv=aa_line_cov(l,ix,iy);if(cv!=0.0F)AA_PIX(ix,iy,cv);}
    xLeft+=dxdy;xRight+=dxdy;}
  }
+ if(r->flat)aa_span_end(c,r);
 }
+#define AA_FLAT_GROW 0.45F
 static void aa_line(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1) {
  GLcontext *ctx=&c->gl;GLfloat hw=0.5F*ctx->Line._Width;static aa_lineinfo l;aa_rows r;
  l.v0=v0;l.v1=v1;l.x0=v0->v.x+0.5F;l.y0=vxgl_wy(c,v0->v.y);l.dx=v1->v.x-v0->v.x;l.dy=vxgl_wy(c,v1->v.y)-l.y0;l.wa=v0->f[3];l.wb=v1->f[3];
@@ -266,7 +291,18 @@ static void aa_line(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1) {
  l.len=(GLfloat)sqrt((double)(l.dx*l.dx+l.dy*l.dy));
  if(l.len==0.0F)return;
  if(c->aa_atest&&!alpha_pass(ctx,v0->ub4[c->coloroffset][3]))return; /* v10.353: both ends' alpha the same (run_pipeline): the line's own, tested as swrast does */
- r.f=aa_line_attr;r.d=&l;r.open=0;
+ r.f=aa_line_attr;r.d=&l;r.open=0;r.flat=aa_flat(c);vxgl_aa_stat[r.flat?0:2]++;
+ /* .636 (board, .635, VXGL scene 63: the rectangles a row still took 287 ms against 25 for Microsoft's software; on the host two thirds
+  * of a line's time was the core's work on its rectangles): a flat line without stipple is one quad, the line's own rectangle, each
+  * side moved out by AA_FLAT_GROW so the engine's rule (a pixel is drawn when its centre is inside) takes about the pixels swrast's
+  * rule takes (any of 16 points in the pixel inside). No pixel is looked for on the CPU. */
+ if(r.flat&&!c->stip_on) {
+  static vxglVertex q[4];GLfloat xy[8],ux=l.dx/l.len,uy=l.dy/l.len,g=hw+AA_FLAT_GROW,cx[4],cy[4];int k;
+  cx[0]=l.x0-ux*AA_FLAT_GROW-uy*g;cy[0]=l.y0-uy*AA_FLAT_GROW+ux*g;cx[1]=l.x0-ux*AA_FLAT_GROW+uy*g;cy[1]=l.y0-uy*AA_FLAT_GROW-ux*g;
+  cx[2]=l.x0+l.dx+ux*AA_FLAT_GROW-uy*g;cy[2]=l.y0+l.dy+uy*AA_FLAT_GROW+ux*g;cx[3]=l.x0+l.dx+ux*AA_FLAT_GROW+uy*g;cy[3]=l.y0+l.dy+uy*AA_FLAT_GROW-ux*g;
+  for(k=0;k<4;k++){aa_line_attr(c,&l,cx[k]+0.5F,cy[k]+0.5F,&q[k]);xy[k*2]=cx[k]-0.5F;xy[k*2+1]=vxgl_sy(c,cy[k]);}
+  vxgl_aa_stat[1]++;hw_quad(c,&q[0],&q[1],&q[2],&q[3],xy);quad_flush(c);return;
+ }
  if(c->stip_on) { /* s_aalinetemp.h: a segment from each run of set pattern bits, one bit per whole unit of length (tEnd the run's last bit's start) */
   GLint iLen=(GLint)l.len,i;int in=0;GLfloat ts=0.0F,te=0.0F;
   /* v10.334 (audit F04): a run ends at the end of its last set bit's unit ((i + 1) / len) and is closed at the first clear bit; it
@@ -334,7 +370,7 @@ static void aa_triangle(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1,co
  }
  pMin=ti.P[iMin];pMid=ti.P[iMid];pMax=ti.P[iMax];majDx=pMax[0]-pMin[0];majDy=pMax[1]-pMin[1];
  {const GLfloat botDx=pMid[0]-pMin[0],botDy=pMid[1]-pMin[1],area=majDx*botDy-botDx*majDy;if(area==0.0F||IS_INF_OR_NAN(area))return;ar=area;}
- r.f=aa_tri_attr;r.d=&ti;r.open=0;
+ r.f=aa_tri_attr;r.d=&ti;r.open=0;r.flat=aa_flat(c);
  yMin=pMin[1];yMax=pMax[1];iyMin=(GLint)yMin;iyMax=(GLint)yMax+1;
  if(ar<0.0F) { /* the long edge on the left: scan left to right */
   const GLfloat dxdy=majDx/majDy,xAdj=dxdy<0.0F?-dxdy:0.0F;GLfloat x=pMin[0]-(yMin-(GLfloat)iyMin)*dxdy;

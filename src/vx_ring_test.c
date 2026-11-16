@@ -1,4 +1,4 @@
-/* VXRING v2.8 (driver v10.398: VXRING pair; v2.7 v10.397: VXRING bisect; v2.6 v10.396: the replay log written through at each step, its parts on their own; v2.5 v10.395: the replay in the game's mode, with disk or memory load; v2.4 v10.394: the live replays; v2.3 v10.393: VXRING replay; v2.2 v10.383; v2.1 v10.381; v2.0 v10.380; v1.9 v10.379; v1.8 v10.377; v1.7 v10.376; v1.6 v10.375; v1.5 v10.373; v1.4 v10.227): the VX855 command-fetcher probe (cookbook 16.17). MIT, 2026.
+/* VXRING v2.9 (driver .619: VXRING vblank, the wait word of register 6C in a fetched stream; needs .619's VxD). VXRING v2.8 (driver v10.398: VXRING pair; v2.7 v10.397: VXRING bisect; v2.6 v10.396: the replay log written through at each step, its parts on their own; v2.5 v10.395: the replay in the game's mode, with disk or memory load; v2.4 v10.394: the live replays; v2.3 v10.393: VXRING replay; v2.2 v10.383; v2.1 v10.381; v2.0 v10.380; v1.9 v10.379; v1.8 v10.377; v1.7 v10.376; v1.6 v10.375; v1.5 v10.373; v1.4 v10.227): the VX855 command-fetcher probe (cookbook 16.17). MIT, 2026.
  * Usage:  VXRING          read only: sequencer registers, MMIO 0x400-0x5FC, the GPU page table's location and entries
  *         VXRING fill     also the fetch tests: one 2D fill of a 64x32 offscreen rectangle sent through the fetcher from a buffer in
  *                         video memory, in XP's one-shot form (register 60 bit 0 clear, then set) and XP's ring form (bit 0 set, then clear)
@@ -311,6 +311,45 @@ end:
 }
 #define TESTS 53
 static const DWORD band[TESTS]={0,0,0,0,0,1,0,0,0,2,3,4,5,6,7,8,9,10,0,2,4,6,8,10,12,14,0,2,4,6,8,10,12,14,0,3,6,8,10,12,14,0,3,6,9,12,0,3,6,9,12,0,3};
+/* v2.9 (.619): VXRING vblank. One 8x8 fill fetched one-shot with a 2D block before it that writes register 6C (the request's mode),
+ * 60 times a value at changing points of the frame. If the fetcher holds for the word until the vertical blank, the times from the
+ * start to idle spread over a frame (0 to 17 ms at 60 Hz) and the fill is done in or just after the blank; if not, they are all
+ * a fraction of a millisecond and land anywhere in the frame. */
+unsigned long rdtsc_lo(void);
+#pragma aux rdtsc_lo = 0x0F 0x31 value [eax] modify [edx];
+static void vblank(DWORD blin,DWORD bbytes,DWORD tlin,DWORD tpitch) {
+ static const DWORD val[5]={0,1,0x00800000UL,0x00FC0000UL,2};
+ static const char *what[5]={"6C = 0 (the control: no wait asked)","6C = 1 (the VX855 flip's wait for the first display unit's vertical blank)","6C = 00800000 (CE's VX900 wait block, blocks 1-8)","6C = 00FC0000 (CE's VX900 wait block, block 9)","6C = 2 (the second display unit's blank on the VX855)"};
+ unsigned long c0,c1;DWORD t0;double cyc_ms;int v,j;
+ t0=GetTickCount();while(GetTickCount()==t0);t0=GetTickCount();c0=rdtsc_lo();while((DWORD)(GetTickCount()-t0)<200);c1=rdtsc_lo();cyc_ms=(double)(unsigned long)(c1-c0)/(double)(GetTickCount()-t0);
+ fprintf(logf,"== the wait word in a fetched stream (v2.9): 60 one-shot fills a value; TSC %.0f cycles a millisecond\n",cyc_ms);
+ fprintf(logf,"   read: a wait that holds gives times spread over a frame and nearly every fill done with the retrace bit set or in the first lines\n");
+ for(v=0;v<5;v++) {
+  int n=0,idle=0,drawn=0,h[7],retr=0,b200=0,old=0;double sum=0,mn=1e9,mx=0;DWORD lmin=0xFFFF,lmax=0;
+  memset(h,0,sizeof(h));
+  for(j=0;j<60;j++) {
+   vx_ring_req q;static vx_ring_reply r;double ms;
+   Sleep(1+(j*7)%23);
+   memset(&q,0,sizeof(q));q.cb=sizeof(q);q.abi=VX_RING_ABI;q.op=1;q.flags=0x10000UL;q.mode=val[v];
+   q.buf_linear=blin;q.buf_bytes=bbytes;q.tgt_linear=tlin;q.tgt_pitch=tpitch;q.width=8;q.height=8;q.color=0x0000FF00UL;
+   if(!ring(&q,&r))return;
+   if(r.result==1||r.result==2){fprintf(logf,"   %s: the VxD's answer %lu (1 bad request, 2 busy)\n",what[v],(unsigned long)r.result);break;}
+   n++;if(!r.idle){continue;}
+   idle++;if(r.pixels_set==64)drawn++;
+   if(!r.k_reads_idle){old++;continue;}
+   ms=(double)r.k_t_idle*16.0/cyc_ms;sum+=ms;if(ms<mn)mn=ms;if(ms>mx)mx=ms;
+   h[ms<0.2?0:ms<2?1:ms<6?2:ms<10?3:ms<14?4:ms<18?5:6]++;
+   if(r.k_400[0]&8)retr++;if(!(r.k_400[1]&2))b200++;
+   {DWORD l=r.k_400[2]>>16;if(l<lmin)lmin=l;if(l>lmax)lmax=l;}
+   if(r.reset_tried){fprintf(logf,"   %s: the engine was reset after time %d (ok %lu); this value stopped\n",what[v],j,(unsigned long)r.reset_ok);break;}
+  }
+  if(old){fprintf(logf,"   %s: the VxD is older than .619 (no times)\n",what[v]);break;}
+  fprintf(logf,"   %s: %d sent, %d back to idle, %d with the fill drawn\n",what[v],n,idle,drawn);
+  if(idle)fprintf(logf,"      start to idle: %.2f ms on average, %.2f to %.2f; by time (ms): under 0.2 %d; 0.2-2 %d; 2-6 %d; 6-10 %d; 10-14 %d; 14-18 %d; more %d\n",sum/idle,mn,mx,h[0],h[1],h[2],h[3],h[4],h[5],h[6]);
+  if(idle)fprintf(logf,"      when done: port 3DA bit 3 (retrace) set %d of %d; MMIO 200 bit 1 clear %d of %d; scan line (MMIO 1290 >> 16) %lu to %lu\n",retr,idle,b200,idle,(unsigned long)lmin,(unsigned long)lmax);
+  logsync();
+ }
+}
 int main(int argc,char **argv) {
  static const char *name[TESTS]={"read only","one-shot 2D fill, 60 bit 0 clear","one-shot 2D fill, 60 bit 0 set","ring 2D fill, 60 bit 0 set (as XP on 5122)","ring 2D fill, 60 bit 0 clear",
   "3D triangle fetched one-shot","3D triangle through the register path (reference for 5)","ring start block alone, 60 bit 0 clear","ring 2D fill, 60 bit 0 clear, 68 again after the kick",
@@ -352,7 +391,7 @@ int main(int argc,char **argv) {
  else if(argc>1&&atoi(argv[1])>=1&&atoi(argv[1])<TESTS){run[atoi(argv[1])]=1;order[norder++]=atoi(argv[1]);}
  (void)first;(void)last;
  logf=fopen("VXRING.TXT","w");if(!logf)return 1;
- fprintf(logf,"VXRING v2.8 (driver v10.398): command-fetcher probe\n");logsync();
+ fprintf(logf,"VXRING v2.9 (driver .619): command-fetcher probe\n");logsync();
  vxd=CreateFileA("\\\\.\\VX85598",0,0,0,OPEN_EXISTING,0,0);
  if(vxd==INVALID_HANDLE_VALUE){fprintf(logf,"VX85598.VXD not reachable\n");fclose(logf);return 1;}
  ddlib=LoadLibraryA("DDRAW.DLL");create=ddlib?(HRESULT (WINAPI *)(GUID *,LPDIRECTDRAW *,IUnknown *))GetProcAddress(ddlib,"DirectDrawCreate"):0;
@@ -368,6 +407,7 @@ int main(int argc,char **argv) {
  if(tbytes>sizeof(before))tbytes=0;
  if(argc>4&&!strcmp(argv[1],"pair")){pr_blin=blin;pr_bbytes=bbytes;pr_tlin=tlin;pr_tpitch=tpitch;if(blin&&tlin)pairs((unsigned)atoi(argv[2]),(unsigned)atoi(argv[3]),argc-4,argv+4);norder=0;}
  if(argc>1&&!strcmp(argv[1],"bisect")){pr_blin=blin;pr_bbytes=bbytes;pr_tlin=tlin;pr_tpitch=tpitch;if(blin&&tlin)bisect(argc>2?argv[2]:"RINGTAPE.BIN");else fprintf(logf,"   no surfaces\n");norder=0;}
+ if(argc>1&&!strcmp(argv[1],"vblank")){if(blin&&tlin)vblank(blin,bbytes,tlin,tpitch);else fprintf(logf,"   no surfaces\n");norder=0;} /* v2.9 */
  if(argc>1&&!strcmp(argv[1],"replay")){if(blin&&tlin){int only=0;if(argc>3)only=!strcmp(argv[3],"game")?1:!strcmp(argv[3],"quiet")?2:!strcmp(argv[3],"disk")?3:!strcmp(argv[3],"mem")?4:0;replay(argc>2?argv[2]:"RINGTAPE.BIN",only,dd,blin,bbytes,tlin,tpitch);}else fprintf(logf,"   no surfaces\n");norder=0;}
  for(n=0;n<norder;n++) {
   vx_ring_req q;static vx_ring_reply r;DWORD bl=0;int snapped;

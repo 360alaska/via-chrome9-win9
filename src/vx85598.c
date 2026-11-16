@@ -71,9 +71,23 @@ unsigned long vx_vbe_total_bytes, vx_chip_fb_bytes, vx_map_bytes;
  * as H6). VX900's 2D register order and vertex input differ (XP's 7122 branch, CE's H5S2): VX_chip_accel() is 0 there: frame buffer,
  * modes, cursor and flips only, the engines not touched, until its own paths exist. */
 unsigned long vx_chip_id, vx_chip_fb_cfg, vx_chip_mmio_cfg;
-int VX_chip_accel(void) {return vx_chip_id==0x1122UL||vx_chip_id==0x5122UL;}
+/* .617: the VX900's 3D engine and Direct3D are used like the other two chips' (board, .616, GTA3, two sessions: no hang, no fetch
+ * unfinished, nothing wrong on the screen). The test switch ACCEL_VX900_3D of .605-.616 is gone: what it selected on the board
+ * (value 3: command fetcher, ring, CE's wait words) is what the VX900 always runs. */
+int VX_chip_accel(void) {return vx_chip_id==0x1122UL||vx_chip_id==0x5122UL||vx_chip_id==0x7122UL;}
+/* .601: the 2D engine has its own answer. VX900 board (Gigabyte, VX92D v1.1 on .600, 800 x 600 x 16): the VX900's 2D engine decodes the
+ * M1 layout of the VX800 / VX855 (the driver's fill drew exactly its rectangle; the older layout XP's miniport writes for 7122 did not:
+ * position and size swapped roles, as an M1 engine reads them), a keyed copy skips the key colour with 4000h in 48h as on the VX855
+ * (6000h does the same), two whole-screen fills ran and finished, and the sequencer has the engine open as e_begin / e_first expect
+ * (SR1A 28, SR1E 31, SR3C 1D, SR4E 00). So the VX900 runs the 2D code unchanged. VX_chip_accel() stays the 3D engine's answer (and
+ * Direct3D's): 0 on the VX900 until its vertex input exists. .602: confirmed on the board with .601 (VX2GDI v2.6 at 8, 16 and 32 bits,
+ * VXGTUNE v1.5, VX2FLIP v1.0, VXFLIPF v1.2, VX92D v1.2: all passed), so the test switch ACCEL_VX900_2D is gone and the engine is on. */
+int VX_chip_2d(void) {return VX_chip_accel()||vx_chip_id==0x7122UL;}
 /* the video overlay: the VX855's and the VX800's (.583: one code path, the VX800's HQV register map and 16-bit key form branched in vx855_2d.c); the VX900's is its own, not driven yet */
-int VX_chip_video(void) {return vx_chip_id==0x5122UL||vx_chip_id==0x1122UL;}
+/* .603: the video overlay is driven on all three chips, so the per-chip answer (VX_chip_video, .579) and .602's test switch
+ * ACCEL_VX900_OVERLAY are gone. VX900 board, .602, VX2OVL v1.5 through DirectDraw: picture, enlargement, flip, move, hide, YV12, shrink,
+ * RGB565, RGB32, source key and bob right with the VX855's register map and one more write (0 to 0x3A4, vx855_2d.c); the destination key
+ * right with the pixel value itself, as on the other two chips. */
 static unsigned long pci_read(unsigned long address, unsigned long offset);
 /* a memory BAR below 4 GB: its base, or 0 (an I/O BAR, a reserved type, a 64-bit one with its upper half set, or nothing assigned) */
 static unsigned long bar_mem(unsigned long address, unsigned long offset) {
