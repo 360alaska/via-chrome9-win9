@@ -38,4 +38,9 @@ static void vxs_conv_c(const vxs_frame *f) {
 }
 /* the largest of count 16-bit indices (INDEXEDTRIANGLELIST2's token: three a triangle, back to back) */
 static uint32_t vxs_max16_c(const uint8_t *p,uint32_t count) {uint32_t m=0,k,a;for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;if(a>m)m=a;}return m;}
+/* .645: count 16-bit indices copied to dst, with their smallest and largest (mm[0], mm[1]; 0xFFFF and 0 for none): the driver's T&L
+ * stages an INDEXEDTRIANGLELIST2's indices and needs their range (tn_draw's loop did it one index at a time, with two compares each:
+ * the largest single line of the T&L on the host's count, 11% of it) */
+static void vxs_cmm16_c(const uint8_t *p,uint16_t *dst,uint32_t count,uint32_t *mm) {uint32_t lo=0xFFFF,hi=0,k,a;
+ for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;dst[k]=(uint16_t)a;if(a<lo)lo=a;if(a>hi)hi=a;}mm[0]=lo;mm[1]=hi;}
 /* VXS KERNELS END */

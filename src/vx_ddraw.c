@@ -129,7 +129,8 @@ static void ft_flip(void) {
  DWORD now=VX_dd_tsc(),tick=GetTickCount(),d,k,lo=0,d8,run=ft_run_ms(),rd;
  ft_pid=GetCurrentProcessId();
  dsm_flip(); /* .511 */
- rd=(run!=0xFFFFFFFFUL&&ft_run_last!=0xFFFFFFFFUL&&ft_last)?run-ft_run_last:0;ft_run_last=run;
+ {static DWORD ft_run_tid;DWORD tid=GetCurrentThreadId(); /* .687 (T686 VXD3DMON: "the flipping thread ran 4294950676 ms"): the last reading was another thread's (a new device or process): no difference taken */
+  rd=(run!=0xFFFFFFFFUL&&ft_run_last!=0xFFFFFFFFUL&&ft_last&&tid==ft_run_tid&&run>=ft_run_last)?run-ft_run_last:0;ft_run_last=run;ft_run_tid=tid;}
  /* .533 (board, GTA3 on .532: VXD3DMON's HAL figures 24 times too big, "42 TSC cycles a microsecond"): a calibration outside 100 MHz to
   * 4 GHz is not taken; it starts again from this flip (the TSC's 32 bits and the tick were read where they do not belong together) */
  if(!ft_cal_ok){if(!ft_cal_t||tick-ft_cal_t>4000UL){ft_cal_t=tick;ft_cal_c=now;}else if(tick-ft_cal_t>=3000UL){DWORD c=(now-ft_cal_c)/(tick-ft_cal_t);
@@ -437,16 +438,25 @@ static int overlap(const swq *q);
  * own memory: one kept block let another process's stretched Blt write at an address of the first one's. Kept per process (8 slots,
  * by process id); a process without a slot gets a block for the one blit. */
 #define STAGE_SLOTS 8
-static HGLOBAL stage_hs[STAGE_SLOTS]; static DWORD stage_ns[STAGE_SLOTS],stage_pid[STAGE_SLOTS];
+/* .659 (board, .654-.658: VXTLP's windowed Present, a stretched Blt done by the CPU through this block, faulted in every frame of a run (the
+ * MMX copy cut off: the x87 tags left in use, the primary's cursor bracket left open) or wrote into the program's heap (D3D8 and KERNEL32
+ * then faulted on its corrupted blocks): Windows 98 gives a new process an ended one's ID, and the slot kept under that ID (never given up
+ * at the exit) handed the new process the old one's block address. A slot is now the process's by ID and token (VX_D3D_proc_token, new at
+ * every attach), dropped (not freed: its memory went with its process) when the token differs, freed at the process's detach; a process
+ * this DLL never attached in (token 1) gets a block for the one blit */
+extern LONG VX_D3D_proc_token(void);
+static HGLOBAL stage_hs[STAGE_SLOTS]; static DWORD stage_ns[STAGE_SLOTS],stage_pid[STAGE_SLOTS]; static LONG stage_tok[STAGE_SLOTS];
 /* *slot: the slot used, -1 when the block is this blit's alone (no slot free); nothing but the slot's own entries is shared */
 static BYTE *stage_get(DWORD n,int *slot) {
- DWORD pid=GetCurrentProcessId();int i,f=-1;HGLOBAL h;
+ DWORD pid=GetCurrentProcessId();int i,f=-1;HGLOBAL h;LONG tok=VX_D3D_proc_token();
+ if(tok<2){*slot=-1;return (BYTE*)GlobalAlloc(GMEM_FIXED,n);} /* .659: no token: no kept block */
+ for(i=0;i<STAGE_SLOTS;i++)if(stage_pid[i]==pid&&stage_tok[i]!=tok){stage_hs[i]=NULL;stage_ns[i]=0;stage_pid[i]=0;stage_tok[i]=0;} /* .659: an ended process's under this ID */
  for(i=0;i<STAGE_SLOTS;i++){if(stage_pid[i]==pid)break;if(f<0&&!stage_pid[i])f=i;}
  if(i==STAGE_SLOTS){
   if(f<0){HANDLE p;DWORD code;for(i=0;i<STAGE_SLOTS;i++){p=OpenProcess(PROCESS_QUERY_INFORMATION,FALSE,stage_pid[i]);
     code=0;if(!p||!GetExitCodeProcess(p,&code)||code!=STILL_ACTIVE){if(p)CloseHandle(p);f=i;break;}CloseHandle(p);}} /* a slot of a process that ended (its memory went with it) */
   if(f<0){*slot=-1;return (BYTE*)GlobalAlloc(GMEM_FIXED,n);}
-  i=f;stage_hs[i]=NULL;stage_ns[i]=0;stage_pid[i]=pid;}
+  i=f;stage_hs[i]=NULL;stage_ns[i]=0;stage_pid[i]=pid;stage_tok[i]=tok;}
  *slot=i;
  if(!(stage_hs[i]&&stage_ns[i]>=n)){if(stage_hs[i]){GlobalFree(stage_hs[i]);stage_hs[i]=NULL;stage_ns[i]=0;}
   if((h=GlobalAlloc(GMEM_FIXED,n))!=NULL){stage_hs[i]=h;stage_ns[i]=n;}}
@@ -454,20 +464,46 @@ static BYTE *stage_get(DWORD n,int *slot) {
 }
 static void stage_done(int slot,BYTE *buf) { /* the slot's block is kept when it is 1 MB or less */
  if(slot<0){if(buf)GlobalFree((HGLOBAL)buf);return;}
- if(stage_pid[slot]==GetCurrentProcessId()&&stage_hs[slot]&&stage_ns[slot]>0x100000UL){GlobalFree(stage_hs[slot]);stage_hs[slot]=NULL;stage_ns[slot]=0;}
+ if(stage_pid[slot]==GetCurrentProcessId()&&stage_tok[slot]==VX_D3D_proc_token()&&stage_hs[slot]&&stage_ns[slot]>0x100000UL){GlobalFree(stage_hs[slot]);stage_hs[slot]=NULL;stage_ns[slot]=0;}
 }
-/* 1 drawn; 0 nothing drawn: the source had to be staged (it overlaps the destination and is stretched, mirrored or copied in several
- * rectangles) and no memory could be had */
-static DWORD blt_nh_line,blt_sw; /* v10.387: a slow Blt's path: the NOTHANDLED line, the CPU blits */
-static int sw_blit_impl(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count);
-static int sw_blit(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count) {blt_sw++;return sw_blit_impl(p,q0,first,count);}
-static int sw_blit_impl(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count) {
- DWORD i; swq w=*q0; const swq *q=&w; int prim=(w.d.vram&&!w.d.off)||(w.op==VX2D_COPY&&w.s.vram&&!w.s.off),staged=0,must,sslot=-1;BYTE *sbuf=NULL;
+static DWORD blt_nh_line,blt_sw;DWORD blt_sw_n; /* .671: blt_sw_n the CPU blits since the driver loaded (QueryPhases 433) */ /* v10.387: a slow Blt's path: the NOTHANDLED line, the CPU blits */
+static HRESULT sw_blit_impl(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count);
+static HRESULT sw_blit(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count) {blt_sw++;blt_sw_n++;return sw_blit_impl(p,q0,first,count);}
+/* .657: the cursor bracket of a primary Lock (VX2D_access action 1) is ended only when the VxD did it (it answers VX2D_DONE; it skips it while
+ * the engine is busy) and then always (vx855_2d.c: the skipped half of a pair left the cursor frozen for good). pa_gbl/pa_pid/pa_n: the
+ * primary surfaces locked with the bracket open, by process (the DLL's data is shared); a process gone with one open is ended for it at
+ * the next primary Lock or Unlock (pa_reap: OpenProcess no longer opens it) */
+#define PA_N 16
+static DWORD pa_gbl[PA_N],pa_pid[PA_N],pa_n[PA_N],pa_reaped;static LONG pa_tok[PA_N]; /* .659: and the process's token (an ID given again) */
+static int pa_find(LPDDRAWI_DDRAWSURFACE_LCL s,int add) {
+ DWORD g=(s&&s->lpGbl)?(DWORD)s->lpGbl:0,pid=GetCurrentProcessId();int i,f=-1;LONG tok=VX_D3D_proc_token();
+ if(!g)return -1;
+ for(i=0;i<PA_N;i++){if(pa_n[i]&&pa_gbl[i]==g&&pa_pid[i]==pid&&pa_tok[i]==tok)return i;if(f<0&&!pa_n[i])f=i;}
+ if(!add||f<0)return -1;pa_gbl[f]=g;pa_pid[f]=pid;pa_tok[f]=tok;pa_n[f]=0;return f;
+}
+static void pa_reap(void) {
+ int i;DWORD me=GetCurrentProcessId();LONG tok=VX_D3D_proc_token();
+ for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]==me&&pa_tok[i]!=tok){while(pa_n[i]){(void)access(2);pa_n[i]--;pa_reaped++;}pa_gbl[i]=0;pa_pid[i]=0;} /* .659: an ended process's under this ID */
+ for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]!=me){HANDLE h=OpenProcess(PROCESS_QUERY_INFORMATION,FALSE,pa_pid[i]);DWORD code=0;
+  if(h&&GetExitCodeProcess(h,&code)&&code==STILL_ACTIVE){CloseHandle(h);continue;}
+  if(h)CloseHandle(h);
+  while(pa_n[i]){(void)access(2);pa_n[i]--;pa_reaped++;}pa_gbl[i]=0;pa_pid[i]=0;}
+}
+/* Keep a late surface loss distinct from a skipped cursor bracket. */
+static DWORD pa_begin(void) {pa_reap();return access(1);}
+static void pa_end(int begun) {if(begun)(void)access(2);}
+static HRESULT sw_blit_impl(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count) {
+ DWORD i; swq w=*q0; const swq *q=&w; int prim=(w.d.vram&&!w.d.off)||(w.op==VX2D_COPY&&w.s.vram&&!w.s.off),staged=0,must,sslot=-1,begun;BYTE *sbuf=NULL;
  int scaled=w.sr.right-w.sr.left!=w.dr.right-w.dr.left||w.sr.bottom-w.sr.top!=w.dr.bottom-w.dr.top||w.mirx||w.miry;
  /* v10.368 (audit N6): a source that overlaps the destination is read whole first when the blit is not a plain 1:1 copy of one
   * rectangle (sw_rect walks those backwards): a stretch or mirror, or several clip rectangles, would read pixels already written */
  must=w.op==VX2D_COPY&&overlap(&w)&&(scaled||count-first>1);
- if(prim) (void)access(1);
+ begun=0;
+ if(prim) {
+  DWORD status=pa_begin();
+  if(status==VX2D_LOST)return DDERR_SURFACELOST;
+  begun=(status==VX2D_DONE);
+ }
  /* v10.59: video memory reads cost ~30 MB/s and a stretch reads each source pixel several times: read the source rectangle once
   * (sequentially) into system memory and stretch from there. */
  if(w.op==VX2D_COPY&&(must||(w.s.vram&&scaled))) {
@@ -480,14 +516,14 @@ static int sw_blit_impl(LPDDHAL_BLTDATA p,const swq *q0,DWORD first,DWORD count)
    w.s.p=buf; w.s.pitch=rw*by; w.s.vram=0; w.sr.right-=w.sr.left; w.sr.left=0; w.sr.bottom-=w.sr.top; w.sr.top=0; staged=1; sbuf=buf;
   }
  }
- if(must&&!staged) {if(prim) (void)access(2); return 0;}
+ if(must&&!staged) {pa_end(begun); return DDERR_OUTOFMEMORY;}
  for(i=first;i<count;i++) {
   if(p->IsClipped) sw_rect(q,p->prDestRects[i].left,p->prDestRects[i].top,p->prDestRects[i].right,p->prDestRects[i].bottom);
   else sw_rect(q,p->rDest.left,p->rDest.top,p->rDest.right,p->rDest.bottom);
  }
  if(staged) stage_done(sslot,sbuf);
- if(prim) (void)access(2);
- return 1;
+ pa_end(begun);
+ return DD_OK;
 }
 #define nh(line) (blt_nh_line=(line),DDHAL_DRIVER_NOTHANDLED)
 static int overlap(const swq *q) { /* source and destination rectangles of one surface intersect */
@@ -714,10 +750,10 @@ static DWORD tex_blit(LPDDHAL_BLTDATA p) {
   }
   if(i==count){p->ddRVal=DD_OK;return DDHAL_DRIVER_HANDLED;}
   if(access(0)==VX2D_LOST){p->ddRVal=DDERR_SURFACELOST;return DDHAL_DRIVER_HANDLED;}
-  p->ddRVal=sw_blit(p,&w,i,count)?DD_OK:DDERR_OUTOFMEMORY;return DDHAL_DRIVER_HANDLED;
+  p->ddRVal=sw_blit(p,&w,i,count);return DDHAL_DRIVER_HANDLED; /* .677: sw_blit answers the HRESULT (the review of .673 made it one and left this test, which turned every success into DDERR_OUTOFMEMORY) */
  }
  if(access(0)==VX2D_LOST) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
- p->ddRVal=!count||sw_blit(p,&w,0,count)?DD_OK:DDERR_OUTOFMEMORY; return DDHAL_DRIVER_HANDLED;
+ p->ddRVal=count?sw_blit(p,&w,0,count):DD_OK; return DDHAL_DRIVER_HANDLED; /* .677: (the review's form gave 1, not DD_OK, for no rectangles, and 1 for any failure) */
 }
 
 /* v10.195: DirectDraw 2D callbacks that fail (any error in ddRVal, DDERR_WASSTILLDRAWING included) go to the HAL event log and
@@ -841,16 +877,21 @@ DWORD WINAPI VX_DD_QueryBltSigs(DWORD *out,DWORD n) {
  * an execute buffer (a DrawPrimitives2 command or vertex buffer: the packets are copies) needs nothing */
 int VX_D3D_hold_sync(DWORD why);
 #define HOLD_SYNC(why) VX_D3D_hold_sync(why)
-DWORD WINAPI VXBlit(LPDDHAL_BLTDATA p) {DWORD t=VX_dd_tsc(),rc;if(HOLD_SYNC(1)){if(p)p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;} /* .575 */blt_nh_line=0;blt_sw=0;rc=VXBlit_impl(p);if(blt_armed)present_arm(0);blt_log(p,rc);VX_frame_add(3,VX_dd_tsc()-t);bk_note(p,VX_dd_tsc()-t);bs_note(p,VX_dd_tsc()-t,rc,(const DWORD*)&t);if(p)VX_D3D_trace(95,(DWORD)p->ddRVal,rc,tr_off(p->lpDDDestSurface),tr_off(p->lpDDSrcSurface),p->dwFlags);sb_note(p,VX_dd_tsc()-t,rc);if(p)note2d(20,p->ddRVal,rc,p->lpDDDestSurface?p->lpDDDestSurface->ddsCaps.dwCaps:0,p->dwFlags,p->lpDDSrcSurface?p->lpDDSrcSurface->ddsCaps.dwCaps:0);return rc;}
-int VX_D3D_stretch(const vx3dn_surface *,const RECT *,const vx3dn_surface *,const RECT *,int);
-DWORD blt_3d,blt_3d_no;
-static DWORD stretch3d_mode(void) { /* the VxD's reading of ACCEL_STRETCH3D, asked once (TEXDBG BC 446) */
- static DWORD have,mode;DWORD in[2],o[8];
- if(!have){in[0]=0xBC;in[1]=0x446;memset(o,0,sizeof(o));if(ioctl(0x85500022UL,in,8,o,32)&&o[0]==0xBC){mode=o[2];have=1;}}
- return mode;
+static int flip_call(DWORD cmd,DWORD arg,DWORD flags,DWORD *r); /* .661 */
+DWORD WINAPI VXBlit(LPDDHAL_BLTDATA p) {DWORD t=VX_dd_tsc(),rc;if(HOLD_SYNC(1)){if(p)p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;} /* .575 */blt_nh_line=0;blt_sw=0;rc=VXBlit_impl(p);if(blt_armed)present_arm(0);
+ if(rc==DDHAL_DRIVER_HANDLED&&p&&!p->ddRVal&&(!p->IsClipped||p->dwRectCnt)&&
+    p->lpDDDestSurface&&p->lpDDSrcSurface&&p->lpDDSrcSurface!=p->lpDDDestSurface&&(p->lpDDDestSurface->ddsCaps.dwCaps&DDSCAPS_PRIMARYSURFACE)&&!(p->lpDDSrcSurface->ddsCaps.dwCaps&DDSCAPS_PRIMARYSURFACE))(void)flip_call(VXF_PRESENT,0,0,NULL); /* .661: a windowed frame shown: VXD3DMON's sampler ends a frame */blt_log(p,rc);VX_frame_add(3,VX_dd_tsc()-t);bk_note(p,VX_dd_tsc()-t);bs_note(p,VX_dd_tsc()-t,rc,(const DWORD*)&t);if(p)VX_D3D_trace(95,(DWORD)p->ddRVal,rc,tr_off(p->lpDDDestSurface),tr_off(p->lpDDSrcSurface),p->dwFlags);sb_note(p,VX_dd_tsc()-t,rc);if(p)note2d(20,p->ddRVal,rc,p->lpDDDestSurface?p->lpDDDestSurface->ddsCaps.dwCaps:0,p->dwFlags,p->lpDDSrcSurface?p->lpDDSrcSurface->ddsCaps.dwCaps:0);return rc;}
+int VX_D3D_stretch(const vx3dn_surface *,const RECT *,const vx3dn_surface *,const RECT *,int);int VX_D3D_stretch_n(const vx3dn_surface *,const RECT *,const vx3dn_surface *,const RECT *,int,const RECT *,DWORD);
+DWORD blt_3d,blt_3d_no,blt_3d_clip,blt_3d_rects; /* .667: blt_3d_clip the clipped ones (a window's stretched Present); .670: blt_3d_rects their clip rectangles */
+static DWORD stretch3d_mode(void) { /* the VxD's reading of ACCEL_STRETCH3D (TEXDBG BC 446); .670: asked at each stretch with the sample offset
+ * (VXNOSYNC changes it while it measures: the engine against the CPU on the same Present); .671: the sample offset of .669-.670
+ * removed (the board, .670: offset 0 exact at every size; each sixteenth moved ~4,100 pixels) */
+ DWORD in[2],o[8];in[0]=0xBC;in[1]=0x446;memset(o,0,sizeof(o));
+ if(ioctl(0x85500022UL,in,8,o,32)&&(o[0]&0xFF)==0xBC)return o[2]; /* .675: the low byte (bits 8 up carry the ring-hang flag) */
+ return 0;
 }
 static DWORD VXBlit_impl(LPDDHAL_BLTDATA p) {
- DWORD fxrop=0xCC; int ropfx=0;
+ DWORD fxrop=0xCC,stretch_mode; int ropfx=0;
  vx2d_request q; swq w; DWORD allowed,rc=VX2D_LOST,i,count,fx; RECT c; int engine;
  if(p) p->ddRVal=DD_OK; /* v10.58t: DDraw pre-sets WASSTILLDRAWING; NOTHANDLED needs DD_OK */
  if(!p||!vx_bind_hal(p->lpDD)) return nh(__LINE__);
@@ -934,12 +975,18 @@ static DWORD VXBlit_impl(LPDDHAL_BLTDATA p) {
  /* .628: a stretch between two video surfaces by the 3D engine (ACCEL_STRETCH3D, a tuning value under test: 0 the CPU as before, 1 the
   * engine with the nearest source pixel, 2 the engine with the bilinear filter; DDBLTFX_ARITHSTRETCHY asks for the filter with 1 too). One
   * rectangle, plain copy: no key, no mirror, no ROP, no constant alpha. Not taken (a surface the engine cannot use): the CPU as before. */
- if(q.op==VX2D_COPY&&!engine&&!ropfx&&!w.alpha_on&&w.d.vram&&w.s.vram&&!w.mirx&&!w.miry&&!p->IsClipped&&!(q.flags&(VX2D_SRC_KEY|VX2D_DST_KEY))&&
-    p->lpDDSrcSurface!=p->lpDDDestSurface&&(w.bpp==16||w.bpp==32)&&stretch3d_mode()) {
+ if(q.op==VX2D_COPY&&!engine&&!ropfx&&!w.alpha_on&&w.d.vram&&w.s.vram&&!w.mirx&&!w.miry&&(!p->IsClipped||(p->dwRectCnt>=1&&p->dwRectCnt<=64&&p->prDestRects))&&!(q.flags&(VX2D_SRC_KEY|VX2D_DST_KEY))&&
+    p->lpDDSrcSurface!=p->lpDDDestSurface&&(w.bpp==16||w.bpp==32)&&(stretch_mode=stretch3d_mode())!=0) {
   vx3dn_surface td,ts;
   td.offset=w.d.off;td.pitch=w.d.pitch;td.width=w.d.w;td.height=w.d.h;td.format=w.bpp==16?VX3DN_RGB565:VX3DN_XRGB8888;
   ts.offset=w.s.off;ts.pitch=w.s.pitch;ts.width=w.s.w;ts.height=w.s.h;ts.format=td.format;
-  if(VX_D3D_stretch(&td,&w.dr,&ts,&w.sr,stretch3d_mode()>=2||((p->dwFlags&DDBLT_DDFX)&&(p->bltFX.dwDDFX&DDBLTFX_ARITHSTRETCHY)))){blt_3d++;p->ddRVal=DD_OK;return DDHAL_DRIVER_HANDLED;}
+  /* .667: a clipped stretch (a window's Present) too, each clip rectangle checked inside the destination rectangle and the surface (as the
+   * engine copies below check them); one that is not goes the CPU's way below */
+  {DWORD ci,cn=p->IsClipped?p->dwRectCnt:0;int cok=1;
+  for(ci=0;ci<cn&&cok;ci++){RECT c=p->prDestRects[ci];if(!rectv(&c,&w.d)||c.left<p->rDest.left||c.top<p->rDest.top||c.right>p->rDest.right||c.bottom>p->rDest.bottom)cok=0;}
+  if(cok){int sr3=VX_D3D_stretch_n(&td,&w.dr,&ts,&w.sr,stretch_mode>=2||((p->dwFlags&DDBLT_DDFX)&&(p->bltFX.dwDDFX&DDBLTFX_ARITHSTRETCHY)),cn?(const RECT*)p->prDestRects:0,cn);
+   if(sr3==VX2D_DONE){blt_3d++;if(cn){blt_3d_clip++;blt_3d_rects+=cn;}p->ddRVal=DD_OK;return DDHAL_DRIVER_HANDLED;}
+   if(sr3==VX2D_LOST){p->ddRVal=DDERR_SURFACELOST;return DDHAL_DRIVER_HANDLED;}}} /* .677 (review of .673, 1): partly drawn, not replayed by the CPU */
   blt_3d_no++;
  }
 if(ropfx&&((q.op==VX2D_COPY&&!engine)||(p->IsClipped&&p->dwRectCnt!=1))) return nh(__LINE__); /* v10.84: a source ROP needs the engine and one rectangle (nothing is drawn yet) */
@@ -960,7 +1007,7 @@ if(ropfx&&((q.op==VX2D_COPY&&!engine)||(p->IsClipped&&p->dwRectCnt!=1))) return 
  if(!engine) {
   /* v10.75: CPU paths (stretch, mirror, system memory) touch the frame buffer too: never while the engine is lost and may still be writing to it */
   if((w.d.vram||w.s.vram)&&access(0)==VX2D_LOST) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
-  p->ddRVal=sw_blit(p,&w,0,count)?DD_OK:DDERR_OUTOFMEMORY; return DDHAL_DRIVER_HANDLED;
+  p->ddRVal=sw_blit(p,&w,0,count); return DDHAL_DRIVER_HANDLED;
  }
  if(q.op==VX2D_COPY&&pr_tid&&pr_tid==GetCurrentThreadId()&&pr_pid==GetCurrentProcessId()&&(p->lpDDDestSurface->ddsCaps.dwCaps&DDSCAPS_PRIMARYSURFACE))present_arm(1); /* v10.424 */
  for(i=0;i<count;i++) {
@@ -971,7 +1018,7 @@ if(ropfx&&((q.op==VX2D_COPY&&!engine)||(p->IsClipped&&p->dwRectCnt!=1))) return 
    /* engine declined (disabled, busy, ...): finish this and any remaining rectangles on the CPU. v10.368 (audit N1): after the wait for
     * the engine, as the CPU path above (a 3D draw in flight could still be writing the destination) */
    if(access(0)==VX2D_LOST) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
-   if(!sw_blit(p,&w,i,count)) {p->ddRVal=DDERR_OUTOFMEMORY; return DDHAL_DRIVER_HANDLED;} p->ddRVal=DD_OK; return DDHAL_DRIVER_HANDLED;
+   p->ddRVal=sw_blit(p,&w,i,count); return DDHAL_DRIVER_HANDLED;
   }
   if(rc!=VX2D_DONE) return result(rc,&p->ddRVal);
  }
@@ -1073,7 +1120,7 @@ static DWORD VXCanCreate_impl(LPDDHAL_CANCREATESURFACEDATA p) {
   if(!(m&3)) {p->ddRVal=DDERR_UNSUPPORTED; return DDHAL_DRIVER_HANDLED;}
   if(!(p->lpDDSurfaceDesc->dwFlags&DDSD_PIXELFORMAT)||!(f=ov_fmt(&p->lpDDSurfaceDesc->ddpfPixelFormat,m))) {p->ddRVal=DDERR_INVALIDPIXELFORMAT; return DDHAL_DRIVER_HANDLED;}
   pitch=ov_pitch(f,w);
-  if(!w||(w&1)||w>2048||(DWORD)p->lpDDSurfaceDesc->dwHeight>2048||pitch>0x1FFFUL||((f==1+VXO_FMT_YV12||f==1+VXO_FMT_I420)&&((DWORD)p->lpDDSurfaceDesc->dwHeight&1))) {p->ddRVal=DDERR_INVALIDPARAMS; return DDHAL_DRIVER_HANDLED;}
+  if(!w||(w&1)||w>2048||!p->lpDDSurfaceDesc->dwHeight||(DWORD)p->lpDDSurfaceDesc->dwHeight>2048|| /* .706 (a review of .703): and not 0 rows */ pitch>0x1FFFUL||((f==1+VXO_FMT_YV12||f==1+VXO_FMT_I420)&&((DWORD)p->lpDDSurfaceDesc->dwHeight&1))) {p->ddRVal=DDERR_INVALIDPARAMS; return DDHAL_DRIVER_HANDLED;}
   p->ddRVal=DD_OK; return DDHAL_DRIVER_HANDLED;
  }
  if(cap&(DDSCAPS_OVERLAY|DDSCAPS_TEXTURE|DDSCAPS_ZBUFFER|DDSCAPS_NONLOCALVIDMEM)) {p->ddRVal=DDERR_UNSUPPORTED; return DDHAL_DRIVER_HANDLED;}
@@ -1177,11 +1224,12 @@ static DWORD VXCreate_impl(LPDDHAL_CREATESURFACEDATA p) {
  * second Lock packed packed rows again and the first Unlock spread them under the second. Outstanding Locks by surface (64; with the
  * table full a surface converts at each Lock and Unlock as before). */
 #define LK_SURF 64
-static DWORD lks_gbl[LK_SURF],lks_pid[LK_SURF],lks_n[LK_SURF];
+static DWORD lks_gbl[LK_SURF],lks_pid[LK_SURF],lks_n[LK_SURF];static LONG lks_tok[LK_SURF]; /* .659: and the process's token (an ID given again) */
 static int lks_find(DDRAWI_DDRAWSURFACE_LCL *s,int add) {
- DWORD g=(DWORD)s->lpGbl,pid=GetCurrentProcessId();int i,f=-1;
+ DWORD g=(DWORD)s->lpGbl,pid=GetCurrentProcessId();int i,f=-1;LONG tok=VX_D3D_proc_token();
+ for(i=0;i<LK_SURF;i++)if(lks_n[i]&&lks_pid[i]==pid&&lks_tok[i]!=tok){lks_n[i]=0;lks_gbl[i]=0;lks_pid[i]=0;} /* .659: an ended process's under this ID */
  for(i=0;i<LK_SURF;i++){if(lks_gbl[i]==g&&lks_pid[i]==pid&&lks_n[i])return i;if(f<0&&!lks_n[i])f=i;}
- if(!add||f<0)return -1;lks_gbl[f]=g;lks_pid[f]=pid;lks_n[f]=0;return f;
+ if(!add||f<0)return -1;lks_gbl[f]=g;lks_pid[f]=pid;lks_tok[f]=tok;lks_n[f]=0;return f;
 }
 /* .518 (audit): only the surfaces whose layout a Lock changes are counted (DXT rows packed, a D24S8's planes merged): ordinary video
  * surfaces no longer fill the table, and one that needs the count and finds the table full is refused (SURFACEBUSY) before anything is
@@ -1210,12 +1258,13 @@ static DWORD VXLock_impl(LPDDHAL_LOCKDATA p) {
    if(rc==VX2D_LOST) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
    return DDHAL_DRIVER_NOTHANDLED;
   }
- } else rc=access(s.offset?0:1);
+ } else if(s.offset) rc=access(0);
+ else {pa_reap();rc=access(1);if(rc==VX2D_DONE){int k=pa_find(p->lpDDSurface,1);if(k>=0)pa_n[k]++;else (void)access(2);}} /* .657: recorded, ended by its Unlock (a full table: ended now) */
  /* v10.58v: rc 0 is VX2D_SKIP (engine not in desktop mode; nothing is in flight, ops are synchronous). It used to be
   * reported as WASSTILLDRAWING, which made DirectDraw retry Lock forever. Only a lost engine blocks CPU access. */
  if(rc==VX2D_LOST) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
  {int first=lks_lock(p->lpDDSurface); /* v10.466 */
- if(first<0){p->ddRVal=DDERR_SURFACEBUSY;return DDHAL_DRIVER_HANDLED;} /* .518: no room to count it: refused before any conversion */
+ if(first<0){int k=pa_find(p->lpDDSurface,0);if(k>=0&&pa_n[k]){pa_n[k]--;(void)access(2);}p->ddRVal=DDERR_SURFACEBUSY;return DDHAL_DRIVER_HANDLED;} /* .657: the refused Lock's bracket ended */ /* .518: no room to count it: refused before any conversion */
  if(first)dxt_pack(p->lpDDSurface); /* v10.200 */
  if(p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_ZBUFFER)&&p->lpDDSurface->lpGbl->dwReserved1!=VX_SPL_OWNED) { /* v10.245 */
   if(first){splane_merge(p->lpDDSurface);p->lpDDSurface->lpGbl->dwReserved1=(p->dwFlags&DDLOCK_READONLY)?VX_SPL_RO:0;}
@@ -1225,16 +1274,17 @@ static DWORD VXLock_impl(LPDDHAL_LOCKDATA p) {
 static DWORD VXUnlock_impl(LPDDHAL_UNLOCKDATA p);
 DWORD WINAPI VXUnlock(LPDDHAL_UNLOCKDATA p) {DWORD rc,t=VX_dd_tsc();access_why=0xFFFFFFFFUL;rc=VXUnlock_impl(p);VX_frame_add(2,VX_dd_tsc()-t);if(p)VX_D3D_trace(94,(DWORD)p->ddRVal,rc,tr_off(p->lpDDSurface),0,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0);ft_count(1);if(p)note2d(23,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,0,access_why);return rc;}
 static DWORD VXUnlock_impl(LPDDHAL_UNLOCKDATA p) {
- vx2d_surface s;
  if(p) p->ddRVal=DD_OK; /* v10.58t: DDraw pre-sets WASSTILLDRAWING; NOTHANDLED needs DD_OK */
  if(!p||!vx_bind_hal(p->lpDD)) return DDHAL_DRIVER_NOTHANDLED;
+ {int k=pa_find(p->lpDDSurface,0);if(k>=0&&pa_n[k]){pa_n[k]--;(void)access(2);}pa_reap();} /* .657: the bracket this surface's Lock opened, before
+  * anything can return (a flip chain's front buffer is a 3D surface at offset 0: the loss return below skipped it); it was: describe
+  * again, which a surface made invalid since the Lock refused */
  if(p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_VIDEOMEMORY)&&
     (p->lpDDSurface->ddsCaps.dwCaps&(DDSCAPS_3DDEVICE|DDSCAPS_ZBUFFER|DDSCAPS_TEXTURE))&&access(3)==VX2D_LOST) { /* v10.368 (audit N11): the loss check
      * only (status, action 3): Lock already waited for the engine, and the CPU's writes are done; it waited for the engine again */
   (void)lks_unlock(p->lpDDSurface); /* .518 (audit): the Lock's count retired with the surface lost too (its entry stayed) */
   p->ddRVal=DDERR_SURFACELOST;return DDHAL_DRIVER_HANDLED;
  }
- if(describe(p->lpDDSurface,&s)&&!s.offset) (void)access(2);
  if(!lks_unlock(p->lpDDSurface))return DDHAL_DRIVER_NOTHANDLED; /* v10.466: another Lock outstanding: converted back at the last */
  dxt_spread(p->lpDDSurface); /* v10.200 */
  if(p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_ZBUFFER)&&p->lpDDSurface->lpGbl->dwReserved1!=VX_SPL_OWNED) { /* v10.245 */
@@ -1494,6 +1544,8 @@ static DWORD VXDestroySurface_impl(LPDDHAL_DESTROYSURFACEDATA p) {
  if(p->lpDDSurface&&!(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_SYSTEMMEMORY)) (void)access_z(0,p->lpDDSurface); /* v10.295: a depth surface's Coarse Z records go with it */
  if(!VX_D3D_forget_surface(p->lpDDSurface)){p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
  if(p->lpDDSurface&&p->lpDDSurface->lpGbl){int i;for(i=0;i<LK_SURF;i++)if(lks_gbl[i]==(DWORD)p->lpDDSurface->lpGbl){lks_n[i]=0;lks_gbl[i]=0;lks_pid[i]=0;}} /* v10.466: its outstanding Locks go with it */
+ {int k=pa_find(p->lpDDSurface,0);if(k>=0){while(pa_n[k]){pa_n[k]--;(void)access(2);}pa_gbl[k]=0;pa_pid[k]=0;}} /* .706 (a review of .703): a primary destroyed while locked closes
+  * its Lock's cursor bracket (it stayed open until the process ended: the cursor hidden, asynchronous blits off) */
  if(p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_OVERLAY)) { /* v10.466 (review): only the overlay being shown (it hid
   * whatever overlay was up when any overlay surface went, another program's or a back buffer's) */
   vx_ovl_req q; DWORD r[VXO_REPLY_DWORDS];
@@ -1511,7 +1563,8 @@ static DWORD VXWaitVB_impl(LPDDHAL_WAITFORVERTICALBLANKDATA p) {
  if(p->dwFlags==DDWAITVB_I_TESTVB) arg=0; else if(p->dwFlags&DDWAITVB_BLOCKEND) arg=2; else if(p->dwFlags&DDWAITVB_BLOCKBEGIN) arg=1; else return DDHAL_DRIVER_NOTHANDLED;
  if(!flip_call(VXF_WAITVB,arg,0,r)||r[VXF_R_RESULT]==VXF_UNSUPPORTED) return DDHAL_DRIVER_NOTHANDLED;
  if(!arg) p->bIsInVB=r[VXF_R_IN_VB];
- p->ddRVal=DD_OK; return DDHAL_DRIVER_HANDLED;
+ p->ddRVal=r[VXF_R_RESULT]==VXF_OK?DD_OK:DDERR_GENERIC; /* .705 (a review of .703): a wait that timed out or failed in the VxD is not a blank reached (it answered DD_OK) */
+ return DDHAL_DRIVER_HANDLED;
 }
 /* v10.73: GetScanLine from the scan line counter; offered only when the registry gate SCANLINE=1 is set and the counter answers. */
 DWORD WINAPI VXGetScanLine(LPDDHAL_GETSCANLINEDATA p) {
@@ -1602,7 +1655,12 @@ DWORD WINAPI DriverInit(LPVOID ptr) {
 }
 BOOL WINAPI DllMain(HINSTANCE h,DWORD why,LPVOID reserved) {
  (void)reserved;
- if(why==DLL_PROCESS_ATTACH) {instance=h; DisableThreadLibraryCalls(h); dev_attach(GetCurrentProcessId()); VX_D3D_attach(1);} /* v10.319: this process's callback-lock token (vx_d3d_hal.c) */
+ if(why==DLL_PROCESS_ATTACH) {instance=h; DisableThreadLibraryCalls(h); dev_attach(GetCurrentProcessId()); VX_D3D_attach(1);
+  {DWORD in[2],o[8];extern uint32_t vx_d3d_tn_fastix;in[0]=0xBC;in[1]=0x44B;memset(o,0,sizeof(o)); /* .676: ACCEL_D3D_PRECULL and ACCEL_D3D_IXSKIP as the registry holds them now (TEXDBG BC 44B), so each program run takes the values set before it: the A/B needs no restart */
+   if(ioctl(0x85500022UL,in,8,o,32)&&(o[0]&0xFF)==0xBC&&o[1]==0x44B){extern uint32_t vx_d3d_gband;vx_d3d_tn_fastix=o[2]?1:0;vx_d3d_gband=o[3]==2?2:o[3]?1:0; /* .702: 2, no viewport codes */} /* .698: o[3] ACCEL_D3D_GUARDBAND (each program as it starts: the A/B needs no restart) */ /* .682: o[2] ACCEL_D3D_TNFASTIX, the one switch left */}} /* v10.319: this process's callback-lock token (vx_d3d_hal.c) */
+ if(why==DLL_PROCESS_DETACH) {int i;DWORD me=GetCurrentProcessId();LONG tok=VX_D3D_proc_token(); /* .659: this process's staging block and open primary brackets given up */
+  for(i=0;i<STAGE_SLOTS;i++)if(stage_pid[i]==me&&stage_tok[i]==tok){if(stage_hs[i])GlobalFree(stage_hs[i]);stage_hs[i]=NULL;stage_ns[i]=0;stage_pid[i]=0;stage_tok[i]=0;}
+  for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]==me&&pa_tok[i]==tok){while(pa_n[i]){(void)access(2);pa_n[i]--;pa_reaped++;}pa_gbl[i]=0;pa_pid[i]=0;}}
  if(why==DLL_PROCESS_DETACH) {int i;VX_D3D_attach(0);for(i=0;i<8;i++)if(lock_pid[i]==GetCurrentProcessId())lock_pid[i]=0;} /* v10.435 */
  if(why==DLL_PROCESS_DETACH&&flip_pid==GetCurrentProcessId()) {(void)flip_call(VXF_RESET,0,0,NULL); flip_pid=0;}
  if(why==DLL_PROCESS_DETACH&&ov_pid&&ov_pid==GetCurrentProcessId()) {vx_ovl_req q; DWORD r[VXO_REPLY_DWORDS]; memset(&q,0,sizeof(q)); q.cmd=VXO_HIDE; (void)ov_call(&q,r); ov_pid=0;} /* v10.106 */

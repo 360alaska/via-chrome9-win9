@@ -85,7 +85,7 @@ alloc_point_data(GLcontext *ctx, struct tnl_pipeline_stage *stage)
       return GL_FALSE;
 
    _mesa_vector4f_alloc( &store->PointSize, 0, VB->Size, 32 );
-   return GL_TRUE;
+   return store->PointSize.data != NULL;
 }
 
 

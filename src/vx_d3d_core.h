@@ -71,6 +71,8 @@ typedef struct vx_d3d_services {
 /* v10.317: faces() | VX_D3D_FACES_SHARED: the six faces' levels lie at the same offsets from their own level 0 (the ICD's block copies), so
  * the engine's one level table (HCM p116 base mode 1) serves all six and a cube map keeps its mip chain */
 #define VX_D3D_FACES_SHARED 0x100UL
+/* A null output queries the recording payload size. */
+uint32_t vx_d3d_tnl_get(const vx_d3d_context *,void *,uint32_t);
 void vx_d3d_init(vx_d3d_context *,const vx3dn_surface *,const vx3dn_surface *,uint32_t);
 uint32_t vx_d3d_dp2(vx_d3d_context *,const vx_d3d_input *,const vx_d3d_services *,uint32_t *);
 /* .550: the queue held across DrawPrimitives2 calls (vx_d3d_core.c, cq_hold) */
@@ -173,6 +175,7 @@ extern uint32_t vx_d3d_gl_gllist,vx_d3d_gl_glwords,vx_d3d_gw[4]; /* .503: ACCEL_
 void vx_d3d_gl_unjoin(void); /* v10.360: before each polygon or line from Mesa's clipper (its new vertices reuse slots) */
 uint32_t vx_d3d_gl_clear(vx_d3d_context *c,const vx_d3d_services *sv,uint32_t flags,uint32_t color,double z,uint32_t stencil,const vx3dn_rect *r);
 int vx_d3d_supported(const vx_d3d_context *c);
+int vx_d3d_supported_unbound(const vx_d3d_context *c); /* .649 */
 uint32_t vx_d3d_draw_primitive(vx_d3d_context *,const vx_d3d_input *,
  const vx_d3d_services *,uint32_t,const uint16_t *,uint32_t);
 #endif

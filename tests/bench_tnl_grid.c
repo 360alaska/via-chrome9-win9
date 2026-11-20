@@ -1,4 +1,4 @@
-/* Native GRID replay. Arguments are frames, vary inputs, indexed packets, and COLORVERTEX (0 uses constant material). */
+/* Native GRID replay (.644 review: GRID_N and GRID_DRAWS set the mesh size and the draws a frame; GRID_N 3, GRID_DRAWS 700 is GTA3's mix of many small draws). Arguments are frames, vary inputs, indexed packets, and COLORVERTEX (0 uses constant material). */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,7 +6,13 @@
 #include <time.h>
 #include "vx_d3d_core.h"
 extern uint32_t vx_d3d_indexed,vx_d3d_ixpass,vx_d3d_v8,vx_d3d_tn[12];
-enum {GN=24,NV=(GN+1)*(GN+1), NT=GN*GN*2, ND=30};
+#ifndef GRID_N
+#define GRID_N 24
+#endif
+#ifndef GRID_DRAWS
+#define GRID_DRAWS 30
+#endif
+enum {GN=GRID_N,NV=(GN+1)*(GN+1), NT=GN*GN*2, ND=GRID_DRAWS};
 typedef struct {float x,y,z,nx,ny,nz;uint32_t c;float u,v;} vert;
 static vert v[NV];
 static unsigned char cmd[ND][140+72+124+120+72+6+NT*6];
@@ -96,6 +102,7 @@ int main(int argc,char **argv){
  const int vary=argc>2?atoi(argv[2]):0;
  if(!reps)return 2;
  colorvertex=argc>4?(uint32_t)atoi(argv[4]):1;
+ {extern uint32_t vx_d3d_gband,vx3dn_gband;vx_d3d_gband=vx3dn_gband=argc>5?(uint32_t)atoi(argv[5]):0;} /* .698: the guard band */
  init(vary);
  vx_d3d_init(&ctx,&target,NULL,7);
  ctx.state.tss[0][0]=7;ctx.state.tss[0][1]=4;ctx.state.tss[0][2]=2;ctx.state.tss[0][3]=0;

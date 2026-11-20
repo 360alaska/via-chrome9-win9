@@ -344,7 +344,7 @@ static void vbo_exec_fixup_vertex( GLcontext *ctx,
 
 /* 
  */
-/* VX855 v10.500 (ACCEL_OPENGL_FASTVTX; Fable's list, Quake 2's glVertex3fv a vertex): the vertex copied into the buffer as 32-bit words
+/* VX855 v10.500 (ACCEL_OPENGL_FASTVTX; the review list, Quake 2's glVertex3fv a vertex): the vertex copied into the buffer as 32-bit words
  * from pointers kept in registers, four at a time (Watcom's loop below read the size and both pointers again for every float and moved
  * each through the x87). The same words (a signalling NaN is no longer made quiet by the x87 on the way). 0: the loop as Mesa's */
 int _vbo_vx855_fastvtx = 1;

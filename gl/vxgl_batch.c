@@ -28,7 +28,7 @@ void vxgl_seq_idle(void) {vxgl_seq_done=vxgl_seq_sent;}
 void vxgl_seq_alone(uint32_t rc) {uint32_t b=vxgl_seq_sent;vxgl_seq_q++;vxgl_seq_sent++;if(rc==VX3DN_OK&&!vxgl_seq_ring)vxgl_seq_done=b;else if(rc==VX3DN_RECOVERED)vxgl_seq_done=vxgl_seq_sent;}
 int vxgl_batch_add(const vx3dn_packet *p) {
  uint32_t m=vxgl_batch_max>VX3DN_BATCH_SEND?VX3DN_BATCH_SEND:vxgl_batch_max;int full; /* .560: VX3DN_BATCH_SEND (a call's bytes) */
- if(m<2||p->op!=VX3DN_DRAW||(p->clear_flags&VX3DN_DRAW_CLEAR)||!p->target.offset||p->vertex_count>VX3DN_MAX_VERTICES)return 0;
+ if(m<2||p->op!=VX3DN_DRAW||(p->clear_flags&VX3DN_DRAW_CLEAR)||!p->target.offset||p->vertex_count>(p->pre.on==2?VX3DN_IX_VERTICES:VX3DN_MAX_VERTICES))return 0;
  /* v10.330 (review #25): the room checked, the packet queued and a full queue sent under one hold of the engine lock (recursive): the
   * send ran after the lock was let go, so another thread could queue between (the callers hold it already: vxgl_hw_flush's core flush) */
  vxgl_engine_lock();
@@ -48,13 +48,15 @@ uint32_t vxgl_batch_flush_why(int why) {
  while(off<qn) {
   uint32_t before=vxgl_seq_sent;
   done=0;rc=vxgl_batch_send(q+off,qn-off,&done);
+  if(done>qn-off)done=qn-off; /* .706 (a review of .703): clamped before it is counted */
   vxgl_batch_calls++;vxgl_batch_packets+=done;sent+=done;
-  if(done>qn-off)done=qn-off;
   vxgl_seq_sent+=done;if(done&&!vxgl_seq_ring)vxgl_seq_done=before;if(rc==VX3DN_RECOVERED)vxgl_seq_done=vxgl_seq_sent; /* v10.366 */
   off+=done;
   if(rc==VX3DN_OK){if(done){zero=0;continue;}if(++zero<3)continue; /* v10.426 (review, side note to #82): OK with nothing taken is sent again (twice), then logged and dropped as BUSY */
    rc=VX3DN_BUSY;}
   {static int n;if(n++<64)vxgl_log("batch: %lu packets, %lu taken, result %lu\n",(unsigned long)(qn-off+done),(unsigned long)done,(unsigned long)rc);}
+  /* A busy prefix is already consumed. Continue with the unsent suffix. */
+  if(rc==VX3DN_BUSY&&done){zero=0;continue;}
   if(rc==VX3DN_LOST)vxgl_batch_lost++;
   if(rc==VX3DN_LOST||rc==VX3DN_BUSY)break; /* the engine is gone (or still taken after the send's retries): the rest cannot be drawn */
   if(rc==VX3DN_RECOVERED){if(!done&&again++)break;continue;} /* the engine was reset under the group: the rest goes on; .532 (review of .530, B2): with none taken the

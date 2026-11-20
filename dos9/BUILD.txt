@@ -2,3 +2,6 @@ DOS tools for the VX900 board (Gigabyte M7V90PI) Windows 98 start-up problem. Op
   wcl -q -bt=dos -ml -0 -os -l=dos -fe=VX9PROBE.EXE vx9probe.c
   wasm -q -0 vx9trace.asm && wlink op q format dos com file vx9trace.o name VX9TRACE.COM
   (the same two commands for vx9ebios.asm and vx9nmi.asm)
+
+VXDOSD (the DOS half of VXDOS, the full-screen DOS session tester; any machine):
+  wcl -q -bt=dos -ml -0 -os -l=dos -fe=VXDOSD.EXE vxdosd.c

@@ -261,7 +261,7 @@ alloc_fog_data(GLcontext *ctx, struct tnl_pipeline_stage *stage)
    if (!inited)
       init_static_data();
 
-   return GL_TRUE;
+   return store->fogcoord.data != NULL;
 }
 
 

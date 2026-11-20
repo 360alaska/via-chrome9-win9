@@ -43,7 +43,14 @@
 GLboolean
 _tnl_CreateContext( GLcontext *ctx )
 {
+   return _tnl_CreateContextWithPipeline(ctx, NULL);
+}
+
+GLboolean
+_tnl_CreateContextWithPipeline(GLcontext *ctx, const struct tnl_pipeline_stage **stages)
+{
    TNLcontext *tnl;
+   GLboolean installed;
 
    /* Create the TNLcontext structure
     */
@@ -62,11 +69,16 @@ _tnl_CreateContext( GLcontext *ctx )
     */
    if (ctx->VertexProgram._MaintainTnlProgram) {
       _tnl_ProgramCacheInit( ctx );
-      _tnl_install_pipeline( ctx, _tnl_vp_pipeline );
-   } else {
-      _tnl_install_pipeline( ctx, _tnl_default_pipeline );
+      if (!stages) stages = _tnl_vp_pipeline;
+   } else if (!stages) {
+      stages = _tnl_default_pipeline;
    }
+   installed = _tnl_install_pipeline(ctx, stages);
 
+   if (!installed) {
+      _tnl_DestroyContext(ctx);
+      return GL_FALSE;
+   }
    tnl->NeedNdcCoords = GL_TRUE;
    tnl->AllowVertexFog = GL_TRUE;
    tnl->AllowPixelFog = GL_TRUE;

@@ -44,6 +44,18 @@ class NativeGPU(GPU):
  def submit(self,p):
   self.u.mem_write(BATCH,bytes(p));return self.call('VX3DN_submit',(BATCH,))
 
+def dos_clock_checks():
+ """.673/.693: a BIOS that sets clock select 3 (misc output 6F, the NC20) gets it back when a DOS session is given the display with the
+ VDD's standard 67; the BIOS's value is taken once, at Device_Init too (the VDD loads the VxD dynamically: no Sys_Critical_Init)"""
+ cases=[]
+ g=NativeGPU(32);g.misc=0x6F;g.call('VESA_boot_capture');g.misc=0x67;g.call('VESA_boot_capture')
+ c=g.word(g.addr('vx_dos_clock'));assert c&0x1FF==0x16F,hex(c)
+ g.u.mem_write(g.addr('vga_mode'),pack([1]));g.call('VESA_dos_restore');assert g.misc&0x0C==0x0C and g.word(g.addr('vx_dos_clock'))>>16==1,(hex(g.misc),hex(g.word(g.addr('vx_dos_clock'))))
+ g.u.mem_write(g.addr('vga_mode'),pack([0]));g.misc=0x67;g.call('VESA_dos_restore');assert g.misc==0x67,'only in VGA mode'
+ cases.append('.693: the BIOS misc output 6F taken once (a later 67 does not replace it); a DOS session restored with 67 gets clock select 3 back, only while in VGA mode')
+ g=NativeGPU(32);g.misc=0x67;g.call('VESA_boot_capture');g.u.mem_write(g.addr('vga_mode'),pack([1]));g.call('VESA_dos_restore');assert g.misc==0x67
+ cases.append('.693: a BIOS on clock select 1 (the VX855 desktops, 67): nothing changed')
+ return cases
 def loss_checks():
  """Observe new cursor/overlay entry points after a native loss latch."""
  from v10106 import ov,mask
@@ -67,7 +79,7 @@ def loss_checks():
    else:g.call('VX2D_hwcur_hide');rc=0
    record(f'native loss fences hardware cursor {mode} {operation}',
           [rc,len(g.writes)-writes,bytes(g.u.mem_read(FB+off,0x4000))!=image,g.critical],
-          [0,0,False,0])
+          [0,0 if operation=='move' else 1,False,0]) # .691: a hide (also the one a set starts with) switches the unit off through the fence
  for operation in ('update','flip','hide','probe'):
   g=NativeGPU();mask(g,1|64|2048)
   g.u.mem_write(g.addr('vx2d_hqv_off'),pack([0x700000]))
@@ -836,7 +848,7 @@ def ringflip_checks():
   def fetch_2d(s,a,b):
    if s.gmode and b>a:s.got.extend(s.gwords(a,(b-a)//4))
    return super().fetch_2d(a,b)
- FLIP=[0xFE000000,1,0,0xCC000000,0x6C,1,0xCC000000,0xCC000000,0xFE020420,0x41C,0x00110000,0xCC000000,0x10100000,0x11000000,0x12000008,0xCC000099]
+ FLIP=[0xFE000000,1,0,0xCC000000,0x6C,1,0xCC000000,0xCC000000,0xFE020420,0x41C,0x00110000,0xCC000000,0x10100000,0x11000000,0x1200000C,0xCC000099] # .692: 12 = 0C
  for bpp in (32,16):
   pk=bytearray(packet(bpp));struct.pack_into('<I',pk,20,0x100000)
   g=RecGPU(bpp);g.seq[0x1a]=8;g.seq[0x1e]=1;assert ctl(g,Q)[0]==OK
@@ -867,11 +879,32 @@ def ringflip_checks():
   r=ctl(g,F,0x100004);assert r[0]==OK and g.crt_start()==0x100004>>1 and not g.crt.get(0x32,0)&1,'an address not 8-aligned: a CPU flip'
   ctl(g,R);g.u.mem_write(g.addr('vx3dn_flip_ring'),pack([0]));r=ctl(g,F,0x100000);assert r[0]==OK and g.crt_start()==0x100000>>1 and not g.crt.get(0x32,0)&1 and fr(0)==4 # .532: two more ring flips above
   cases.append(f'{bpp}bpp ACCEL_FLIP_RING 0 and an unaligned address: CPU flips, CR32 bit 0 clear')
-  # .555: a NOVSYNC flip (flags bit 3) is the one-frame flip: into the ring when it runs, the old front kept as after any ring flip
-  ctl(g,R);g.u.mem_write(g.addr('vx3dn_flip_ring'),pack([1]));assert g.submit(pk)==0;f0=fr(0);c0=g.crt_start();n0=len(g.got);r=ctl(g,F,0x100000,8)
+  # .555 (ACCEL_FLIP_TEAR 0 since .696): a NOVSYNC flip (flags bit 3) is the one-frame flip: into the ring when it runs, the old front kept as after any ring flip
+  ctl(g,R);g.u.mem_write(g.addr('vx3dn_flip_ring'),pack([1]));g.u.mem_write(g.addr('vx_flip_tear'),pack([0]));assert g.submit(pk)==0;f0=fr(0);c0=g.crt_start();n0=len(g.got);r=ctl(g,F,0x100000,8)
   assert r[0]==OK and fr(0)==f0+1 and g.crt_start()==c0 and g.crt.get(0x32,0)&1,(r[:5],fr(0),f0,[fr(k) for k in range(8)])
   w=g.got[n0:];i=w.index(0xFE000000);assert w[i:i+16]==FLIP and g.word(g.addr('vx_flip_old_front'))==c0<<1,[hex(x) for x in w[i:i+16]]
   cases.append(f'{bpp}bpp .555: a NOVSYNC flip goes into the ring as the one-frame flip (the old front guarded), not to the CRTC at once')
+  # .696: ACCEL_FLIP_TEAR (default 1): a NOVSYNC flip is taken from the next scan line (CR32 bit 0, real-time flipping). In the ring: the
+  # swap words without the 6C = 1 wait (the engine does not idle to the blank). By the CPU: the address at once, CR32 bit 0 set, nothing
+  # pending (the old front free); the next vsync CPU flip clears CR32 bit 0 first. 0 = the .555 one-frame flip (checked just above).
+  g.u.mem_write(g.addr('vx_flip_tear'),pack([1]))
+  ctl(g,6,0);assert g.submit(q)==0;f0=fr(0);c0=g.crt_start();n0=len(g.got);t0=g.word(g.addr('vx3dn_fr_tear'));r=ctl(g,F,0x200000,8)
+  w=g.got[n0:];i=w.index(0x00110000)-2
+  assert r[0]==OK and fr(0)==f0+1 and g.crt_start()==c0 and g.crt.get(0x32,0)&1 and g.word(g.addr('vx3dn_fr_tear'))==t0+1,(r[:5],fr(0),f0)
+  assert w[i:i+8]==FLIP[8:12]+[0x10200000]+FLIP[13:] and 0x6C not in w[max(0,i-8):i],[hex(x) for x in w[max(0,i-8):i+8]]
+  cases.append(f'{bpp}bpp .696: a NOVSYNC ring flip leaves the 6C blank wait out (the swap from the next scan line, CR32 bit 0)')
+  ctl(g,6,0);ctl(g,R);g.u.mem_write(g.addr('vx3dn_flip_ring'),pack([0]));cs=g.word(g.addr('vx_flip_tear_stat')+4)
+  r=ctl(g,F,0x100000,8);assert r[0]==OK and g.crt_start()==0x100000>>1 and g.crt.get(0x32,0)&1 and g.word(g.addr('vx_flip_old_front'))==0xFFFFFFFF and g.word(g.addr('vx_flip_tear_stat')+4)==cs+1,(r[:5],hex(g.crt.get(0x32,0)))
+  r=ctl(g,F,0x200000);assert r[0]==OK and g.crt_start()==0x200000>>1 and not g.crt.get(0x32,0)&1,'a vsync CPU flip after a tear flip: CR32 bit 0 cleared (by the frame again)'
+  cases.append(f'{bpp}bpp .696: a NOVSYNC CPU flip writes the address at once with CR32 bit 0 set and nothing pending; the next vsync flip clears the bit')
+  ctl(g,R);g.u.mem_write(g.addr('vx3dn_flip_ring'),pack([1]));assert g.submit(pk)==0;r=ctl(g,F,0x100000);assert r[0]==OK and g.crt.get(0x32,0)&1 # the state the next check starts from
+  # .686 (second opinion on T684): a ring flip to the address already shown is queued but not marked pending by the display layer; a CPU
+  # flip or reset (ring_off) cleared CR32 bit 0 under it. Now ring_off asks the ring whether its last flip ran.
+  ctl(g,6,0);f0=fr(0);r=ctl(g,F,0x100000);assert r[0]==OK and fr(0)==f0+1 and g.word(g.addr('vx_flip_ring_pend'))==0,(r[:5],fr(0),f0)
+  g.u.mem_write(g.addr('fr_seq'),pack([(g.word(g.addr('fx_seq'))+0x100)&0xFFFF]));g.call('VX3DN_ring_stop',())
+  assert g.word(g.addr('vx3dn_fr_pend'))==1;r=ctl(g,R);assert r[0]==OK and g.word(g.addr('vx3dn_fr_pend'))==0 and not g.crt.get(0x32,0)&1,'ring_off: the same-address flip asked for'
+  cases.append(f'{bpp}bpp .686: a ring flip to the shown address is accounted for before CR32 bit 0 is cleared')
+  ctl(g,R);g.u.mem_write(g.addr('vx3dn_flip_ring'),pack([1]))
   # .575 (peer review of .572, finding 10): the status query (VX2D_access 3: GetBltStatus, GetFlipStatus) with nothing in flight and no blit pending
   # keeps the 3D state cache (it started it over: the next draw sent all its state again); a CPU access (0) starts it over as before
   g=RecGPU(bpp);g.seq[0x1a]=8;g.seq[0x1e]=1;assert ctl(g,Q)[0]==OK
@@ -887,6 +920,16 @@ def ringflip_checks():
   assert r[0]==4 and g.crt_start()==c0,(r[:5],hex(g.crt_start()),hex(c0))
   assert ctl(g,F,0x100000)[0]==4 and g.crt_start()==c0,'subsequent flips report the same lost device'
   cases.append(f'{bpp}bpp an interval-two CPU flip reports an unrecoverable deferred ring retire without changing scanout')
+ # .695 (review of .694): IGA2 mirroring this frame buffer (CR6A bit 7, its pitch the mode's): the ring flip carries IGA2's swap too
+ # (18/19 = the address, 1A = 0C) in the same run of whole quads, and the flip side counts it
+ g=RecGPU(32);g.seq[0x1a]=8;g.seq[0x1e]=1;assert ctl(g,Q)[0]==OK
+ g.crt[0x6A]=0x80;g.crt[0x66]=(g.pitch>>3)&255;g.crt[0x67]=(g.pitch>>11)&3
+ pk=bytearray(packet(32));struct.pack_into('<I',pk,20,0x100000);assert g.submit(pk)==0
+ n0=len(g.got);r=ctl(g,F,0x100000);w=g.got[n0:];i=w.index(0xFE000000)
+ FLIP2=FLIP[:15]+[0x18100000,0x19000000,0x1A00000C,0xCC000000,0xCC000099]
+ assert r[0]==OK and w[i:i+20]==FLIP2,[hex(x) for x in w[i:i+20]]
+ assert g.word(g.addr('vx3dn_fr_two'))==1 and g.word(g.addr('vx_flip_two')+20)==1
+ cases.append('32bpp .695: IGA2 mirroring the frame buffer: the ring flip carries IGA2\'s swap (18/19 = the address, 1A = 0C), counted (vx3dn_fr_two, vx_flip_two[5])')
  return cases
 def ringclear_checks():
  """v10.418: ACCEL_3D_RINGCLEAR: with XP's ring running a whole-surface clear is the 2D solid fill written into the ring (the registers of
@@ -1113,6 +1156,7 @@ def checks():
  cases+=speed_checks() # v10.412
  cases+=frontz_checks() # v10.416
  cases+=ringflip_checks() # v10.417
+ cases+=dos_clock_checks() # .693
  cases+=ringclear_checks() # v10.418
  cases+=sink_checks()
  cases+=lock_checks() # v10.432

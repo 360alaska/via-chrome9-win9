@@ -61,7 +61,10 @@ _swsetup_CreateContext( GLcontext *ctx )
 
    _tnl_init_vertices( ctx, ctx->Const.MaxArrayLockSize + 12, 
 		       sizeof(SWvertex) );
-
+   if (!TNL_CONTEXT(ctx)->clipspace.vertex_buf) {
+      _swsetup_DestroyContext(ctx);
+      return GL_FALSE;
+   }
 
    return GL_TRUE;
 }
@@ -164,7 +167,6 @@ setup_vertex_format(GLcontext *ctx)
       _tnl_install_attrs( ctx, map, e,
                           ctx->Viewport._WindowMap.m,
                           sizeof(SWvertex) );
-
       RENDERINPUTS_COPY( swsetup->last_index_bitset, index_bitset );
    }
 }

@@ -2,9 +2,9 @@
 
 A from-scratch Windows 98 display driver for the VIA VX800, VX855 and VX900 integrated graphics: accelerated 2D, DirectDraw, Direct3D and OpenGL from one set of files. VIA never shipped a Windows 9x driver for these chips.
 
-Current build: **.637**
+Current build: **.706**: tested on the VX855 / VX875; checks on the VX800 and VX900 are pending (see [Checking an install](#checking-an-install)).
 
-**Download:** [`VIA_Chrome9_637.zip`](downloads/VIA_Chrome9_637.zip) (the driver) and [`VIA_Chrome9_637_tools.zip`](downloads/VIA_Chrome9_637_tools.zip) (optional test tools).
+**Download:** [`VIA_Chrome9_706.zip`](downloads/VIA_Chrome9_706.zip) (the driver) and [`VIA_Chrome9_706_tools.zip`](downloads/VIA_Chrome9_706_tools.zip) (optional test tools).
 
 **Support the project:** if this driver is useful to you, you can [donate through PayPal](https://www.paypal.com/donate/?hosted_button_id=45HAEA4K4KTXU).
 
@@ -69,8 +69,8 @@ The specification rows are there to set expectations. This driver's own measured
 ## What it does
 
 - **2D (GDI):** engine fills, screen copies, pattern and hatch fills, lines, text, 1-bit and colour bitmap blits, ROP blits that read the screen, with solid, dithered and bitmap brushes. Anything the engine cannot draw exactly goes to Windows' own DIB engine, so the picture is always the one Windows would have drawn.
-- **DirectDraw:** hardware blits, stretches, colour keys, page flipping with vertical sync, and a video overlay with scaling.
-- **Direct3D:** a DirectX 7 hardware device (textures, blending, fog, depth and stencil), with the driver's own transform and lighting for programs that ask for hardware T&L, and the texture settings of DirectX 5 and older programs honoured.
+- **DirectDraw:** hardware blits, stretches (by the 3D engine), colour keys, page flipping through the 3D command ring with or without vertical sync, and a video overlay with scaling.
+- **Direct3D:** a DirectX 7 hardware device (textures, blending, fog, depth and stencil, bump mapping), with the driver's own transform and lighting (SSE2, four vertices at a time, point, spot and specular lights) for programs that ask for hardware T&L, and the texture settings of DirectX 5 and older programs honoured. On the VX855 / VX875 the 3D engine clips triangles that cross the screen edge (a guard band), so the processor does not.
 - **OpenGL:** an installable client driver built on Mesa 7.0.3, with the chip's 3D engine doing the drawing and Mesa's software path covering what the chip cannot.
 - **Display modes:** 8, 16 and 32 bits per pixel; the driver sets its own mode timings and reads the monitor's EDID.
 - **Laptop panels:** a panel on the chip's second display unit gets the pointer, page flips and vertical sync (reported working on a Samsung NC20).
@@ -102,7 +102,7 @@ To update an existing install, replace the same five files and restart. All five
 
 ## Checking an install
 
-The test set is a separate download (`downloads/VIA_Chrome9_637_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
+The test set is a separate download (`downloads/VIA_Chrome9_706_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
 
 | Tool | What it checks |
 |---|---|
@@ -119,6 +119,8 @@ The test set is a separate download (`downloads/VIA_Chrome9_637_tools.zip`) and 
 
 A report that ends in PASS or `failures=0` is good. `LOGS\RUNALL.TXT` names the last test started if one hangs.
 
+`REGRESS.TXT` in the tools lists every change since build .694 that has so far run only on VX855 boards, with the test that checks it. VX800 and VX900 owners: a `RUNALL.BAT` report from your board is welcome.
+
 ## Settings
 
 The driver needs none. These registry values exist under `HKEY_LOCAL_MACHINE\Software\VX85598`:
@@ -126,6 +128,7 @@ The driver needs none. These registry values exist under `HKEY_LOCAL_MACHINE\Sof
 - logging switches for the OpenGL and Direct3D parts (`VXGL_LOG`, `ACCEL_D3D_LOG` and their sample-rate values), off by default
 - `NOEDIDHIGHRES`, for monitors whose EDID should not limit the mode list, and `EDID_MODES` (0 only what the EDID lists, 1 the default, 2 every mode the BIOS has)
 - `ACCEL_D3D_TNL`: 0 turns the driver's transform and lighting off, so Direct3D does it for every program (default 1)
+- features still under test, all on by default: `ACCEL_D3D_GUARDBAND` (the guard band, VX855 / VX875 only; 0 off), `ACCEL_FLIP_TEAR` (a flip without vertical sync shown from the next scan line, VX855 / VX875 only; 0 waits for the next frame), `ACCEL_3D_RINGFLIP` (page flips through the 3D command ring; 0 the processor) and `ACCEL_D3D_TNFASTIX` (meshes wholly on screen sent to the engine in one block)
 - tuning values: `ACCEL_D3D_RINGKB` (the 3D command buffer's size; default 256 KB on the VX800, 512 on the VX855, 1024 on the VX900), `ACCEL_STRETCH3D` (stretched blits: 0 the processor, 1 the 3D engine, 2 the 3D engine with bilinear filtering; default 1) and `ACCEL_D3D_SEAM` (a second, shifted draw that covers one-pixel gaps between meshes; default off)
 
 `VXREG` lists what the loaded driver reads.

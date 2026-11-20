@@ -1203,6 +1203,56 @@ static void s_glclampmip(void) {
  for(k=0;k<3;k++){float sz=(float)(96>>k);quad_tc((float)(6+k*100),8,sz,sz,0,0,1,1);quad_tc((float)(6+k*100),130,sz,sz,-0.5f,-0.5f,1.5f,1.5f);}
  glDisable(GL_TEXTURE_2D);glDeleteTextures(1,&a);
 }
+/* .638: GL_CLAMP filtered linearly on the texture kinds .637 moved from software to the engine without a scene: a cube map, a rectangle
+ * texture and a 3D texture (its r coordinate from .638). Every coordinate stays inside the texture, away from its edges, so the edge
+ * clamp and GL's border blend give the same pixels: judged. */
+static void s_glclamp3(void) {
+ static GLubyte t[16*16*8*4];GLuint id;int f,i,x,y,z;
+ reset();grad();glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
+ if(scene_has("GL_ARB_texture_cube_map")){
+  glGenTextures(1,&id);glBindTexture(GL_TEXTURE_CUBE_MAP_ARB,id);
+  for(f=0;f<6;f++){for(i=0;i<16*16;i++){int cx=i%16,cy=i/16;t[i*4]=(GLubyte)(cx*15+f*3);t[i*4+1]=(GLubyte)(cy*15);t[i*4+2]=(GLubyte)(40+f*35);t[i*4+3]=255;}
+   glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB+f,0,GL_RGBA,16,16,0,GL_RGBA,GL_UNSIGNED_BYTE,t);}
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARB,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_CUBE_MAP_ARB,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP_ARB,GL_TEXTURE_WRAP_S,GL_CLAMP);glTexParameteri(GL_TEXTURE_CUBE_MAP_ARB,GL_TEXTURE_WRAP_T,GL_CLAMP);
+  glEnable(GL_TEXTURE_CUBE_MAP_ARB);
+  for(f=0;f<2;f++){float r=f?-0.5f:0.5f,x0=(float)(8+f*84);
+   glBegin(GL_QUADS);glTexCoord3f(-0.25f,-0.25f,r);glVertex2f(x0,8);glTexCoord3f(0.25f,-0.25f,r);glVertex2f(x0+72,8);glTexCoord3f(0.25f,0.25f,r);glVertex2f(x0+72,80);glTexCoord3f(-0.25f,0.25f,r);glVertex2f(x0,80);glEnd();}
+  glDisable(GL_TEXTURE_CUBE_MAP_ARB);glDeleteTextures(1,&id);}
+ if(scene_has("GL_ARB_texture_rectangle")||scene_has("GL_NV_texture_rectangle")){
+  glEnable(GL_TEXTURE_RECTANGLE_ARB);id=scene_img(GL_TEXTURE_RECTANGLE_ARB,30,18,GL_RGBA);
+  glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_WRAP_S,GL_CLAMP);glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_WRAP_T,GL_CLAMP);
+  quad_tc(8,96,120,72,6,4,24,14);
+  glDeleteTextures(1,&id);glDisable(GL_TEXTURE_RECTANGLE_ARB);}
+ if(scene_tex3d){
+  for(z=0;z<8;z++)for(y=0;y<16;y++)for(x=0;x<16;x++){GLubyte *p=t+((z*16+y)*16+x)*4;p[0]=(GLubyte)(z*30+x*2);p[1]=(GLubyte)(y*14+20);p[2]=(GLubyte)(200-z*20);p[3]=255;}
+  glGenTextures(1,&id);glBindTexture(GL_TEXTURE_3D,id);glTexParameteri(GL_TEXTURE_3D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_3D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_3D,GL_TEXTURE_WRAP_S,GL_CLAMP);glTexParameteri(GL_TEXTURE_3D,GL_TEXTURE_WRAP_T,GL_CLAMP);glTexParameteri(GL_TEXTURE_3D,GL_TEXTURE_WRAP_R,GL_CLAMP);
+  glPixelStorei(GL_UNPACK_ALIGNMENT,1);scene_tex3d(GL_TEXTURE_3D,0,GL_RGBA,16,16,8,0,GL_RGBA,GL_UNSIGNED_BYTE,t);glPixelStorei(GL_UNPACK_ALIGNMENT,4);
+  glEnable(GL_TEXTURE_3D);
+  glBegin(GL_QUADS);glTexCoord3f(0.25f,0.25f,0.25f);glVertex2f(140,176);glTexCoord3f(0.75f,0.25f,0.75f);glVertex2f(244,176);glTexCoord3f(0.75f,0.75f,0.75f);glVertex2f(244,248);glTexCoord3f(0.25f,0.75f,0.25f);glVertex2f(140,248);glEnd();
+  glDisable(GL_TEXTURE_3D);glDeleteTextures(1,&id);}
+}
+/* .639 (Flocks.scr): many small lit draws from a display list, each with its own matrix and colour (GL_COLOR_MATERIAL), one directional
+ * light and no local viewer: Mesa's fast lighting, in object space while the modelview keeps lengths. A third of them with
+ * GL_NORMALIZE, a third under a scale that does not keep lengths (lit in eye space). 363 draws of one triangle. */
+static void s_flock(void) {
+ float pos[4]={0.3f,0.5f,1.0f,0},dif[4]={1,1,1,1},amb[4]={0.15f,0.15f,0.15f,1};GLuint l;int i;
+ reset();persp();glEnable(GL_DEPTH_TEST);glEnable(GL_LIGHTING);glEnable(GL_LIGHT0);
+ glLightfv(GL_LIGHT0,GL_POSITION,pos);glLightfv(GL_LIGHT0,GL_DIFFUSE,dif);glLightfv(GL_LIGHT0,GL_AMBIENT,amb);
+ glColorMaterial(GL_FRONT,GL_AMBIENT_AND_DIFFUSE);glEnable(GL_COLOR_MATERIAL);
+ l=glGenLists(1);glNewList(l,GL_COMPILE);glBegin(GL_TRIANGLE_FAN);
+ glNormal3f(0.0f,0.2f,0.98f);glVertex3f(0.0f,0.16f,0.0f);glNormal3f(-0.3f,-0.1f,0.95f);glVertex3f(-0.12f,-0.1f,0.0f);glNormal3f(0.3f,-0.1f,0.95f);glVertex3f(0.12f,-0.1f,0.0f);
+ glEnd();glEndList();
+ for(i=0;i<363;i++){int gx=i%33,gy=i/33,kind=i%3;
+  glPushMatrix();glTranslatef(-1.6f+gx*0.1f,-1.5f+gy*0.3f,-0.02f*(float)(i%7));glRotatef((float)(i*37%360),(float)(1+i%3),(float)(i%2),1.0f);
+  if(kind==1)glEnable(GL_NORMALIZE);else glDisable(GL_NORMALIZE);
+  if(kind==2)glScalef(1.3f,0.7f,1.0f);
+  glColor3f(0.3f+0.7f*(float)(i%5)/4.0f,0.2f+0.8f*(float)(i%11)/10.0f,1.0f-0.6f*(float)(i%4)/3.0f);
+  glCallList(l);glPopMatrix();}
+ glDisable(GL_NORMALIZE);glDisable(GL_COLOR_MATERIAL);glDeleteLists(l,1);
+}
 static const struct {const char *name;scene_fn f;int info;} scenes[]={
  {"clear",s_clear},{"smooth triangles, quads, strip, fan",s_smooth},{"depth test",s_depth},{"blending",s_blend},{"culling",s_cull},
  {"flat shading",s_flat},{"lighting",s_light},{"fog",s_fog},{"lines and points",s_lines},{"scissor",s_scissor},
@@ -1224,6 +1274,8 @@ static const struct {const char *name;scene_fn f;int info;} scenes[]={
  {"GL_CLAMP filtered linearly",s_glclamp,1},
  {"smooth lines, blending off",s_aaflat,1}, /* .636: info: each line is one quad by the engine's rule, swrast takes any pixel a sample of 16 touches: under 1% of the pixels, on the lines' edges */
  {"GL_CLAMP mipmapped, in and out of 0..1",s_glclampmip,1},
+ {"GL_CLAMP linear: cube map, rectangle, 3D texture",s_glclamp3},
+ {"small lit list draws, a directional light (Flocks)",s_flock},
  {"speed: lit sphere, 12288 triangles",s_speed}};
 #define NS ((int)(sizeof(scenes)/sizeof(scenes[0])))
 

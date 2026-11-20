@@ -104,8 +104,7 @@ _mesa_align_malloc(size_t bytes, unsigned long alignment)
 #if defined(HAVE_POSIX_MEMALIGN)
    void *mem;
 
-   (void) posix_memalign(& mem, alignment, bytes);
-   return mem;
+   return posix_memalign(&mem, alignment, bytes) == 0 ? mem : NULL;
 #else
    uintptr_t ptr, buf;
 
@@ -183,9 +182,10 @@ _mesa_align_free(void *ptr)
 #if defined(HAVE_POSIX_MEMALIGN)
    free(ptr);
 #else
-   void **cubbyHole = (void **) ((char *) ptr - sizeof(void *));
-   void *realAddr = *cubbyHole;
-   _mesa_free(realAddr);
+   if (ptr) {
+      void **cubbyHole = (void **) ((char *)ptr - sizeof(void *));
+      _mesa_free(*cubbyHole);
+   }
 #endif /* defined(HAVE_POSIX_MEMALIGN) */
 }
 

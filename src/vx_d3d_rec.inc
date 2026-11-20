@@ -80,8 +80,9 @@ static void vxr_begin(context_slot *c) {
  vxr_n=0;vxr_full=0;vxr_nblob=0;vxr_ctx=c->handle;vxr_pid=GetCurrentProcessId();vxr_frames=0;
  vxr_u32(VXR_MAGIC);vxr_u32(VXR_VERSION);vxr_u32(sizeof(vx_d3d_context));vxr_u32(sizeof(vx_d3d_state));vxr_u32(sizeof(vx3dn_surface));
  vxr_switches(w);vxr_put(w,sizeof(w));vxr_put(&c->core,sizeof(c->core));
- {extern uint32_t vx_d3d_tnl_get(const vx_d3d_context *,void *,uint32_t);static uint8_t tb[8192];uint32_t n=vx_d3d_tnl_get(&c->core,tb,sizeof(tb)); /* .536: the T&L state (VXR_TNL, 6) */
-  if(n){vxr_head(6,n);vxr_put(tb,n);}}
+ {uint32_t bytes=vx_d3d_tnl_get(&c->core,0,0);
+  vxr_head(6,bytes);
+  if(!vxr_full)vxr_n+=vx_d3d_tnl_get(&c->core,vxr_buf+vxr_n,bytes);}
  vxr_state=2;vxr_req=0;
 }
 static void vxr_finish(uint32_t st) {

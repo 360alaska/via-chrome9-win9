@@ -1,5 +1,5 @@
 {
-  "passed": 1274,
+  "passed": 1275,
   "cases": [
     "16bpp fill 0 0",
     "16bpp fill 0 1f",
@@ -1174,6 +1174,7 @@
     "stuck: fired XOR not replayed; future access fenced; the cursor exclusion is released (v10.139)",
     "unrecoverable offscreen fault fences DIB device and all primary locks",
     "lab ownership prevents engine access",
+    "primary Lock cursor bracket: begun only when DONE, ended whatever the engine state, never closing another (.657)",
     "default threshold keeps small fill (flags 0) on the CPU",
     "default threshold keeps small fill (flags 16) on the CPU",
     "default threshold keeps a 20x20 DirectDraw copy on the CPU",

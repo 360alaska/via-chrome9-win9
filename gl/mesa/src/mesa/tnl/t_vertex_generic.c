@@ -909,7 +909,7 @@ EMIT4(insert_4f_viewport_4, insert_4ub_4f_bgra_4, insert_2f_2, insert_2f_2,  emi
 EMIT4(insert_4f_4, insert_4ub_4f_rgba_4, insert_2f_2, insert_2f_2, emit_xyzw4_rgba4_st2_st2)
 
 
-/* VX855 v10.501 (ACCEL_OPENGL_UBCOLOR; Fable's list, Quake 2 and 3 give colours as GL_UNSIGNED_BYTE arrays): the colour bytes straight from
+/* VX855 v10.501 (ACCEL_OPENGL_UBCOLOR; the review list, Quake 2 and 3 give colours as GL_UNSIGNED_BYTE arrays): the colour bytes straight from
  * the application's array into the vertex (t_draw.c leaves such an array unconverted when nothing else reads it: _tnl_vx855_ub_active).
  * Mesa converts each byte to b / 255.0F at the bind and back with UNCLAMPED_FLOAT_TO_UBYTE here, which returns b for all 256 values
  * (b / 255 times 255/256 is within far less than 1/512 of b / 256, so adding 32768 rounds to exactly b / 256 above it, and 255 takes the

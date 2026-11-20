@@ -88,7 +88,7 @@ class GPU:
    m=self.__dict__.setdefault('palhw',[[0,0,0] for _ in range(256)]);v=m[getattr(self,'ri',0)][getattr(self,'rph',0)];self.rph=getattr(self,'rph',0)+1
    if self.rph==3:self.rph=0;self.ri=(getattr(self,'ri',0)+1)&255
    return v
-  if p==0x3cc:return 0x67
+  if p==0x3cc:return getattr(self,'misc',0x67) # .693: the misc output (written at 3C2)
   if p==0x3d4:return self.cri
   if p==0x3d5:
    if self.cri in (0x34,0x48,0x62) and not self.ext_open():return 0
@@ -99,6 +99,7 @@ class GPU:
  def port_out(self,u,p,z,v,_):
   assert z==1
   if p==0x3c4:self.sqi=v;return
+  if p==0x3c2:self.misc=v;return # .693
   if p==0x3d4:self.cri=v;return
   if p==0x3d5:
    if self.cri in (0x34,0x48,0x62) and not self.ext_open():return
@@ -394,6 +395,14 @@ def checks():
  assert g.call('VX2D_lost')==1 and g.call('VX2D_access',(1,))==3
  cases.append('unrecoverable offscreen fault fences DIB device and all primary locks')
  g=GPU();g.lab=True;n=len(g.writes);assert g.submit(g.request())==0 and len(g.writes)==n;cases.append('lab ownership prevents engine access')
+ # .657 (board, .654-.656: the pointer frozen after VXTLP): a primary Lock's cursor bracket (action 1) answers DONE only when it was opened, and
+ # its end (action 2) is done whatever the engine's state; an end with none open does nothing (it closed somebody else's bracket)
+ g=GPU();assert g.call('VX2D_access',(1,),strict=False)==1 and g.excluded==1
+ g.lab=True;assert g.call('VX2D_access',(2,),strict=False)==1 and g.excluded==0,'the end skipped while 3D was busy (the bracket left open)'
+ assert g.call('VX2D_access',(1,),strict=False)==0 and g.excluded==0 # busy: not opened, SKIP
+ g.lab=False;g.begin() # somebody else's bracket (a 3D draw on the screen)
+ assert g.call('VX2D_access',(2,),strict=False)==0 and g.excluded==1,'an end for a begin that was skipped closed another bracket'
+ g.end();cases.append('primary Lock cursor bracket: begun only when DONE, ended whatever the engine state, never closing another (.657)')
  # v10.58zc: size thresholds apply to DirectDraw requests too; force and a zero threshold override them; phase counters.
  g=GPU();u=g.u;out=ARENA+0x3000
  u.mem_write(g.addr('vx2d_fill_min'),pack([131072]));u.mem_write(g.addr('vx2d_copy_min'),pack([1024]))

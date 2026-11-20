@@ -214,7 +214,16 @@ typedef struct vx3dn_stages {uint32_t units,set[3];vx3dn_unit unit[2];uint32_t u
  * diffuse specular u v; vertex k at w[k * 8]), only for VX3DN_V8_FORM (an XP program, one texture unit, the plain layout); the VxD
  * refuses it on any other packet. ACCEL_D3D_V8 (default 1). */
 #define VX3DN_IX_V8 0x04000000UL
-#define VX3DN_IX_BITS VX3DN_IX_V8
+/* .698: VX3DN_IX_GUARD, a bit of the indexed run's word: the packet's vertices may lie in the guard band, x and y from -4096 to +4096 (the
+ * driver's T&L clips the side planes to twice the viewport and leaves the rest to the engine, which clips off-target vertices itself in
+ * screen space: VXCLIP v1.1, board A, .693). Taken only with ACCEL_D3D_GUARDBAND on the VX855 / VX875 (vx3dn_gband) */
+#define VX3DN_IX_GUARD 0x08000000UL
+/* .703: VX3DN_EXT_GUARD, ext.dither bit 8: the same for a triangle packet in any form (plain vertex structs, prepacked, indexed): x and y
+ * may lie from -4096 to +4095 where vx3dn_gband is set. Honoured for ext.prim 0 only (lines and points keep the clip's bounds); refused
+ * where the guard band is off, and by VxDs before .703 (their ext.dither > 3 test), so a packet can only fail closed. Five reviews of
+ * the choice (T701): a flag outside the burst words, whose high bits are the topology every reader decodes. */
+#define VX3DN_EXT_GUARD 0x100UL
+#define VX3DN_IX_BITS (VX3DN_IX_V8|VX3DN_IX_GUARD)
 #define VX3DN_V8_FORM(p) ((p)->cb==sizeof(*(p))&&(p)->op==VX3DN_DRAW&&(p)->shader.count&&(p)->tex.enable&&(p)->stages.units<=1&&!(p)->stages.layout&&!(p)->stages.s3)
 #define VX3DN_PRE_STRIDE(p) ((p)->pre.on==2&&(p)->bursts.n&&((p)->bursts.b[0]&VX3DN_IX_V8)?8UL:10UL)
 extern uint32_t vx3dn_r01;

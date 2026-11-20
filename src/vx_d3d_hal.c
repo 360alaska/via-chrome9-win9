@@ -8,6 +8,7 @@
 #define VXD32
 #include "ddhal32/vmdahal32.h"
 #include "vx85598.h"
+#include "vx855_2d.h"
 #include "version.h"
 #include <string.h>
 #include <stddef.h>
@@ -23,6 +24,7 @@ typedef struct surface_slot {uint32_t handle,native_key;vx3dn_surface desc;} sur
 typedef struct surface_table {uint32_t owner,local,blocks;uint8_t block[SURFACE_BLOCKS];} surface_table;
 static VMDAHAL_t *shared_hal;
 static context_slot contexts[CONTEXTS];static volatile DWORD hold_pid,hold_tid;static DWORD hold_why[8]; /* .550 (VX_D3D_hold_sync, below) */
+static volatile LONG hold_drop_pid; /* .677 (review of .673, 4): a DestroySurface whose wait for the callback lock ran out with this process's packets held */
 /* Shared DLL data must not contain process-private heap pointers. Tables grow
  * exponentially from a shared block pool; exhaustion is reported as OOM.
  * Each DDLocal has its own handle namespace, including sparse handle values. */
@@ -78,6 +80,9 @@ void VX_D3D_attach(int attach) {
  if(stale&&cb_enter()){reclaim_pid((uint32_t)me);cb_leave();}}
 }
 static LONG my_token(void) {LONG me=(LONG)GetCurrentProcessId(),k;for(k=0;k<TOKENS;k++)if(tok_pid[k]==me&&tok_val[k])return tok_val[k];return 1;}
+/* .659: this process's token for vx_ddraw.c's per-process slots (2 and up: given at this process's attach, so a process that got an ended
+ * one's ID has another; 1: this DLL never attached in the process) */
+LONG VX_D3D_proc_token(void) {return my_token();}
 static int token_alive(LONG t) {LONG k;if(t==1)return 1;for(k=0;k<TOKENS;k++)if(tok_val[k]==t)return owner_alive((uint32_t)tok_pid[k]);return 0;}
 static void forget_drain(void);
 static int cb_enter(void) {
@@ -290,12 +295,25 @@ static surface_slot *surface_find(surface_table *t,uint32_t h) {
  * slot reused for another surface changes nothing it draws to. A target destroyed (DestroySurface) or made again with another layout
  * (CreateSurfaceEx, reason 21) still loses it. why: 1 system-memory surface, 2 a texture without memory yet, 3 video memory, 4 destroyed;
  * the reason's value: why << 28 | the handle */
+/* .649 (board, 3DMark 2001 on .648, the second bench: the context lost (reason 20, a destroyed surface, handle 3) between two tests, then
+ * every ValidateDevice answered SURFACELOST and 3DMark stopped: "failed to validate material"): a context whose target or depth surface
+ * is destroyed is not lost. The application has already bound another (the runtime's SETRENDERTARGET can still be in its command buffer,
+ * sent after the destroy) or will before it draws. The destroyed surface's description is forgotten (its memory is never drawn to
+ * again): no depth surface draws without depth; no target leaves the draws out (why_states) and the clears too, until the next
+ * SETRENDERTARGET (the DP2 command or the callback) binds live surfaces. vx_d3d_rt_unbound counts them (QueryPhases 394). */
+uint32_t vx_d3d_rt_unbound;
+static void unbind_surface(context_slot *c,uint32_t key) {
+ if(c->target_key==key){memset(&c->core.target,0,sizeof(c->core.target));c->target_key=0;vx_d3d_rt_unbound++;}
+ if(c->depth_key==key){memset(&c->core.depth,0,sizeof(c->core.depth));c->depth_key=0;vx_d3d_rt_unbound++;}
+}
 static void invalidate_surface(surface_table *t,surface_slot *s,uint32_t why) {
  uint32_t j;
  for(j=0;j<CONTEXTS;j++) {
   context_slot *c=&contexts[j];
   if(c->handle&&c->owner==t->owner&&c->local==t->local&&s->native_key&&
-    (c->target_key==s->native_key||c->depth_key==s->native_key)){c->core.lost=1;note_lost(0x20,why<<28|(s->handle&0x0FFFFFFFUL));}
+    (c->target_key==s->native_key||c->depth_key==s->native_key)){
+   if(why==4)unbind_surface(c,s->native_key); /* .649: destroyed: unbound, not lost */
+   else{c->core.lost=1;note_lost(0x20,why<<28|(s->handle&0x0FFFFFFFUL));}}
  }
 }
 int VX_D3D_format(const DDPIXELFORMAT *f,uint32_t *format) {
@@ -600,7 +618,7 @@ static void ph_account(uint32_t run0,uint32_t run1) {
 /* .533: VX_D3D_Switch (v10.446-.532: the HAL's switches for an A/B inside one run) removed: no switch is left; a feature under test
  * brings its own back */
 DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
- DWORD k,i,reset=n&0x80000000UL,stop=n&0x40000000UL,w[366];extern DWORD vx_lock_result[4];extern DWORD vx_flip_seen[7];extern DWORD vx_init_seen[3];
+ DWORD k,i,reset=n&0x80000000UL,stop=n&0x40000000UL,w[454];extern DWORD vx_lock_result[4];extern DWORD vx_flip_seen[7];extern DWORD vx_init_seen[3];
  /* .572: bit 29 (the test switch of .555-.557, .559-.563 and .567-.569) does nothing: no switch is left; word 343 reads 0. 350-355: the culled pass-through's counters (vx_d3d_core.c vx_d3d_cp) */
  n&=0x00FFFFFFUL;if(!out||!n)return 0; /* .561: the count is the low 24 bits (.559-.560 kept flag bits 24-27 in it: a count of 1 with bit 24 set was answered with every word, over the caller's one-word buffer) */
  w[0]=0x431;w[1]=VX_dd_cpms()/1000UL;w[2]=pc_n;w[270]=vx_d3d_tnl;for(k=0;k<18;k++)w[271+k]=vx_d3d_tlp[k];w[289]=0; /* .534: the T&L probe (vx_d3d_core.c) */{extern uint32_t vx_d3d_tn[12];for(k=0;k<12;k++)w[290+k]=vx_d3d_tn[k];} /* .536: the driver's T&L (vx_d3d_tnl.inc) */
@@ -630,10 +648,20 @@ DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
  {extern uint32_t vx_d3d_ref[4];for(k=0;k<4;k++)w[346+k]=vx_d3d_ref[k];} /* .557: 346-349 runs drawn by the vertices they use, their triangles, vertices, runs ended by a failing vertex */
  for(k=0;k<7;k++)w[356+k]=vx_flip_seen[k]; /* .575: 356-361 the Flip callback's requests (vx_ddraw.c vx_flip_seen: VXFLIPF); .576: 362 refused */
  for(k=0;k<3;k++)w[363+k]=vx_init_seen[k]; /* .581: 363-365 DriverInit (vx_ddraw.c vx_init_seen: VXREG) */
- if(n>366)n=366;for(k=0;k<n;k++)out[k]=w[k]; /* .534: 270-289 the T&L probe; .536: 290-301 the driver's T&L */ /* .533: 270-273 (.531's kept answers) removed with them */
+ {extern uint32_t vx_d3d_bad_rec[18];for(k=0;k<18;k++)w[366+k]=vx_d3d_bad_rec[k];} /* .641: 366-383 who made the primitives left out for a bad vertex (vx_d3d_core.c) */
+ {extern uint32_t vx_d3d_zinf_prims,vx_d3d_tn_dense[4];w[384]=vx_d3d_zinf_prims;for(k=0;k<4;k++)w[385+k]=vx_d3d_tn_dense[k];} /* .642: 384 primitives drawn with an infinite z held to the range; 385-388 the T&L's draws taken in order */
+ {extern uint32_t vx_d3d_tn_one;w[389]=vx_d3d_tn_one;} /* .643 */
+ {extern uint32_t vx_d3d_tn_setup[3],vx_d3d_tn_plg;for(k=0;k<3;k++)w[390+k]=vx_d3d_tn_setup[k];w[393]=vx_d3d_tn_plg;w[394]=vx_d3d_rt_unbound;}
+ {extern uint32_t vx_d3d_tnp[8],vx_d3d_tn_why[10];for(k=0;k<8;k++)w[395+k]=vx_d3d_tnp[k];for(k=0;k<10;k++)w[403+k]=vx_d3d_tn_why[k];{extern uint32_t vx_d3d_tn_cdrop;w[413]=vx_d3d_tn_cdrop;}} /* .652: 402 part 7; 403-412 why one at a time */ /* .651: the T&L by part, 256 TSC cycles a unit (vx_d3d_tnl.inc) */ /* .647: 390 the T&L set-ups built, 391 made again for a new world matrix only, 392 kept from the draw before; 393 groups of four lit by point lights */
+ {extern uint32_t vx_d3d_drop_st12[10];for(k=0;k<10;k++)w[414+k]=vx_d3d_drop_st12[k];} /* .661: stages 1 and 2 of the last primitive left out */
+ {extern uint32_t vx_d3d_tn_nd[4];extern DWORD blt_3d_clip;for(k=0;k<4;k++)w[424+k]=vx_d3d_tn_nd[k];w[428]=blt_3d_clip;{extern uint32_t vx_d3d_tnl_blk_over,vx_d3d_set3_alias;w[429]=vx_d3d_tnl_blk_over;w[430]=vx_d3d_set3_alias;}{extern DWORD blt_3d,blt_3d_rects,blt_sw_n;w[431]=blt_3d;w[432]=blt_3d_rects;w[433]=blt_sw_n;}{extern uint32_t vx_d3d_tn_pre[2],vx_d3d_tn_pcull[3];w[434]=vx_d3d_tn_pre[0];w[435]=vx_d3d_tn_pre[1];w[436]=15; /* .682: the four always on */w[437]=vx_d3d_tn_pcull[0];w[438]=vx_d3d_tn_pcull[1];w[439]=vx_d3d_tn_pcull[2];}} /* .675: 434-435 the corners of clipped triangles lit in groups (draws, corners); .676: 436 ACCEL_D3D_PRECULL (bit 0) and ACCEL_D3D_IXSKIP (bit 1), 437-439 draws culled before lighting, triangles culled there, triangles the packets took without their tests */ /* .670: 431 the stretches by the engine, 432 their clip rectangles, 433 the CPU's blits; .671: 433 a running count (.670 gave the last Blt's flag, blt_sw is cleared at each Blt) */ /* .667: the states not done by cause; the clipped stretches by the engine */
+ w[440]=w[441]=w[442]=0; /* .680's engine cull (removed .682) */
+ {extern uint32_t vx_d3d_tn_fastix,vx_d3d_tn_fastix_stat[4];w[443]=vx_d3d_tn_fastix;for(k=0;k<4;k++)w[444+k]=vx_d3d_tn_fastix_stat[k];}
+ {extern uint32_t vx_d3d_gband,vx_d3d_gbs[2],vx_d3d_vcd[3];w[448]=vx_d3d_gband;w[449]=vx_d3d_gbs[0];w[450]=vx_d3d_gbs[1];w[451]=vx_d3d_vcd[0];w[452]=vx_d3d_vcd[1];w[453]=vx_d3d_vcd[2];} /* .703: 453 those draws sent through the triangle pass */ /* .702: 451-452 the band's draws without and with a vertex past the viewport (codes made only then) */ /* .701: 449-450 the T&L's set-ups with and without the band */ /* .698: 448 the guard band (ACCEL_D3D_GUARDBAND, this process); 449-451 (.681's prefetch switch, removed .682) */
+ if(n>454)n=454;for(k=0;k<n;k++)out[k]=w[k]; /* .534: 270-289 the T&L probe; .536: 290-301 the driver's T&L */ /* .533: 270-273 (.531's kept answers) removed with them */
  if(stop){ph_on=0;vx_d3d_geo_on=0;vx_d3d_ftprof=0;}else if(reset){ph_on=1;vx_d3d_geo_on=1;vx_d3d_ftprof=1;vv_fast_n=0;for(k=0;k<32;k++)vx_d3d_ft[k]=0;for(k=0;k<8;k++)vx_d3d_tprof[k]=0;for(k=0;k<24;k++)vx_d3d_geo[k]=0;for(k=0;k<16;k++)vx_d3d_tk[k]=0;{extern uint32_t vx_d3d_px[6];for(k=0;k<6;k++)vx_d3d_px[k]=0;}vx_d3d_pre_stat[0]=vx_d3d_pre_stat[1]=0;
   for(k=0;k<VX_PH_N;k++){ph_sum[k]=ph_cnt[k]=ph_max[k]=ph_calls[k]=0;for(i=0;i<6;i++)ph_h[k][i]=0;}
-  for(k=0;k<6;k++)pc_h[k]=pc_wall[k]=pc_run[k]=pc_runok[k]=pc_pf[k]=pc_pi[k]=0;for(k=0;k<5;k++)pc_sl[k]=0;pc_n=pv_n=pv_in=pv_run=0;for(k=0;k<4;k++)vx_d3d_bad_why[k]=0;vx_d3d_rhw0_prims=0;}
+  for(k=0;k<6;k++)pc_h[k]=pc_wall[k]=pc_run[k]=pc_runok[k]=pc_pf[k]=pc_pi[k]=0;for(k=0;k<5;k++)pc_sl[k]=0;pc_n=pv_n=pv_in=pv_run=0;for(k=0;k<4;k++)vx_d3d_bad_why[k]=0;vx_d3d_rhw0_prims=0;{extern uint32_t vx_d3d_bad_rec[18],vx_d3d_zinf_prims,vx_d3d_tn_dense[4];for(k=0;k<18;k++)vx_d3d_bad_rec[k]=0;vx_d3d_zinf_prims=0;for(k=0;k<4;k++)vx_d3d_tn_dense[k]=0;{extern uint32_t vx_d3d_tn_one,vx_d3d_tn_setup[3],vx_d3d_tn_plg;vx_d3d_tn_one=0;vx_d3d_tn_setup[0]=vx_d3d_tn_setup[1]=vx_d3d_tn_setup[2]=0;vx_d3d_tn_plg=0;{extern uint32_t vx_d3d_tnp[8],vx_d3d_tn_why[10];for(k=0;k<8;k++)vx_d3d_tnp[k]=0;for(k=0;k<10;k++)vx_d3d_tn_why[k]=0;{extern uint32_t vx_d3d_tn_cdrop;vx_d3d_tn_cdrop=0;}};}}}
  return n;
 }
 static void busy_wait(uint32_t tries) {
@@ -752,7 +780,7 @@ int VX_D3D_hold_sync(DWORD why) {
  DWORD me,t0;const DWORD lim=why<=2?100UL:2000UL;
  if(!vx_d3d_held())return 0;
  me=GetCurrentProcessId();if(hold_pid!=me||hold_tid==GetCurrentThreadId())return 0;
- for(t0=GetTickCount();!cb_enter();){if(GetTickCount()-t0>lim){hold_why[7]++;return vx_d3d_held()&&hold_pid==me;}Sleep(0);} /* another thread of this process in a callback */
+ for(t0=GetTickCount();!cb_enter();){if(GetTickCount()-t0>lim){hold_why[7]++;if(why==3&&vx_d3d_held()&&hold_pid==me)InterlockedExchange(&hold_drop_pid,(LONG)me);return vx_d3d_held()&&hold_pid==me;}Sleep(0);} /* another thread of this process in a callback */
  if(vx_d3d_held()&&hold_pid==me){if(why<8)hold_why[why]++;vx_d3d_hold_stat[4]++;(void)hold_send_here();}
  cb_leave();
  return 0;
@@ -761,18 +789,30 @@ int VX_D3D_hold_sync(DWORD why) {
  * for the engine, in order with everything else), 0 = not taken (the caller's CPU copy then). The destination must be a surface the
  * engine can draw into (256-byte aligned, a pitch of 32-byte units), the source one it can read as a texture (its pitch exactly its
  * width, up to 2048 x 2048). Pixel p of the destination reads the source at left + (p - dl + 0.5) x sw / dw. */
-int VX_D3D_stretch(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface *src,const RECT *sr,int linear) {
- vx3dn_info info={0};vx_d3d_services s;uint32_t fp[27],rc,by;vx3dn_rect r;float uv[4],sw,sh,dw,dh;vx3dn_surface t;
- if(!dst||!src||!dr||!sr||!shared_hal)return 0;
+/* .667 (board, .666: VXTLP's windowed Present, a 256 x 256 back buffer stretched a few pixels onto the screen, 273 Blts of 8.5 ms each by
+ * the CPU: the clip list of a window kept every such Blt off the engine): with a clip list (n rectangles inside dr, at most 64) the one
+ * mapping of dr onto sr is drawn as one quad a rectangle, each with the texture coordinates of its own edges on that mapping (the mapping
+ * is linear, so a pixel reads the same source pixel as in the whole quad). n 0: dr itself. */
+int VX_D3D_stretch_n(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface *src,const RECT *sr,int linear,const RECT *clip,DWORD n);
+/* .677 (review of .673, 2): a recovered engine reset after the quad's packets were taken is no proof the copy landed: a loss for a stretch
+ * (a reset with none taken goes through the queue's retry as before; general Direct3D draws keep their policy) */
+static uint32_t stretch_submit(void *ctx,const vx3dn_packet *p) {uint32_t rc=native_submit(ctx,p);return rc==VX3DN_RECOVERED?VX3DN_LOST:rc;}
+static uint32_t stretch_submit_n(void *ctx,const vx3dn_packet *p,uint32_t n,uint32_t *done) {uint32_t rc=native_submit_n(ctx,p,n,done);return rc==VX3DN_RECOVERED&&*done?VX3DN_LOST:rc;}
+int VX_D3D_stretch(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface *src,const RECT *sr,int linear) {return VX_D3D_stretch_n(dst,dr,src,sr,linear,0,0)==VX2D_DONE;}
+int VX_D3D_stretch_n(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface *src,const RECT *sr,int linear,const RECT *clip,DWORD n) {
+ vx3dn_info info={0};vx_d3d_services s;uint32_t fp[27],rc,by;vx3dn_rect r;float uv[4],sw,sh,dw,dh;vx3dn_surface t;DWORD i;
+ if(!dst||!src||!dr||!sr||!shared_hal)return VX2D_SKIP;
  t=*src;by=t.format==VX3DN_RGB565?2:4;
  t.format=src->format==VX3DN_RGB565?VX3DN_TEX_RGB565:src->format==VX3DN_XRGB8888?VX3DN_TEX_XRGB8888:0;
- if(!t.format||dst->format!=src->format||!t.width||!t.height||t.width>2048||t.height>2048||t.pitch!=t.width*by||t.pitch<32||(t.offset&255))return 0;
- if(!dst->width||!dst->height||dst->width>2048||dst->height>2048||(dst->pitch&31)||dst->pitch>0x7FE0UL||(dst->offset&255)||dst->width>dst->pitch/by)return 0;
- if(dr->left<0||dr->top<0||dr->right>(LONG)dst->width||dr->bottom>(LONG)dst->height||dr->right<=dr->left||dr->bottom<=dr->top)return 0;
- if(sr->left<0||sr->top<0||sr->right>(LONG)t.width||sr->bottom>(LONG)t.height||sr->right<=sr->left||sr->bottom<=sr->top)return 0;
- {uint32_t de=dst->offset+dst->pitch*dst->height,se=t.offset+t.pitch*t.height;if(dst->offset<se&&t.offset<de)return 0;} /* one surface, or overlapping ones */
- if(!cb_enter())return 0;
- if(!call(VX_IOCTL_3DN_INFO,0,0,&info,sizeof(info))||!info.ready||!native_surface(dst,&info)||t.offset>=info.fb_bytes||t.height>(info.fb_bytes-t.offset)/t.pitch){cb_leave();return 0;}
+ if(!t.format||dst->format!=src->format||!t.width||!t.height||t.width>2048||t.height>2048||t.pitch!=t.width*by||t.pitch<32||(t.offset&255))return VX2D_SKIP;
+ if(!dst->width||!dst->height||dst->width>2048||dst->height>2048||(dst->pitch&31)||dst->pitch>0x7FE0UL||(dst->offset&255)||dst->width>dst->pitch/by)return VX2D_SKIP;
+ if(dr->left<0||dr->top<0||dr->right>(LONG)dst->width||dr->bottom>(LONG)dst->height||dr->right<=dr->left||dr->bottom<=dr->top)return VX2D_SKIP;
+ if(sr->left<0||sr->top<0||sr->right>(LONG)t.width||sr->bottom>(LONG)t.height||sr->right<=sr->left||sr->bottom<=sr->top)return VX2D_SKIP;
+ {uint32_t de=dst->offset+dst->pitch*dst->height,se=t.offset+t.pitch*t.height;if(dst->offset<se&&t.offset<de)return VX2D_SKIP;} /* one surface, or overlapping ones */
+ if(n>64||(n&&!clip))return VX2D_SKIP;
+ for(i=0;i<n;i++)if(clip[i].left<dr->left||clip[i].top<dr->top||clip[i].right>dr->right||clip[i].bottom>dr->bottom||clip[i].right<=clip[i].left||clip[i].bottom<=clip[i].top)return VX2D_SKIP;
+ if(!cb_enter())return VX2D_SKIP;
+ if(!call(VX_IOCTL_3DN_INFO,0,0,&info,sizeof(info))||!info.ready||!native_surface(dst,&info)||t.offset>=info.fb_bytes||t.height>(info.fb_bytes-t.offset)/t.pitch){cb_leave();return VX2D_SKIP;}
  save_fp(fp);
  sw=(float)(sr->right-sr->left);sh=(float)(sr->bottom-sr->top);dw=(float)(dr->right-dr->left);dh=(float)(dr->bottom-dr->top);
  uv[0]=((float)sr->left+0.5F*sw/dw)/(float)t.width;uv[2]=((float)sr->right+0.5F*sw/dw)/(float)t.width;
@@ -780,12 +820,27 @@ int VX_D3D_stretch(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface *
  /* .630: the nearest pixel as the CPU's stretch picks it: its index is floor((2n + 1) x sw / (2 x dw)), so a centre that falls exactly between
   * two source pixels (every pixel of a 2:1 shrink) takes the later one. Board (VX855, .629): sampled exactly between, the engine's choice
   * differed from the CPU's in a fifth of the picture's pixels. A sixteenth of a source pixel further settles it. */
- if(!linear){float e=0.0625F;uv[0]+=e/(float)t.width;uv[2]+=e/(float)t.width;uv[1]+=e/(float)t.height;uv[3]+=e/(float)t.height;}
- r.left=dr->left;r.top=dr->top;r.right=dr->right;r.bottom=dr->bottom;
- memset(&s,0,sizeof(s));s.submit=native_submit;s.submit_n=native_submit_n;
- rc=vx_d3d_quad(dst,&r,&t,uv,linear,&s,info.generation);
+ /* .639 (review: the sixteenth was added at every ratio, and where no centre falls exactly between two source pixels it moved some over
+  * a boundary: 32 to 31 wide, destination 14, centre 14.968 became 15.030). With sw = g a and dw = g b (g their greatest common divisor)
+  * a centre (2n + 1) a / (2 b) is on a boundary only when a is even, and every other centre is at least 1 / (2 b) from one: the push is
+  * made only when a is even, and is half that distance at most (a sixteenth for 2:1, where the board proved it). Each axis by itself. */
+ if(!linear){uint32_t gx=(uint32_t)sw,gy=(uint32_t)sh,q;float ex=0.0F,ey=0.0F;
+  for(q=(uint32_t)dw;q;){uint32_t m=gx%q;gx=q;q=m;}for(q=(uint32_t)dh;q;){uint32_t m=gy%q;gy=q;q=m;}
+  if(!(((uint32_t)sw/gx)&1U)){ex=0.25F/(float)((uint32_t)dw/gx);if(ex>0.0625F)ex=0.0625F;}
+  if(!(((uint32_t)sh/gy)&1U)){ey=0.25F/(float)((uint32_t)dh/gy);if(ey>0.0625F)ey=0.0625F;}
+  uv[0]+=ex/(float)t.width;uv[2]+=ex/(float)t.width;uv[1]+=ey/(float)t.height;uv[3]+=ey/(float)t.height;}
+ memset(&s,0,sizeof(s));s.submit=stretch_submit;s.submit_n=stretch_submit_n; /* .677 (review of .673, 2) */
+ if(!n){r.left=dr->left;r.top=dr->top;r.right=dr->right;r.bottom=dr->bottom;rc=vx_d3d_quad(dst,&r,&t,uv,linear,&s,info.generation);}
+ else for(i=0,rc=0;i<n&&!rc;i++){float cu[4]; /* .667: this rectangle's edges on the whole quad's mapping */
+  cu[0]=uv[0]+(uv[2]-uv[0])*((float)(clip[i].left-dr->left)/dw);cu[2]=uv[0]+(uv[2]-uv[0])*((float)(clip[i].right-dr->left)/dw);
+  cu[1]=uv[1]+(uv[3]-uv[1])*((float)(clip[i].top-dr->top)/dh);cu[3]=uv[1]+(uv[3]-uv[1])*((float)(clip[i].bottom-dr->top)/dh);
+  r.left=clip[i].left;r.top=clip[i].top;r.right=clip[i].right;r.bottom=clip[i].bottom;rc=vx_d3d_quad(dst,&r,&t,cu,linear,&s,info.generation);}
  restore_fp(fp);cb_leave();
- return rc==0;
+ /* .677 (review of .673, 1): a rectangle drawn before one that failed (or a loss) must not be drawn again by the CPU under its own sampling:
+  * DONE every rectangle submitted, SKIP nothing issued (the CPU's copy then), LOST a partial or uncertain result */
+ if(!rc)return VX2D_DONE;
+ if(rc==VX_D3D_SURFACELOST||(n&&i>1))return VX2D_LOST;
+ return VX2D_SKIP;
 }
 /* v10.166: a flip moves surface memory between the surfaces of a chain (DirectDraw swaps their video memory), so a cached offset would draw into
  * what is now the front buffer. Re-read the local object's memory at each use; size, pitch and format must not have changed. */
@@ -811,7 +866,7 @@ static int follow(uint32_t key,vx3dn_surface *d) {
  * handle's object drew every second frame into the buffer being shown). Only targets bound by object (ContextCreate, no handle yet) follow it. */
 static void follow_targets(context_slot *c) {
  if(c->core.lost)return;
- if(!c->core.target_handle&&!follow(c->target_key,&c->core.target)){c->core.lost=1;return;}
+ if(!c->core.target_handle&&(c->target_key||c->core.target.format)&&!follow(c->target_key,&c->core.target)){c->core.lost=1;return;} /* .649: an unbound target (key 0, no description) stays unbound */
  if(!c->core.depth_handle&&!follow(c->depth_key,&c->core.depth)){lost_why|=0x100;c->core.lost=1;}
 }
 /* v10.185: a texture is re-read from its surface object at each use. Its memory can arrive after CreateSurfaceEx (DDSCAPS_ALLOCONLOAD, the
@@ -964,16 +1019,24 @@ static int dp2_resolve(void *ctx,uint32_t h,vx3dn_surface *out) {
  dp2_source *s=ctx;
  return resolve(s->slot,h,out)&&native_surface(out,s->info);
 }
-/* v10.456: DP2 SETRENDERTARGET's colour surface (the core has sent every draw before it): a render-target texture in its target format;
- * a texture that was the target is finished first (rt_leave) */
+/* .640 (outside review of .637): DP2 has already submitted earlier draws. Fence a texture when leaving its
+ * colour storage so a later draw can sample it. An identical rebind keeps
+ * writes ordered on the same target, even if the depth attachment changes. */
 static int dp2_target(void *ctx,uint32_t h,vx3dn_surface *out) {
- dp2_source *src=ctx;context_slot *c=src->slot;surface_slot *s=surface_find(table_find(c->owner,c->local,0),h);DDRAWI_DDRAWSURFACE_LCL *l;int k;
+ dp2_source *src=ctx;context_slot *c=src->slot;
+ surface_slot *s=surface_find(table_find(c->owner,c->local,0),h);
+ DDRAWI_DDRAWSURFACE_LCL *l=s?(DDRAWI_DDRAWSURFACE_LCL *)s->native_key:0;
+ int resolved=0;
  src->rt_kind=0;
- if(!rt_leave(c,&c->core.target)){src->rt_lost=1;return 0;} /* v10.479: the wait reported the device lost: the call answers SURFACELOST */
- if(!s)return 0;l=(DDRAWI_DDRAWSURFACE_LCL *)s->native_key;
- if(!l||IsBadReadPtr(l,sizeof(*l))||!l->lpGbl||IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))||!(l->ddsCaps.dwCaps&DDSCAPS_TEXTURE))return dp2_resolve(ctx,h,out);
- k=VX_D3D_surface_target(l,out);if(k!=2||!native_surface(out,src->info))return 0;
- src->rt_kind=1;return 1;
+ if(l&&!IsBadReadPtr(l,sizeof(*l))&&l->lpGbl&&!IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))&&(l->ddsCaps.dwCaps&DDSCAPS_TEXTURE)) {
+  resolved=VX_D3D_surface_target(l,out)==2&&native_surface(out,src->info);
+  if(resolved) {
+   src->rt_kind=1;
+   if(c->rt_tex&&h==c->core.target_handle&&!memcmp(out,&c->core.target,sizeof(*out)))return 1;
+  }
+ } else if(s)resolved=dp2_resolve(ctx,h,out);
+ if(!rt_leave(c,&c->core.target)){src->rt_lost=1;return 0;}
+ return resolved;
 }
 /* v10.479: the core made the change dp2_target resolved: only now does the texture mark follow it */
 static void dp2_target_done(void *ctx) {dp2_source *src=ctx;src->slot->rt_tex=src->rt_kind;}
@@ -1106,10 +1169,11 @@ DWORD WINAPI VX_D3D_Validate(vx_ddi_validate *p) {
    if(!c->core.lost)note_lost(0x23,info.generation);c->core.lost=1;p->ddrval=DDERR_SURFACELOST;
   } else {
    p->ddrval=(HRESULT)vx_d3d_texture_status(&c->core);
-   if(!p->ddrval&&!vx_d3d_supported(&c->core))p->ddrval=VX_D3D_CONFLICTINGSTATE;
+   if(!c->core.target.format){if(!p->ddrval&&!vx_d3d_supported_unbound(&c->core))p->ddrval=VX_D3D_CONFLICTINGSTATE;} /* .649: no target bound yet */
+   else{if(!p->ddrval&&!vx_d3d_supported(&c->core))p->ddrval=VX_D3D_CONFLICTINGSTATE;
    /* v10.215: what the draw would leave out with these textures (three coordinate sets, a cube map with another unit) */
    if(!p->ddrval){dp2_source src;vx_d3d_services sv;memset(&src,0,sizeof(src));memset(&sv,0,sizeof(sv));src.slot=c;src.info=&info;sv.context=&src;sv.faces=dp2_faces;sv.resolve=dp2_resolve;sv.mips=dp2_mips;sv.colorkey=dp2_colorkey;
-    p->ddrval=(HRESULT)vx_d3d_draw_status(&c->core,&sv);}
+    p->ddrval=(HRESULT)vx_d3d_draw_status(&c->core,&sv);}}
    if(!p->ddrval)p->dwNumPasses=1;
   }
  }
@@ -1230,7 +1294,9 @@ static DWORD WINAPI destroy_local(LPDDHAL_DESTROYDDLOCALDATA p) {
 volatile LONG fq_pid[FQ],fq_ptr[FQ];uint32_t fq_queued,fq_full; /* not static: the linked checks read them */
 static void forget_locked(DDRAWI_DDRAWSURFACE_LCL *s,uint32_t owner);
 static void forget_drain(void) {
- uint32_t k;for(k=0;k<FQ;k++){LONG pp=fq_ptr[k],pid=fq_pid[k];if(pp&&pid){forget_locked((DDRAWI_DDRAWSURFACE_LCL*)pp,(uint32_t)pid);fq_ptr[k]=0;InterlockedExchange(&fq_pid[k],0);}}
+ uint32_t k;
+ {LONG d=hold_drop_pid;if(d){if(vx_d3d_held()&&hold_pid==(DWORD)d){vx_d3d_hold_drop();hold_why[6]++;}InterlockedExchange(&hold_drop_pid,0);}} /* .677: dropped before
+  * anything else is sent (they may draw into or read the memory DirectDraw has given back; issued later, into whatever surface has it now) */for(k=0;k<FQ;k++){LONG pp=fq_ptr[k],pid=fq_pid[k];if(pp&&pid){forget_locked((DDRAWI_DDRAWSURFACE_LCL*)pp,(uint32_t)pid);fq_ptr[k]=0;InterlockedExchange(&fq_pid[k],0);}}
 }
 int VX_D3D_forget_surface(DDRAWI_DDRAWSURFACE_LCL *s) {
  uint32_t k,n;LONG me=(LONG)GetCurrentProcessId(),t=my_token();
@@ -1245,7 +1311,7 @@ static void forget_locked(DDRAWI_DDRAWSURFACE_LCL *s,uint32_t owner) {
  /* ContextCreate can precede a DX6 CreateSurfaceEx notification. Its
   * direct surface identities must be invalidated even without a handle map. */
  for(j=0;j<CONTEXTS;j++)if(contexts[j].owner==owner&&contexts[j].handle&&
-    (contexts[j].target_key==(uint32_t)s||contexts[j].depth_key==(uint32_t)s)){contexts[j].core.lost=1;note_lost(0x24,(DWORD)s);}
+    (contexts[j].target_key==(uint32_t)s||contexts[j].depth_key==(uint32_t)s))unbind_surface(&contexts[j],(uint32_t)s); /* .649: was lost (reason 24) */
  for(i=0;i<TABLES;i++)if(tables[i].owner==owner&&tables[i].local) {
   t=&tables[i];
   for(j=0;j<t->blocks*BLOCK_SURFACES;j++) {
@@ -1262,7 +1328,11 @@ static DWORD WINAPI setrt(vx_ddi_setrt *p) {
   if(!c->core.lost)note_lost(0x25,info.generation);c->core.lost=1;p->ddrval=DDERR_SURFACELOST;
  } else if(c&&(tl=surface_lcl(p->lpDDS))!=0&&(rtk=VX_D3D_surface_target(tl,&t))!=0&&(!p->lpDDSZ||((zl=surface_lcl(p->lpDDSZ))!=0&&VX_D3D_surface(zl,&z)))&&
            vx_d3d_targets_valid(&t,&z)&&native_surface(&t,&info)&&(!z.format||native_surface(&z,&info))) {
-  if(!rt_leave(c,&c->core.target))p->ddrval=DDERR_SURFACELOST; /* v10.479 (review): the wait's lost device answered DD_OK; the target stays */
+  /* .677 (review of .673, 5): this context's held draws (into the old target) go to the engine before the old target's wait, as the DP2
+   * target command has them (the core sends its queue before it): the wait came before them, and a draw sampling the old target next read
+   * it before they were drawn */
+  uint32_t hr=vx_d3d_hold_is(&c->core)&&hold_pid==GetCurrentProcessId()?hold_send_here():0;
+  if(hr||!rt_leave(c,&c->core.target))p->ddrval=DDERR_SURFACELOST; /* v10.479 (review): the wait's lost device answered DD_OK; the target stays */
   else {c->rt_tex=rtk==2; /* v10.456 */
   c->core.target=t;c->core.depth=z;c->core.target_handle=0;c->core.depth_handle=0;
   c->target_key=(uint32_t)tl;c->depth_key=(uint32_t)zl;p->ddrval=DD_OK;} /* v10.215: interface or local objects, as ContextCreate */

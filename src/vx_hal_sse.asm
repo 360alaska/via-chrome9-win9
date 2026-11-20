@@ -229,4 +229,68 @@ _vxs_max16 proc near
  db 05Eh ; pop	esi
  db 0C3h ; ret
 _vxs_max16 endp
+public _vxs_cmm16
+_vxs_cmm16 proc near
+ db 056h ; push	esi
+ db 057h ; push	edi
+ db 053h ; push	ebx
+ db 08Bh,074h,024h,010h ; mov	esi, dword ptr [esp + 0x10]
+ db 08Bh,07Ch,024h,014h ; mov	edi, dword ptr [esp + 0x14]
+ db 08Bh,04Ch,024h,018h ; mov	ecx, dword ptr [esp + 0x18]
+ db 066h,00Fh,075h,0C9h ; pcmpeqw	xmm1, xmm1
+ db 066h,00Fh,071h,0F1h,00Fh ; psllw	xmm1, 0xf
+ db 066h,00Fh,06Fh,0C1h ; movdqa	xmm0, xmm1
+ db 066h,00Fh,075h,0DBh ; pcmpeqw	xmm3, xmm3
+ db 066h,00Fh,0EFh,0D9h ; pxor	xmm3, xmm1
+ db 083h,0F9h,008h ; cmp	ecx, 0x8
+ db 072h,01Fh ; jb	0x48 <_vxs_cmm16+0x48>
+ db 0F3h,00Fh,06Fh,016h ; movdqu	xmm2, xmmword ptr [esi]
+ db 0F3h,00Fh,07Fh,017h ; movdqu	xmmword ptr [edi], xmm2
+ db 066h,00Fh,0EFh,0D1h ; pxor	xmm2, xmm1
+ db 066h,00Fh,0EEh,0C2h ; pmaxsw	xmm0, xmm2
+ db 066h,00Fh,0EAh,0DAh ; pminsw	xmm3, xmm2
+ db 083h,0C6h,010h ; add	esi, 0x10
+ db 083h,0C7h,010h ; add	edi, 0x10
+ db 083h,0E9h,008h ; sub	ecx, 0x8
+ db 0EBh,0DCh ; jmp	0x24 <_vxs_cmm16+0x24>
+ db 066h,00Fh,070h,0D0h,04Eh ; pshufd	xmm2, xmm0, 0x4e        # xmm2 = xmm0[2,3,0,1]
+ db 066h,00Fh,0EEh,0C2h ; pmaxsw	xmm0, xmm2
+ db 066h,00Fh,070h,0D0h,0B1h ; pshufd	xmm2, xmm0, 0xb1        # xmm2 = xmm0[1,0,3,2]
+ db 066h,00Fh,0EEh,0C2h ; pmaxsw	xmm0, xmm2
+ db 0F2h,00Fh,070h,0D0h,0B1h ; pshuflw	xmm2, xmm0, 0xb1        # xmm2 = xmm0[1,0,3,2,4,5,6,7]
+ db 066h,00Fh,0EEh,0C2h ; pmaxsw	xmm0, xmm2
+ db 066h,00Fh,0EFh,0C1h ; pxor	xmm0, xmm1
+ db 066h,00Fh,07Eh,0C0h ; movd	eax, xmm0
+ db 025h,0FFh,0FFh,000h,000h ; and	eax, 0xffff
+ db 066h,00Fh,070h,0D3h,04Eh ; pshufd	xmm2, xmm3, 0x4e        # xmm2 = xmm3[2,3,0,1]
+ db 066h,00Fh,0EAh,0DAh ; pminsw	xmm3, xmm2
+ db 066h,00Fh,070h,0D3h,0B1h ; pshufd	xmm2, xmm3, 0xb1        # xmm2 = xmm3[1,0,3,2]
+ db 066h,00Fh,0EAh,0DAh ; pminsw	xmm3, xmm2
+ db 0F2h,00Fh,070h,0D3h,0B1h ; pshuflw	xmm2, xmm3, 0xb1        # xmm2 = xmm3[1,0,3,2,4,5,6,7]
+ db 066h,00Fh,0EAh,0DAh ; pminsw	xmm3, xmm2
+ db 066h,00Fh,0EFh,0D9h ; pxor	xmm3, xmm1
+ db 066h,00Fh,07Eh,0DBh ; movd	ebx, xmm3
+ db 081h,0E3h,0FFh,0FFh,000h,000h ; and	ebx, 0xffff
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,01Bh ; je	0xb8 <_vxs_cmm16+0xb8>
+ db 00Fh,0B7h,016h ; movzx	edx, word ptr [esi]
+ db 066h,089h,017h ; mov	word ptr [edi], dx
+ db 039h,0C2h ; cmp	edx, eax
+ db 076h,002h ; jbe	0xa9 <_vxs_cmm16+0xa9>
+ db 089h,0D0h ; mov	eax, edx
+ db 039h,0DAh ; cmp	edx, ebx
+ db 073h,002h ; jae	0xaf <_vxs_cmm16+0xaf>
+ db 089h,0D3h ; mov	ebx, edx
+ db 083h,0C6h,002h ; add	esi, 0x2
+ db 083h,0C7h,002h ; add	edi, 0x2
+ db 049h ; dec	ecx
+ db 0EBh,0E1h ; jmp	0x99 <_vxs_cmm16+0x99>
+ db 08Bh,054h,024h,01Ch ; mov	edx, dword ptr [esp + 0x1c]
+ db 089h,01Ah ; mov	dword ptr [edx], ebx
+ db 089h,042h,004h ; mov	dword ptr [edx + 0x4], eax
+ db 05Bh ; pop	ebx
+ db 05Fh ; pop	edi
+ db 05Eh ; pop	esi
+ db 0C3h ; ret
+_vxs_cmm16 endp
 end

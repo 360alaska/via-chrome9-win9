@@ -18,6 +18,7 @@ from vx2col_check import vx2col_checks
 from vx2rop_check import vx2rop_checks
 from vx2line_check import vx2line_checks
 from keep import keep_checks
+from v682 import v682_checks
 
 def abi_check():
  b=(ROOT/'driver'/'VX85598.DRV').read_bytes();h=u32(b,60)
@@ -55,14 +56,14 @@ def main():
  for name,expected in build['source_sha256'].items():assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==expected,('build/source mismatch',name)
  result={'scope':__doc__,'ne':ne_check(),'le':LEImage().result(),'abi':abi_check(),
   'pe':{n:pe_check(n,3 if n in ['VXDX7.EXE','VX3DM1.EXE'] else 2) for n in ['VXDDRAW.DLL','VX2SYNC.EXE','VX2BENCH.EXE','VX2FLIP.EXE','VXDX7.EXE','VX3DM1.EXE']}}
- for name,fn in [('engine',engine_checks),('frontend',frontend_checks),('flip',flip_checks),('directdraw',directdraw_checks),('cache',cache_checks),('eight',eight_checks),('v1073',v1073_checks),('v1075',v1075_checks),('v10105',v10105_checks),('v10106',v10106_checks),('v10116',v10116_checks),('v1077',v1077_checks),('vx2col',vx2col_checks),('vx2rop',vx2rop_checks),('vx2line',vx2line_checks),('keep',keep_checks)]:
+ for name,fn in [('engine',engine_checks),('frontend',frontend_checks),('flip',flip_checks),('directdraw',directdraw_checks),('cache',cache_checks),('eight',eight_checks),('v1073',v1073_checks),('v1075',v1075_checks),('v10105',v10105_checks),('v10106',v10106_checks),('v10116',v10116_checks),('v1077',v1077_checks),('vx2col',vx2col_checks),('vx2rop',vx2rop_checks),('vx2line',vx2line_checks),('keep',keep_checks),('v682',v682_checks)]:
   cases=fn();result[name]={'passed':len(cases),'cases':cases};print(f'{name}: {len(cases)} passed',flush=True)
  preservation=json.loads((ROOT/'verification'/'PRESERVATION.json').read_text())
  for name,expected in preservation['unchanged_files'].items():assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==expected,name
  for name,rule in preservation['modified_files'].items():
   assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==rule['current_sha256'],name
  result['preservation']=preservation
- result['passed_compiled_code_checks']=sum(result[n]['passed'] for n in ['engine','frontend','flip','directdraw','cache','eight','v1073','v1075','v10105','v10106','v10116','v1077','vx2col','vx2rop','vx2line','keep'])
+ result['passed_compiled_code_checks']=sum(result[n]['passed'] for n in ['engine','frontend','flip','directdraw','cache','eight','v1073','v1075','v10105','v10106','v10116','v1077','vx2col','vx2rop','vx2line','keep','v682'])
  (ROOT/'verification'/'RESULTS.json').write_text(json.dumps(result,indent=2)+'\n')
  print(f"{result['passed_compiled_code_checks']} compiled-code checks passed; loader/ABI/preservation checks passed.")
 if __name__=='__main__':main()

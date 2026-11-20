@@ -15,7 +15,8 @@ ROOT=Path(__file__).resolve().parents[1]
 F={'m':0,'vp':256,'e':384,'nm':640,'ld':784,'lc':1296,'base':1808,'fog':1872,'nl':1936,'lit':1940,'fogmode':1944,'rfog':1948,'nnorm':1952,'haveN':1956,
  'stride':1960,'n':1964,'first':1968,'reuse_diffuse':1972,'eye_z_ready':1976,'gx':1984,'gy':2000,'gz':2016,'gnx':2032,'gny':2048,'gnz':2064,'gdc':2080,'gsc':2096,'od':2112,'os':2128,
  'k255':2144,'kone':2160,'khalf':2176,'kl2e':2192,'kexpc':2208,'kneg80':2336,'kinf':2352,'ksign':2368,'k127':2384,'kmask24':2400,'kb':2416,'k7f':2512,
- 'sx':2528,'sy':2532,'sz':2536,'cx':2540,'cy':2544,'cz':2548,'cw':2552,'rw':2556,'cc':2560,'rec':2564,'scratch':2576}
+ 'sx':2528,'sy':2532,'sz':2536,'cx':2540,'cy':2544,'cz':2548,'cw':2552,'rw':2556,'cc':2560,'rec':2564,'scratch':2576,
+ 'vc':8980,'vacc':9008,'npl':2704,'pp':2720,'pr':3104,'pdc':3616,'pac':4000} # .647: the point lights
 def o(name,i=0):return F[name]+i
 # a matrix row r by the lanes in xmm5 (x), xmm6 (y), xmm7 (z): ((x m[r] + y m[4+r]) + z m[8+r]) + m[12+r] into xmm0 (m at base b)
 def row(b,r):
@@ -131,6 +132,25 @@ _tnk_pos:
  packuswb xmm3,xmm3
  mov esi,[eax+{o('cc')}]
  movd [esi+ecx],xmm3
+ mov esi,[eax+{o('vc')}]
+ test esi,esi
+ jz 2f
+ mov edi,[eax+{o('cw')}]
+ movups xmm3,[edi+ecx*4]
+ movups xmm1,[eax+{o('khalf')}]
+ mulps xmm3,xmm1
+ movups xmm2,[eax+{o('ksign')}]
+ movaps xmm0,xmm2
+ andnps xmm0,xmm5
+ andnps xmm2,xmm6
+ movaps xmm1,xmm3
+ cmpltps xmm1,xmm0
+ cmpltps xmm3,xmm2
+ orps xmm1,xmm3
+ movups xmm0,[eax+{o('vacc')}]
+ orps xmm0,xmm1
+ movups [eax+{o('vacc')}],xmm0
+2:
  xorps xmm1,xmm1
  mulps xmm5,xmm4
  mulps xmm5,[eax+{o('vp',16)}]
@@ -435,6 +455,219 @@ _tnk_light:
  ret
 {EXP}
 """
+# .647: tnk_plight (vx_d3d_tnl_soa.inc), the point lights added into the lanes' base colour. Registers: xmm5-7 the colour (b g r) once the
+# eye position is made; scratch 0/16/32 ex ey ez, 48/64/80 the normal, 96 d, 112 the masks; edx walks pp, pdc and pac (48 bytes a light),
+# ebx pr (64). The normal is tnk_light's sequence (it leaves nx ny nz in xmm1-3).
+PLIGHT=f"""
+_tnk_plight:
+ push ebx
+ push esi
+ push edi
+ push ebp
+ mov eax,[esp+20]
+ movups xmm5,[eax+{o('gx')}]
+ movups xmm6,[eax+{o('gy')}]
+ movups xmm7,[eax+{o('gz')}]
+{row(o('e'),0)}
+ movups [eax+{o('scratch',0)}],xmm0
+{row(o('e'),1)}
+ movups [eax+{o('scratch',16)}],xmm0
+{row(o('e'),2)}
+ movups [eax+{o('scratch',32)}],xmm0
+ xorps xmm1,xmm1
+ xorps xmm2,xmm2
+ xorps xmm3,xmm3
+ cmp dword ptr [eax+{o('haveN')}],0
+ je 10f
+ movups xmm0,[eax+{o('gnx')}]
+ movups xmm1,[eax+{o('gny')}]
+ movups xmm2,[eax+{o('gnz')}]
+ movaps xmm3,xmm0
+ mulps xmm3,[eax+{o('nm',0)}]
+ movaps xmm4,xmm1
+ mulps xmm4,[eax+{o('nm',48)}]
+ addps xmm3,xmm4
+ movaps xmm4,xmm2
+ mulps xmm4,[eax+{o('nm',96)}]
+ addps xmm3,xmm4
+ movups [eax+{o('scratch',64)}],xmm3
+ movaps xmm3,xmm0
+ mulps xmm3,[eax+{o('nm',16)}]
+ movaps xmm4,xmm1
+ mulps xmm4,[eax+{o('nm',64)}]
+ addps xmm3,xmm4
+ movaps xmm4,xmm2
+ mulps xmm4,[eax+{o('nm',112)}]
+ addps xmm3,xmm4
+ movups [eax+{o('scratch',80)}],xmm3
+ mulps xmm0,[eax+{o('nm',32)}]
+ mulps xmm1,[eax+{o('nm',80)}]
+ addps xmm0,xmm1
+ mulps xmm2,[eax+{o('nm',128)}]
+ addps xmm0,xmm2
+ movaps xmm3,xmm0
+ movups xmm1,[eax+{o('scratch',64)}]
+ movups xmm2,[eax+{o('scratch',80)}]
+ cmp dword ptr [eax+{o('nnorm')}],0
+ je 20f
+ movaps xmm0,xmm1
+ mulps xmm0,xmm1
+ movaps xmm4,xmm2
+ mulps xmm4,xmm2
+ addps xmm0,xmm4
+ movaps xmm4,xmm3
+ mulps xmm4,xmm3
+ addps xmm0,xmm4
+ sqrtps xmm0,xmm0
+ xorps xmm4,xmm4
+ cmpltps xmm4,xmm0
+ movups [eax+{o('scratch',96)}],xmm4
+ movups xmm4,[eax+{o('kone')}]
+ divps xmm4,xmm0
+ andps xmm4,[eax+{o('scratch',96)}]
+ movaps xmm0,xmm1
+ mulps xmm0,xmm4
+ andps xmm0,[eax+{o('scratch',96)}]
+ movups xmm1,[eax+{o('scratch',96)}]
+ andnps xmm1,[eax+{o('scratch',64)}]
+ orps xmm1,xmm0
+ movaps xmm0,xmm2
+ mulps xmm0,xmm4
+ andps xmm0,[eax+{o('scratch',96)}]
+ movups xmm2,[eax+{o('scratch',96)}]
+ andnps xmm2,[eax+{o('scratch',80)}]
+ orps xmm2,xmm0
+ movaps xmm0,xmm3
+ mulps xmm0,xmm4
+ andps xmm0,[eax+{o('scratch',96)}]
+ movups xmm4,[eax+{o('scratch',96)}]
+ movups [eax+{o('scratch',112)}],xmm3
+ andnps xmm4,[eax+{o('scratch',112)}]
+ orps xmm0,xmm4
+ movaps xmm3,xmm0
+20:
+10:
+ movups [eax+{o('scratch',48)}],xmm1
+ movups [eax+{o('scratch',64)}],xmm2
+ movups [eax+{o('scratch',80)}],xmm3
+ movups xmm5,[eax+{o('base',0)}]
+ movups xmm6,[eax+{o('base',16)}]
+ movups xmm7,[eax+{o('base',32)}]
+ mov ecx,[eax+{o('npl')}]
+ test ecx,ecx
+ jz 9f
+ mov edx,eax
+ mov ebx,eax
+1:
+ movups xmm1,[edx+{o('pp',0)}]
+ subps xmm1,[eax+{o('scratch',0)}]
+ movups xmm2,[edx+{o('pp',16)}]
+ subps xmm2,[eax+{o('scratch',16)}]
+ movups xmm3,[edx+{o('pp',32)}]
+ subps xmm3,[eax+{o('scratch',32)}]
+ movaps xmm0,xmm1
+ mulps xmm0,xmm1
+ movaps xmm4,xmm2
+ mulps xmm4,xmm2
+ addps xmm0,xmm4
+ movaps xmm4,xmm3
+ mulps xmm4,xmm3
+ addps xmm0,xmm4
+ movups [eax+{o('scratch',96)}],xmm0
+ rsqrtps xmm4,xmm0
+ mulps xmm0,xmm4
+ mulps xmm0,xmm4
+ subps xmm0,[eax+{o('kone')}]
+ mulps xmm0,[eax+{o('khalf')}]
+ mulps xmm0,xmm4
+ subps xmm4,xmm0
+ xorps xmm0,xmm0
+ cmpltps xmm0,[eax+{o('scratch',96)}]
+ movups [eax+{o('scratch',112)}],xmm0
+ movups xmm0,[eax+{o('scratch',96)}]
+ mulps xmm0,xmm4
+ andps xmm0,[eax+{o('scratch',112)}]
+ movups [eax+{o('scratch',96)}],xmm0
+ movaps xmm0,xmm1
+ mulps xmm0,xmm4
+ xorps xmm0,xmm1
+ andps xmm0,[eax+{o('scratch',112)}]
+ xorps xmm1,xmm0
+ movaps xmm0,xmm2
+ mulps xmm0,xmm4
+ xorps xmm0,xmm2
+ andps xmm0,[eax+{o('scratch',112)}]
+ xorps xmm2,xmm0
+ movaps xmm0,xmm3
+ mulps xmm0,xmm4
+ xorps xmm0,xmm3
+ andps xmm0,[eax+{o('scratch',112)}]
+ xorps xmm3,xmm0
+ movups xmm0,[eax+{o('scratch',96)}]
+ movups xmm4,[ebx+{o('pr',32)}]
+ mulps xmm4,xmm0
+ addps xmm4,[ebx+{o('pr',16)}]
+ mulps xmm0,[ebx+{o('pr',48)}]
+ mulps xmm0,[eax+{o('scratch',96)}]
+ addps xmm4,xmm0
+ xorps xmm0,xmm0
+ cmpltps xmm0,xmm4
+ movups [eax+{o('scratch',112)}],xmm0
+ rcpps xmm0,xmm4
+ mulps xmm4,xmm0
+ subps xmm4,[eax+{o('kone')}]
+ mulps xmm4,xmm0
+ subps xmm0,xmm4
+ xorps xmm0,[eax+{o('kone')}]
+ andps xmm0,[eax+{o('scratch',112)}]
+ xorps xmm0,[eax+{o('kone')}]
+ movups xmm4,[eax+{o('scratch',96)}]
+ cmpleps xmm4,[ebx+{o('pr',0)}]
+ andps xmm0,xmm4
+ movaps xmm4,xmm0
+ mulps xmm4,[edx+{o('pac',0)}]
+ addps xmm5,xmm4
+ movaps xmm4,xmm0
+ mulps xmm4,[edx+{o('pac',16)}]
+ addps xmm6,xmm4
+ movaps xmm4,xmm0
+ mulps xmm4,[edx+{o('pac',32)}]
+ addps xmm7,xmm4
+ cmp dword ptr [eax+{o('haveN')}],0
+ je 2f
+ mulps xmm1,[eax+{o('scratch',48)}]
+ mulps xmm2,[eax+{o('scratch',64)}]
+ addps xmm1,xmm2
+ mulps xmm3,[eax+{o('scratch',80)}]
+ addps xmm1,xmm3
+ xorps xmm4,xmm4
+ cmpltps xmm4,xmm1
+ andps xmm1,xmm4
+ mulps xmm1,xmm0
+ movaps xmm4,xmm1
+ mulps xmm4,[edx+{o('pdc',0)}]
+ addps xmm5,xmm4
+ movaps xmm4,xmm1
+ mulps xmm4,[edx+{o('pdc',16)}]
+ addps xmm6,xmm4
+ movaps xmm4,xmm1
+ mulps xmm4,[edx+{o('pdc',32)}]
+ addps xmm7,xmm4
+2:
+ add edx,48
+ add ebx,64
+ dec ecx
+ jnz 1b
+9:
+ movups [eax+{o('base',0)}],xmm5
+ movups [eax+{o('base',16)}],xmm6
+ movups [eax+{o('base',32)}],xmm7
+ pop ebp
+ pop edi
+ pop esi
+ pop ebx
+ ret
+"""
 def assemble(name,text):
  """the function's bytes and a listing of (bytes, mnemonic) by instruction"""
  src=".intel_syntax noprefix\n.text\n.globl "+name+"\n"+text
@@ -462,12 +695,42 @@ def wasm(name,lines):
  out=[f'public {name}',f'{name} proc near']
  for b,mn in lines:out.append(' db '+','.join('0%02Xh'%x for x in b)+' ; '+mn)
  out.append(f'{name} endp');return '\n'.join(out)
+def compile_c(name,kernel,sig='tnk_frame *f',args='f'):
+ """.651: a kernel compiled from its C in src/vx_d3d_tnl_soa.inc (the TNK KERNELS parts) by clang for i686 with SSE2, as the bytes of
+ one function: no relocations (no constant in memory, no call out), the stack realigned in its prologue (the board's callers keep 4
+ bytes). The host's build of the same C runs the same operations in the same order (clang may swap an addition's or a product's two
+ operands, which gives the same bits), so tests/test_tnl_asm.c still compares the board's bytes with the host's C."""
+ src=(ROOT/'src'/'vx_d3d_tnl_soa.inc').read_text()
+ part=lambda n:src[src.index('/* TNK KERNELS BEGIN %d'%n):src.index('/* TNK KERNELS END %d */'%n)]
+ c='#include <stdint.h>\n#include <stddef.h>\n'+part(1)+part(2)+'\n__attribute__((used,noinline)) void %s(%s){%s(%s);}\n'%(name,sig,kernel,args)
+ with tempfile.TemporaryDirectory() as d:
+  cf=Path(d)/'k.c';obj=Path(d)/'k.o';cf.write_text(c)
+  subprocess.run(['clang','--target=i686-linux-gnu','-O2','-msse2','-mstackrealign','-fno-pic','-ffreestanding','-fno-builtin','-fno-stack-protector',
+   '-fno-asynchronous-unwind-tables','-fno-unwind-tables','-fno-jump-tables','-w','-c',str(cf),'-o',str(obj)],check=True)
+  rel=subprocess.check_output(['llvm-objdump','-r',str(obj)],text=True)
+  if re.search(r'^\s*[0-9a-f]+\s+R_',rel,re.M):sys.exit(name+': relocations in the compiled kernel:\n'+rel)
+  syms=subprocess.check_output(['llvm-objdump','-t',str(obj)],text=True)
+  m=re.search(r'^([0-9a-f]+)\s+g\s+F\s+\.text\s+([0-9a-f]+)\s+'+re.escape(name)+r'$',syms,re.M)
+  if not m or int(m.group(1),16)!=0:sys.exit(name+': not the only function at the start of .text:\n'+syms)
+  listing=subprocess.check_output(['llvm-objdump','-d','-M','intel','--no-show-raw-insn',str(obj)],text=True)
+  if re.search(r'\bcall\b',listing):sys.exit(name+': a call in the compiled kernel')
+  listing=subprocess.check_output(['llvm-objdump','-d','-M','intel',str(obj)],text=True)
+  lines=[]
+  for ln in listing.splitlines():
+   mm=re.match(r'^\s*([0-9a-f]+):\s*((?:[0-9a-f]{2}\s)+)\s*(.*)',ln)
+   if mm:lines.append((bytes.fromhex(mm.group(2)),mm.group(3).split('#')[0].strip()))
+  binary=Path(d)/'k.bin'
+  subprocess.run([shutil.which('llvm-objcopy') or shutil.which('objcopy'),'-O','binary','-j','.text',str(obj),str(binary)],check=True)
+  if b''.join(b for b,_ in lines)!=binary.read_bytes():sys.exit(name+': listing did not cover .text')
+ return lines
+def gas_bytes(name,lines):
+ return '%s:\n'%name+''.join(' .byte '+','.join('0x%02x'%x for x in b)+' # '+mn+'\n' for b,mn in lines)
 def main():
- pos=assemble('_tnk_pos',POS);light=assemble('_tnk_light',LIGHT)
+ pos=assemble('_tnk_pos',POS);light=assemble('_tnk_light',LIGHT);plight=assemble('_tnk_plight',PLIGHT);spec=compile_c('_tnk_spec','tnk_spec');cv=compile_c('_tnk_cv','tnk_cv','tnk_frame *f,float (*b)[4]','f,b');splight=compile_c('_tnk_splight','tnk_splight');vcodes=compile_c('_tnk_vcodes','tnk_vcodes')
  text='; vx_tnl_sse.asm: the driver\'s T&L group kernels (SSE2) as bytes for wasm. GENERATED by tools/tnl_asm.py: edit that file, not this.\n'\
   '; cdecl, one argument (the tnk_frame of src/vx_d3d_tnl_soa.inc); the sequences are the intrinsics\' there, instruction for instruction.\n'\
-  '.386\n.model flat\n.code\n'+wasm('_tnk_pos',pos)+'\n'+wasm('_tnk_light',light)+'\nend\n'
+  '.386\n.model flat\n.code\n'+wasm('_tnk_pos',pos)+'\n'+wasm('_tnk_light',light)+'\n'+wasm('_tnk_plight',plight)+'\n'+wasm('_tnk_spec',spec)+'\n'+wasm('_tnk_cv',cv)+'\n'+wasm('_tnk_splight',splight)+'\n'+wasm('_tnk_vcodes',vcodes)+'\nend\n'
  (ROOT/'src'/'vx_tnl_sse.asm').write_text(text)
- (ROOT/'tests'/'tnl_kernels.s').write_text(".intel_syntax noprefix\n.text\n.globl _tnk_pos\n.globl _tnk_light\n"+POS+LIGHT)
+ (ROOT/'tests'/'tnl_kernels.s').write_text(".intel_syntax noprefix\n.text\n.globl _tnk_pos\n.globl _tnk_light\n.globl _tnk_plight\n.globl _tnk_spec\n.globl _tnk_cv\n.globl _tnk_splight\n.globl _tnk_vcodes\n"+POS+LIGHT+PLIGHT+gas_bytes('_tnk_spec',spec)+gas_bytes('_tnk_cv',cv)+gas_bytes('_tnk_splight',splight)+gas_bytes('_tnk_vcodes',vcodes))
  print('tnk_pos %d bytes, %d instructions; tnk_light %d bytes, %d instructions'%(sum(len(b) for b,_ in pos),len(pos),sum(len(b) for b,_ in light),len(light)))
 if __name__=='__main__':main() # .545: importable (tools/hal_asm.py uses assemble and wasm)

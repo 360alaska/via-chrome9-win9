@@ -35,7 +35,7 @@
 #include "vbo_context.h"
 
 extern int _vbo_vx855_fastindex; /* VX855 v10.501 (vbo_rebase.c) */
-/* VX855 .506 (ACCEL_OPENGL_MINMAX2; Fable's: host bench, Quake 3's batches: the index scan 5% of the driver's time): the scan by SSE2
+/* VX855 .506 (ACCEL_OPENGL_MINMAX2; review: host bench, Quake 3's batches: the index scan 5% of the driver's time): the scan by SSE2
  * (the ICD sets _vbo_vx855_minmax2 when the processor has it), four 32-bit or eight 16-bit indices a step: the indices biased by the sign
  * bit (an unsigned order as a signed one), the lane minimums and maximums kept (32-bit: pcmpgtd and a masked blend; 16-bit: pminsw,
  * pmaxsw), the lanes reduced in C, the indices past the last whole step one at a time. The same minimum and maximum. */

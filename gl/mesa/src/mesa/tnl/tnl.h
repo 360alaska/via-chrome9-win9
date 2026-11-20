@@ -39,6 +39,10 @@
 extern GLboolean
 _tnl_CreateContext( GLcontext *ctx );
 
+struct tnl_pipeline_stage;
+extern GLboolean
+_tnl_CreateContextWithPipeline(GLcontext *ctx, const struct tnl_pipeline_stage **stages);
+
 extern void
 _tnl_DestroyContext( GLcontext *ctx );
 

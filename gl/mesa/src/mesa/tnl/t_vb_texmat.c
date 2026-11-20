@@ -96,8 +96,11 @@ static GLboolean alloc_texmat_data( GLcontext *ctx,
    if (!store)
       return GL_FALSE;
 
-   for (i = 0 ; i < ctx->Const.MaxTextureCoordUnits ; i++)
+   for (i = 0 ; i < ctx->Const.MaxTextureCoordUnits ; i++) {
       _mesa_vector4f_alloc( &store->texcoord[i], 0, VB->Size, 32 );
+      if (!store->texcoord[i].data)
+         return GL_FALSE;
+   }
 
    return GL_TRUE;
 }

@@ -12,6 +12,8 @@
 #define VXF_RESET 3 /* display offset 0 (the GDI desktop) */
 #define VXF_INFO 4 /* report only, never touches the hardware */
 #define VXF_FRONT 6 /* v10.384: arg = byte offset of a surface about to be drawn, locked or blitted: while the last flip has not yet been taken by the display and arg is the surface it flipped away from, wait until it has (0xFFFFFFFF: status only, no wait). reply[VXF_R_IN_VB] = 1 while that flip is still pending. */
+#define VXF_PRESENT 7 /* .661: a windowed program's frame shown by a Blt to the primary: ends a frame for VXD3DMON's sampler (VX_smp_frame) when no flip came
+ * in the last second; nothing else, no engine wait */
 #define VXF_SCAN 5 /* v10.73: sample the scan line counter (register window offset 0x1290, line = bits 31:16). Own reply layout, see VXF_S_* below. Works whatever the SCANLINE registry gate says (the gate only decides whether DirectDraw is offered GetScanLine). */
 /* reply[VXF_R_RESULT] */
 #define VXF_OK 0

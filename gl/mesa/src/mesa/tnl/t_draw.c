@@ -401,6 +401,18 @@ static void unmap_vbos( GLcontext *ctx,
 
 
 
+/* VX855 .672 (ACCEL_OPENGL_LOCKDRAW; HarborBench's drawN on .668: 41 microseconds a glDrawElements call with nothing changed between
+ * them, host: the pipeline lit, transformed and built every vertex between the draw's lowest and highest index, about 43 for a draw of 5):
+ * inside one glLockArraysEXT, from the second indexed draw of client arrays on, each draw is given the whole locked range (min_index and
+ * max_index the lock's) instead of its own. Every such draw then binds the same inputs, and the ICD's lock stage (vxgl_tris.c) takes the
+ * first one's transformed, lit and built vertices for the rest while nothing changes (the first draw of a lock stays narrow: a lock drawn
+ * from once costs no more than before). _tnl_vx855_lw_draw: set while such a draw runs. _tnl_vx855_lw_stat: [0] draws given the lock */
+int _tnl_vx855_lockdraw = 1;
+int _tnl_vx855_lw_draw;
+unsigned long _tnl_vx855_lw_stat[4];
+extern unsigned long _mesa_vx855_lockgen;
+extern int _vbo_vx855_arraydraw;
+
 /* This is the main entrypoint into the slimmed-down software tnl
  * module.  In a regular swtnl driver, this can be plugged straight
  * into the vbo->Driver.DrawPrims() callback.
@@ -416,6 +428,7 @@ void _tnl_draw_prims( GLcontext *ctx,
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    const GLuint TEST_SPLIT = 0;
    const GLint max = TEST_SPLIT ? 8 : tnl->vb.Size - MAX_CLIPPED_VERTICES;
+   static int nest; /* VX855 .672: inside a rebase or a split (their arrays and indices are already moved): no lock-wide draw again */
 
    if (0)
    {
@@ -428,12 +441,28 @@ void _tnl_draw_prims( GLcontext *ctx,
 		      prim[i].count);
    }
 
+   if (_tnl_vx855_lockdraw && ib && !nest && !_tnl_vx855_lw_draw && ctx->Array.LockCount && _vbo_vx855_arraydraw &&
+       ctx->RenderMode == GL_RENDER) { /* VX855 .672 */
+      static unsigned long gen; static GLuint draws; static const GLcontext *gc;
+      const GLuint lc = ctx->Array.LockCount; /* (a lock always starts at 0: _mesa_LockArraysEXT takes no other) */
+      if (gen != _mesa_vx855_lockgen || gc != ctx) { gen = _mesa_vx855_lockgen; gc = ctx; draws = 0; }
+      if (max_index < lc && lc <= (GLuint)max && ++draws >= 2) {
+	 _tnl_vx855_lw_stat[0]++;
+	 _tnl_vx855_lw_draw = 1;
+	 _tnl_draw_prims( ctx, arrays, prim, nr_prims, ib, 0, lc - 1 );
+	 _tnl_vx855_lw_draw = 0;
+	 return;
+      }
+   }
+
    if (min_index) {
       /* We always translate away calls with min_index != 0. 
        */
+      nest++;
       vbo_rebase_prims( ctx, arrays, prim, nr_prims, ib, 
 			min_index, max_index,
 			_tnl_draw_prims );
+      nest--;
       return;
    }
    else if (max_index > max) {
@@ -449,10 +478,12 @@ void _tnl_draw_prims( GLcontext *ctx,
       /* This will split the buffers one way or another and
        * recursively call back into this function.
        */
+      nest++;
       vbo_split_prims( ctx, arrays, prim, nr_prims, ib, 
 		       0, max_index,
 		       _tnl_draw_prims,
 		       &limits );
+      nest--;
    }
    else {
       /* May need to map a vertex buffer object for every attribute plus

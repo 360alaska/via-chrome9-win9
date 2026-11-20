@@ -5,462 +5,2754 @@
 .code
 public _tnk_pos
 _tnk_pos proc near
- db 053h ; push   ebx
- db 056h ; push   esi
- db 057h ; push   edi
- db 055h ; push   ebp
- db 08Bh,044h,024h,014h ; mov    eax,DWORD PTR [esp+0x14]
- db 08Bh,088h,0B0h,007h,000h,000h ; mov    ecx,DWORD PTR [eax+0x7b0]
- db 08Bh,090h,0ACh,007h,000h,000h ; mov    edx,DWORD PTR [eax+0x7ac]
- db 001h,0CAh ; add    edx,ecx
- db 031h,0DBh ; xor    ebx,ebx
- db 039h,0D1h ; cmp    ecx,edx
- db 00Fh,083h,098h,002h,000h,000h ; jae    2b8 <_tnk_pos+0x2b8>
- db 08Bh,0B0h,0E0h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9e0]
- db 00Fh,010h,02Ch,09Eh ; movups xmm5,XMMWORD PTR [esi+ebx*4]
- db 08Bh,0B0h,0E4h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9e4]
- db 00Fh,010h,034h,09Eh ; movups xmm6,XMMWORD PTR [esi+ebx*4]
- db 08Bh,0B0h,0E8h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9e8]
- db 00Fh,010h,03Ch,09Eh ; movups xmm7,XMMWORD PTR [esi+ebx*4]
- db 00Fh,010h,000h ; movups xmm0,XMMWORD PTR [eax]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,048h,040h ; movups xmm1,XMMWORD PTR [eax+0x40]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,080h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x80]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,0C0h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xc0]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 08Bh,0B0h,0ECh,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9ec]
- db 00Fh,011h,004h,08Eh ; movups XMMWORD PTR [esi+ecx*4],xmm0
- db 00Fh,010h,040h,010h ; movups xmm0,XMMWORD PTR [eax+0x10]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,048h,050h ; movups xmm1,XMMWORD PTR [eax+0x50]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,090h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x90]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,0D0h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xd0]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 08Bh,0B0h,0F0h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9f0]
- db 00Fh,011h,004h,08Eh ; movups XMMWORD PTR [esi+ecx*4],xmm0
- db 00Fh,010h,040h,020h ; movups xmm0,XMMWORD PTR [eax+0x20]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,048h,060h ; movups xmm1,XMMWORD PTR [eax+0x60]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,0A0h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xa0]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,0E0h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xe0]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 08Bh,0B0h,0F4h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9f4]
- db 00Fh,011h,004h,08Eh ; movups XMMWORD PTR [esi+ecx*4],xmm0
- db 00Fh,010h,040h,030h ; movups xmm0,XMMWORD PTR [eax+0x30]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,048h,070h ; movups xmm1,XMMWORD PTR [eax+0x70]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,0B0h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xb0]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,0F0h,000h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xf0]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 08Bh,0B0h,0F8h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9f8]
- db 00Fh,011h,004h,08Eh ; movups XMMWORD PTR [esi+ecx*4],xmm0
- db 00Fh,028h,0D8h ; movaps xmm3,xmm0
- db 00Fh,057h,0C9h ; xorps  xmm1,xmm1
- db 00Fh,028h,0D1h ; movaps xmm2,xmm1
- db 00Fh,0C2h,0D3h,001h ; cmpltps xmm2,xmm3
- db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups xmm4,XMMWORD PTR [eax+0x870]
- db 00Fh,05Eh,0E3h ; divps  xmm4,xmm3
- db 00Fh,054h,0E2h ; andps  xmm4,xmm2
- db 08Bh,0B0h,0ECh,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9ec]
- db 00Fh,010h,02Ch,08Eh ; movups xmm5,XMMWORD PTR [esi+ecx*4]
- db 08Bh,0B0h,0F0h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9f0]
- db 00Fh,010h,034h,08Eh ; movups xmm6,XMMWORD PTR [esi+ecx*4]
- db 08Bh,0B0h,0F4h,009h,000h,000h ; mov    esi,DWORD PTR [eax+0x9f4]
- db 00Fh,010h,03Ch,08Eh ; movups xmm7,XMMWORD PTR [esi+ecx*4]
- db 00Fh,028h,0C7h ; movaps xmm0,xmm7
- db 00Fh,0C2h,0C1h,001h ; cmpltps xmm0,xmm1
- db 00Fh,028h,0D3h ; movaps xmm2,xmm3
- db 00Fh,0C2h,0D1h,002h ; cmpleps xmm2,xmm1
- db 00Fh,056h,0C2h ; orps   xmm0,xmm2
- db 00Fh,054h,080h,070h,009h,000h,000h ; andps  xmm0,XMMWORD PTR [eax+0x970]
- db 00Fh,028h,0D3h ; movaps xmm2,xmm3
- db 00Fh,0C2h,0D7h,001h ; cmpltps xmm2,xmm7
- db 00Fh,054h,090h,080h,009h,000h,000h ; andps  xmm2,XMMWORD PTR [eax+0x980]
- db 00Fh,056h,0C2h ; orps   xmm0,xmm2
- db 00Fh,028h,0D1h ; movaps xmm2,xmm1
- db 00Fh,05Ch,0D3h ; subps  xmm2,xmm3
- db 00Fh,028h,0CDh ; movaps xmm1,xmm5
- db 00Fh,0C2h,0CAh,001h ; cmpltps xmm1,xmm2
- db 00Fh,054h,088h,090h,009h,000h,000h ; andps  xmm1,XMMWORD PTR [eax+0x990]
- db 00Fh,056h,0C1h ; orps   xmm0,xmm1
- db 00Fh,028h,0CBh ; movaps xmm1,xmm3
- db 00Fh,0C2h,0CDh,001h ; cmpltps xmm1,xmm5
- db 00Fh,054h,088h,0A0h,009h,000h,000h ; andps  xmm1,XMMWORD PTR [eax+0x9a0]
- db 00Fh,056h,0C1h ; orps   xmm0,xmm1
- db 00Fh,028h,0CEh ; movaps xmm1,xmm6
- db 00Fh,0C2h,0CAh,001h ; cmpltps xmm1,xmm2
- db 00Fh,054h,088h,0B0h,009h,000h,000h ; andps  xmm1,XMMWORD PTR [eax+0x9b0]
- db 00Fh,056h,0C1h ; orps   xmm0,xmm1
- db 00Fh,028h,0CBh ; movaps xmm1,xmm3
- db 00Fh,0C2h,0CEh,001h ; cmpltps xmm1,xmm6
- db 00Fh,054h,088h,0C0h,009h,000h,000h ; andps  xmm1,XMMWORD PTR [eax+0x9c0]
- db 00Fh,056h,0C1h ; orps   xmm0,xmm1
- db 00Fh,010h,090h,030h,009h,000h,000h ; movups xmm2,XMMWORD PTR [eax+0x930]
- db 00Fh,028h,0CBh ; movaps xmm1,xmm3
- db 066h,00Fh,0DBh,0CAh ; pand   xmm1,xmm2
- db 066h,00Fh,076h,0CAh ; pcmpeqd xmm1,xmm2
- db 00Fh,028h,0DDh ; movaps xmm3,xmm5
- db 066h,00Fh,0DBh,0DAh ; pand   xmm3,xmm2
- db 066h,00Fh,076h,0DAh ; pcmpeqd xmm3,xmm2
- db 066h,00Fh,0EBh,0CBh ; por    xmm1,xmm3
- db 00Fh,028h,0DEh ; movaps xmm3,xmm6
- db 066h,00Fh,0DBh,0DAh ; pand   xmm3,xmm2
- db 066h,00Fh,076h,0DAh ; pcmpeqd xmm3,xmm2
- db 066h,00Fh,0EBh,0CBh ; por    xmm1,xmm3
- db 00Fh,028h,0DFh ; movaps xmm3,xmm7
- db 066h,00Fh,0DBh,0DAh ; pand   xmm3,xmm2
- db 066h,00Fh,076h,0DAh ; pcmpeqd xmm3,xmm2
- db 066h,00Fh,0EBh,0CBh ; por    xmm1,xmm3
- db 00Fh,028h,0DCh ; movaps xmm3,xmm4
- db 066h,00Fh,0DBh,0DAh ; pand   xmm3,xmm2
- db 066h,00Fh,076h,0DAh ; pcmpeqd xmm3,xmm2
- db 066h,00Fh,0EBh,0CBh ; por    xmm1,xmm3
- db 00Fh,028h,0D9h ; movaps xmm3,xmm1
- db 066h,00Fh,0DFh,0D8h ; pandn  xmm3,xmm0
- db 066h,00Fh,0DBh,088h,0D0h,009h,000h,000h ; pand   xmm1,XMMWORD PTR [eax+0x9d0]
- db 066h,00Fh,0EBh,0D9h ; por    xmm3,xmm1
- db 066h,00Fh,06Bh,0DBh ; packssdw xmm3,xmm3
- db 066h,00Fh,067h,0DBh ; packuswb xmm3,xmm3
- db 08Bh,0B0h,000h,00Ah,000h,000h ; mov    esi,DWORD PTR [eax+0xa00]
- db 066h,00Fh,07Eh,01Ch,00Eh ; movd   DWORD PTR [esi+ecx*1],xmm3
- db 00Fh,057h,0C9h ; xorps  xmm1,xmm1
- db 00Fh,059h,0ECh ; mulps  xmm5,xmm4
- db 00Fh,059h,0A8h,010h,001h,000h,000h ; mulps  xmm5,XMMWORD PTR [eax+0x110]
- db 00Fh,058h,0A8h,000h,001h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x100]
- db 00Fh,058h,0E9h ; addps  xmm5,xmm1
- db 00Fh,059h,0F4h ; mulps  xmm6,xmm4
- db 00Fh,059h,0B0h,030h,001h,000h,000h ; mulps  xmm6,XMMWORD PTR [eax+0x130]
- db 00Fh,058h,0B0h,020h,001h,000h,000h ; addps  xmm6,XMMWORD PTR [eax+0x120]
- db 00Fh,058h,0F1h ; addps  xmm6,xmm1
- db 00Fh,059h,0FCh ; mulps  xmm7,xmm4
- db 00Fh,059h,0B8h,050h,001h,000h,000h ; mulps  xmm7,XMMWORD PTR [eax+0x150]
- db 00Fh,058h,0B8h,040h,001h,000h,000h ; addps  xmm7,XMMWORD PTR [eax+0x140]
- db 00Fh,058h,0F9h ; addps  xmm7,xmm1
- db 00Fh,028h,0C5h ; movaps xmm0,xmm5
- db 00Fh,014h,0C6h ; unpcklps xmm0,xmm6
- db 00Fh,028h,0CFh ; movaps xmm1,xmm7
- db 00Fh,014h,0CCh ; unpcklps xmm1,xmm4
- db 00Fh,015h,0EEh ; unpckhps xmm5,xmm6
- db 00Fh,015h,0FCh ; unpckhps xmm7,xmm4
- db 08Bh,0B8h,0A8h,007h,000h,000h ; mov    edi,DWORD PTR [eax+0x7a8]
- db 089h,0CEh ; mov    esi,ecx
- db 00Fh,0AFh,0F7h ; imul   esi,edi
- db 003h,0B0h,004h,00Ah,000h,000h ; add    esi,DWORD PTR [eax+0xa04]
- db 00Fh,028h,0D0h ; movaps xmm2,xmm0
- db 00Fh,016h,0D1h ; movlhps xmm2,xmm1
- db 00Fh,011h,016h ; movups XMMWORD PTR [esi],xmm2
- db 00Fh,012h,0C8h ; movhlps xmm1,xmm0
- db 00Fh,011h,00Ch,03Eh ; movups XMMWORD PTR [esi+edi*1],xmm1
- db 00Fh,028h,0D5h ; movaps xmm2,xmm5
- db 00Fh,016h,0D7h ; movlhps xmm2,xmm7
- db 00Fh,011h,014h,07Eh ; movups XMMWORD PTR [esi+edi*2],xmm2
- db 00Fh,012h,0FDh ; movhlps xmm7,xmm5
- db 08Dh,034h,07Eh ; lea    esi,[esi+edi*2]
- db 00Fh,011h,03Ch,03Eh ; movups XMMWORD PTR [esi+edi*1],xmm7
- db 083h,0C1h,004h ; add    ecx,0x4
- db 083h,0C3h,004h ; add    ebx,0x4
- db 039h,0D1h ; cmp    ecx,edx
- db 00Fh,082h,068h,0FDh,0FFh,0FFh ; jb     20 <_tnk_pos+0x20>
- db 05Dh ; pop    ebp
- db 05Fh ; pop    edi
- db 05Eh ; pop    esi
- db 05Bh ; pop    ebx
+ db 053h ; push	ebx
+ db 056h ; push	esi
+ db 057h ; push	edi
+ db 055h ; push	ebp
+ db 08Bh,044h,024h,014h ; mov	eax, dword ptr [esp + 0x14]
+ db 08Bh,088h,0B0h,007h,000h,000h ; mov	ecx, dword ptr [eax + 0x7b0]
+ db 08Bh,090h,0ACh,007h,000h,000h ; mov	edx, dword ptr [eax + 0x7ac]
+ db 001h,0CAh ; add	edx, ecx
+ db 031h,0DBh ; xor	ebx, ebx
+ db 039h,0D1h ; cmp	ecx, edx
+ db 00Fh,083h,0E5h,002h,000h,000h ; jae	0x305 <_tnk_pos+0x305>
+ db 08Bh,0B0h,0E0h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9e0]
+ db 00Fh,010h,02Ch,09Eh ; movups	xmm5, xmmword ptr [esi + 4*ebx]
+ db 08Bh,0B0h,0E4h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9e4]
+ db 00Fh,010h,034h,09Eh ; movups	xmm6, xmmword ptr [esi + 4*ebx]
+ db 08Bh,0B0h,0E8h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9e8]
+ db 00Fh,010h,03Ch,09Eh ; movups	xmm7, xmmword ptr [esi + 4*ebx]
+ db 00Fh,010h,000h ; movups	xmm0, xmmword ptr [eax]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,048h,040h ; movups	xmm1, xmmword ptr [eax + 0x40]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,080h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x80]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,0C0h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xc0]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 08Bh,0B0h,0ECh,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9ec]
+ db 00Fh,011h,004h,08Eh ; movups	xmmword ptr [esi + 4*ecx], xmm0
+ db 00Fh,010h,040h,010h ; movups	xmm0, xmmword ptr [eax + 0x10]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,048h,050h ; movups	xmm1, xmmword ptr [eax + 0x50]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,090h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x90]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,0D0h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xd0]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 08Bh,0B0h,0F0h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9f0]
+ db 00Fh,011h,004h,08Eh ; movups	xmmword ptr [esi + 4*ecx], xmm0
+ db 00Fh,010h,040h,020h ; movups	xmm0, xmmword ptr [eax + 0x20]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,048h,060h ; movups	xmm1, xmmword ptr [eax + 0x60]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,0A0h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xa0]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,0E0h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xe0]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 08Bh,0B0h,0F4h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9f4]
+ db 00Fh,011h,004h,08Eh ; movups	xmmword ptr [esi + 4*ecx], xmm0
+ db 00Fh,010h,040h,030h ; movups	xmm0, xmmword ptr [eax + 0x30]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,048h,070h ; movups	xmm1, xmmword ptr [eax + 0x70]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,0B0h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xb0]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,0F0h,000h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xf0]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 08Bh,0B0h,0F8h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9f8]
+ db 00Fh,011h,004h,08Eh ; movups	xmmword ptr [esi + 4*ecx], xmm0
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,028h,0D1h ; movaps	xmm2, xmm1
+ db 00Fh,0C2h,0D3h,001h ; cmpltps	xmm2, xmm3
+ db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x870]
+ db 00Fh,05Eh,0E3h ; divps	xmm4, xmm3
+ db 00Fh,054h,0E2h ; andps	xmm4, xmm2
+ db 08Bh,0B0h,0ECh,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9ec]
+ db 00Fh,010h,02Ch,08Eh ; movups	xmm5, xmmword ptr [esi + 4*ecx]
+ db 08Bh,0B0h,0F0h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9f0]
+ db 00Fh,010h,034h,08Eh ; movups	xmm6, xmmword ptr [esi + 4*ecx]
+ db 08Bh,0B0h,0F4h,009h,000h,000h ; mov	esi, dword ptr [eax + 0x9f4]
+ db 00Fh,010h,03Ch,08Eh ; movups	xmm7, xmmword ptr [esi + 4*ecx]
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 00Fh,0C2h,0C1h,001h ; cmpltps	xmm0, xmm1
+ db 00Fh,028h,0D3h ; movaps	xmm2, xmm3
+ db 00Fh,0C2h,0D1h,002h ; cmpleps	xmm2, xmm1
+ db 00Fh,056h,0C2h ; orps	xmm0, xmm2
+ db 00Fh,054h,080h,070h,009h,000h,000h ; andps	xmm0, xmmword ptr [eax + 0x970]
+ db 00Fh,028h,0D3h ; movaps	xmm2, xmm3
+ db 00Fh,0C2h,0D7h,001h ; cmpltps	xmm2, xmm7
+ db 00Fh,054h,090h,080h,009h,000h,000h ; andps	xmm2, xmmword ptr [eax + 0x980]
+ db 00Fh,056h,0C2h ; orps	xmm0, xmm2
+ db 00Fh,028h,0D1h ; movaps	xmm2, xmm1
+ db 00Fh,05Ch,0D3h ; subps	xmm2, xmm3
+ db 00Fh,028h,0CDh ; movaps	xmm1, xmm5
+ db 00Fh,0C2h,0CAh,001h ; cmpltps	xmm1, xmm2
+ db 00Fh,054h,088h,090h,009h,000h,000h ; andps	xmm1, xmmword ptr [eax + 0x990]
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,028h,0CBh ; movaps	xmm1, xmm3
+ db 00Fh,0C2h,0CDh,001h ; cmpltps	xmm1, xmm5
+ db 00Fh,054h,088h,0A0h,009h,000h,000h ; andps	xmm1, xmmword ptr [eax + 0x9a0]
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,028h,0CEh ; movaps	xmm1, xmm6
+ db 00Fh,0C2h,0CAh,001h ; cmpltps	xmm1, xmm2
+ db 00Fh,054h,088h,0B0h,009h,000h,000h ; andps	xmm1, xmmword ptr [eax + 0x9b0]
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,028h,0CBh ; movaps	xmm1, xmm3
+ db 00Fh,0C2h,0CEh,001h ; cmpltps	xmm1, xmm6
+ db 00Fh,054h,088h,0C0h,009h,000h,000h ; andps	xmm1, xmmword ptr [eax + 0x9c0]
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,010h,090h,030h,009h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x930]
+ db 00Fh,028h,0CBh ; movaps	xmm1, xmm3
+ db 066h,00Fh,0DBh,0CAh ; pand	xmm1, xmm2
+ db 066h,00Fh,076h,0CAh ; pcmpeqd	xmm1, xmm2
+ db 00Fh,028h,0DDh ; movaps	xmm3, xmm5
+ db 066h,00Fh,0DBh,0DAh ; pand	xmm3, xmm2
+ db 066h,00Fh,076h,0DAh ; pcmpeqd	xmm3, xmm2
+ db 066h,00Fh,0EBh,0CBh ; por	xmm1, xmm3
+ db 00Fh,028h,0DEh ; movaps	xmm3, xmm6
+ db 066h,00Fh,0DBh,0DAh ; pand	xmm3, xmm2
+ db 066h,00Fh,076h,0DAh ; pcmpeqd	xmm3, xmm2
+ db 066h,00Fh,0EBh,0CBh ; por	xmm1, xmm3
+ db 00Fh,028h,0DFh ; movaps	xmm3, xmm7
+ db 066h,00Fh,0DBh,0DAh ; pand	xmm3, xmm2
+ db 066h,00Fh,076h,0DAh ; pcmpeqd	xmm3, xmm2
+ db 066h,00Fh,0EBh,0CBh ; por	xmm1, xmm3
+ db 00Fh,028h,0DCh ; movaps	xmm3, xmm4
+ db 066h,00Fh,0DBh,0DAh ; pand	xmm3, xmm2
+ db 066h,00Fh,076h,0DAh ; pcmpeqd	xmm3, xmm2
+ db 066h,00Fh,0EBh,0CBh ; por	xmm1, xmm3
+ db 00Fh,028h,0D9h ; movaps	xmm3, xmm1
+ db 066h,00Fh,0DFh,0D8h ; pandn	xmm3, xmm0
+ db 066h,00Fh,0DBh,088h,0D0h,009h,000h,000h ; pand	xmm1, xmmword ptr [eax + 0x9d0]
+ db 066h,00Fh,0EBh,0D9h ; por	xmm3, xmm1
+ db 066h,00Fh,06Bh,0DBh ; packssdw	xmm3, xmm3
+ db 066h,00Fh,067h,0DBh ; packuswb	xmm3, xmm3
+ db 08Bh,0B0h,000h,00Ah,000h,000h ; mov	esi, dword ptr [eax + 0xa00]
+ db 066h,00Fh,07Eh,01Ch,00Eh ; movd	dword ptr [esi + ecx], xmm3
+ db 08Bh,0B0h,014h,023h,000h,000h ; mov	esi, dword ptr [eax + 0x2314]
+ db 085h,0F6h ; test	esi, esi
+ db 074h,043h ; je	0x271 <_tnk_pos+0x271>
+ db 08Bh,0B8h,0F8h,009h,000h,000h ; mov	edi, dword ptr [eax + 0x9f8]
+ db 00Fh,010h,01Ch,08Fh ; movups	xmm3, xmmword ptr [edi + 4*ecx]
+ db 00Fh,010h,088h,080h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x880]
+ db 00Fh,059h,0D9h ; mulps	xmm3, xmm1
+ db 00Fh,010h,090h,040h,009h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x940]
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,055h,0C5h ; andnps	xmm0, xmm5
+ db 00Fh,055h,0D6h ; andnps	xmm2, xmm6
+ db 00Fh,028h,0CBh ; movaps	xmm1, xmm3
+ db 00Fh,0C2h,0C8h,001h ; cmpltps	xmm1, xmm0
+ db 00Fh,0C2h,0DAh,001h ; cmpltps	xmm3, xmm2
+ db 00Fh,056h,0CBh ; orps	xmm1, xmm3
+ db 00Fh,010h,080h,030h,023h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2330]
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,011h,080h,030h,023h,000h,000h ; movups	xmmword ptr [eax + 0x2330], xmm0
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,059h,0ECh ; mulps	xmm5, xmm4
+ db 00Fh,059h,0A8h,010h,001h,000h,000h ; mulps	xmm5, xmmword ptr [eax + 0x110]
+ db 00Fh,058h,0A8h,000h,001h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x100]
+ db 00Fh,058h,0E9h ; addps	xmm5, xmm1
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,059h,0B0h,030h,001h,000h,000h ; mulps	xmm6, xmmword ptr [eax + 0x130]
+ db 00Fh,058h,0B0h,020h,001h,000h,000h ; addps	xmm6, xmmword ptr [eax + 0x120]
+ db 00Fh,058h,0F1h ; addps	xmm6, xmm1
+ db 00Fh,059h,0FCh ; mulps	xmm7, xmm4
+ db 00Fh,059h,0B8h,050h,001h,000h,000h ; mulps	xmm7, xmmword ptr [eax + 0x150]
+ db 00Fh,058h,0B8h,040h,001h,000h,000h ; addps	xmm7, xmmword ptr [eax + 0x140]
+ db 00Fh,058h,0F9h ; addps	xmm7, xmm1
+ db 00Fh,028h,0C5h ; movaps	xmm0, xmm5
+ db 00Fh,014h,0C6h ; unpcklps	xmm0, xmm6              # xmm0 = xmm0[0],xmm6[0],xmm0[1],xmm6[1]
+ db 00Fh,028h,0CFh ; movaps	xmm1, xmm7
+ db 00Fh,014h,0CCh ; unpcklps	xmm1, xmm4              # xmm1 = xmm1[0],xmm4[0],xmm1[1],xmm4[1]
+ db 00Fh,015h,0EEh ; unpckhps	xmm5, xmm6              # xmm5 = xmm5[2],xmm6[2],xmm5[3],xmm6[3]
+ db 00Fh,015h,0FCh ; unpckhps	xmm7, xmm4              # xmm7 = xmm7[2],xmm4[2],xmm7[3],xmm4[3]
+ db 08Bh,0B8h,0A8h,007h,000h,000h ; mov	edi, dword ptr [eax + 0x7a8]
+ db 089h,0CEh ; mov	esi, ecx
+ db 00Fh,0AFh,0F7h ; imul	esi, edi
+ db 003h,0B0h,004h,00Ah,000h,000h ; add	esi, dword ptr [eax + 0xa04]
+ db 00Fh,028h,0D0h ; movaps	xmm2, xmm0
+ db 00Fh,016h,0D1h ; movlhps	xmm2, xmm1              # xmm2 = xmm2[0],xmm1[0]
+ db 00Fh,011h,016h ; movups	xmmword ptr [esi], xmm2
+ db 00Fh,012h,0C8h ; movhlps	xmm1, xmm0              # xmm1 = xmm0[1],xmm1[1]
+ db 00Fh,011h,00Ch,03Eh ; movups	xmmword ptr [esi + edi], xmm1
+ db 00Fh,028h,0D5h ; movaps	xmm2, xmm5
+ db 00Fh,016h,0D7h ; movlhps	xmm2, xmm7              # xmm2 = xmm2[0],xmm7[0]
+ db 00Fh,011h,014h,07Eh ; movups	xmmword ptr [esi + 2*edi], xmm2
+ db 00Fh,012h,0FDh ; movhlps	xmm7, xmm5              # xmm7 = xmm5[1],xmm7[1]
+ db 08Dh,034h,07Eh ; lea	esi, [esi + 2*edi]
+ db 00Fh,011h,03Ch,03Eh ; movups	xmmword ptr [esi + edi], xmm7
+ db 083h,0C1h,004h ; add	ecx, 0x4
+ db 083h,0C3h,004h ; add	ebx, 0x4
+ db 039h,0D1h ; cmp	ecx, edx
+ db 00Fh,082h,01Bh,0FDh,0FFh,0FFh ; jb	0x20 <_tnk_pos+0x20>
+ db 05Dh ; pop	ebp
+ db 05Fh ; pop	edi
+ db 05Eh ; pop	esi
+ db 05Bh ; pop	ebx
  db 0C3h ; ret
 _tnk_pos endp
 public _tnk_light
 _tnk_light proc near
- db 053h ; push   ebx
- db 056h ; push   esi
- db 057h ; push   edi
- db 055h ; push   ebp
- db 08Bh,044h,024h,014h ; mov    eax,DWORD PTR [esp+0x14]
- db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups xmm4,XMMWORD PTR [eax+0x870]
- db 08Bh,0B0h,098h,007h,000h,000h ; mov    esi,DWORD PTR [eax+0x798]
- db 085h,0F6h ; test   esi,esi
- db 00Fh,084h,020h,001h,000h,000h ; je     13d <_tnk_light+0x13d>
- db 083h,0B8h,0B8h,007h,000h,000h,000h ; cmp    DWORD PTR [eax+0x7b8],0x0
- db 074h,016h ; je     3c <_tnk_light+0x3c>
- db 00Fh,010h,080h,0E0h,007h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x7e0]
- db 00Fh,010h,088h,040h,009h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x940]
- db 00Fh,055h,0C8h ; andnps xmm1,xmm0
- db 0E9h,0CCh,000h,000h,000h ; jmp    108 <_tnk_light+0x108>
- db 00Fh,010h,0A8h,0C0h,007h,000h,000h ; movups xmm5,XMMWORD PTR [eax+0x7c0]
- db 00Fh,010h,0B0h,0D0h,007h,000h,000h ; movups xmm6,XMMWORD PTR [eax+0x7d0]
- db 00Fh,010h,0B8h,0E0h,007h,000h,000h ; movups xmm7,XMMWORD PTR [eax+0x7e0]
- db 00Fh,010h,080h,0A0h,001h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x1a0]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,088h,0E0h,001h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x1e0]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,020h,002h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x220]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,060h,002h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x260]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 083h,0B8h,09Ch,007h,000h,000h,000h ; cmp    DWORD PTR [eax+0x79c],0x0
- db 075h,00Ch ; jne    94 <_tnk_light+0x94>
- db 00Fh,010h,088h,040h,009h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x940]
- db 00Fh,055h,0C8h ; andnps xmm1,xmm0
- db 0EBh,074h ; jmp    108 <_tnk_light+0x108>
- db 00Fh,059h,0C0h ; mulps  xmm0,xmm0
- db 00Fh,028h,0E0h ; movaps xmm4,xmm0
- db 00Fh,010h,080h,080h,001h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x180]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,088h,0C0h,001h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x1c0]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,000h,002h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x200]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,040h,002h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x240]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,059h,0C0h ; mulps  xmm0,xmm0
- db 00Fh,028h,0D8h ; movaps xmm3,xmm0
- db 00Fh,010h,080h,090h,001h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x190]
- db 00Fh,059h,0C5h ; mulps  xmm0,xmm5
- db 00Fh,010h,088h,0D0h,001h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x1d0]
- db 00Fh,059h,0CEh ; mulps  xmm1,xmm6
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,010h,002h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x210]
- db 00Fh,059h,0CFh ; mulps  xmm1,xmm7
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,010h,088h,050h,002h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x250]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,059h,0C0h ; mulps  xmm0,xmm0
- db 00Fh,058h,0D8h ; addps  xmm3,xmm0
- db 00Fh,058h,0DCh ; addps  xmm3,xmm4
- db 00Fh,051h,0CBh ; sqrtps xmm1,xmm3
- db 083h,0FEh,003h ; cmp    esi,0x3
- db 075h,013h ; jne    120 <_tnk_light+0x120>
- db 00Fh,010h,0A0h,060h,007h,000h,000h ; movups xmm4,XMMWORD PTR [eax+0x760]
- db 00Fh,05Ch,0E1h ; subps  xmm4,xmm1
- db 00Fh,05Eh,0A0h,070h,007h,000h,000h ; divps  xmm4,XMMWORD PTR [eax+0x770]
- db 0EBh,01Dh ; jmp    13d <_tnk_light+0x13d>
- db 00Fh,010h,080h,050h,007h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x750]
- db 00Fh,059h,0C1h ; mulps  xmm0,xmm1
- db 083h,0FEh,001h ; cmp    esi,0x1
- db 074h,003h ; je     132 <_tnk_light+0x132>
- db 00Fh,059h,0C0h ; mulps  xmm0,xmm0
- db 00Fh,057h,0D2h ; xorps  xmm2,xmm2
- db 00Fh,05Ch,0D0h ; subps  xmm2,xmm0
- db 0E8h,0E1h,002h,000h,000h ; call   41e <_tnk_light+0x41e>
- db 00Fh,011h,0A0h,040h,00Ah,000h,000h ; movups XMMWORD PTR [eax+0xa40],xmm4
- db 083h,0B8h,094h,007h,000h,000h,000h ; cmp    DWORD PTR [eax+0x794],0x0
- db 00Fh,084h,075h,002h,000h,000h ; je     3c6 <_tnk_light+0x3c6>
- db 083h,0B8h,0B4h,007h,000h,000h,000h ; cmp    DWORD PTR [eax+0x7b4],0x0
- db 00Fh,085h,034h,002h,000h,000h ; jne    392 <_tnk_light+0x392>
- db 00Fh,010h,0A8h,010h,007h,000h,000h ; movups xmm5,XMMWORD PTR [eax+0x710]
- db 00Fh,010h,0B0h,020h,007h,000h,000h ; movups xmm6,XMMWORD PTR [eax+0x720]
- db 00Fh,010h,0B8h,030h,007h,000h,000h ; movups xmm7,XMMWORD PTR [eax+0x730]
- db 083h,0B8h,0A4h,007h,000h,000h,000h ; cmp    DWORD PTR [eax+0x7a4],0x0
- db 00Fh,084h,0A9h,001h,000h,000h ; je     329 <_tnk_light+0x329>
- db 00Fh,010h,080h,0F0h,007h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x7f0]
- db 00Fh,010h,088h,000h,008h,000h,000h ; movups xmm1,XMMWORD PTR [eax+0x800]
- db 00Fh,010h,090h,010h,008h,000h,000h ; movups xmm2,XMMWORD PTR [eax+0x810]
- db 00Fh,028h,0D8h ; movaps xmm3,xmm0
- db 00Fh,059h,098h,080h,002h,000h,000h ; mulps  xmm3,XMMWORD PTR [eax+0x280]
- db 00Fh,028h,0E1h ; movaps xmm4,xmm1
- db 00Fh,059h,0A0h,0B0h,002h,000h,000h ; mulps  xmm4,XMMWORD PTR [eax+0x2b0]
- db 00Fh,058h,0DCh ; addps  xmm3,xmm4
- db 00Fh,028h,0E2h ; movaps xmm4,xmm2
- db 00Fh,059h,0A0h,0E0h,002h,000h,000h ; mulps  xmm4,XMMWORD PTR [eax+0x2e0]
- db 00Fh,058h,0DCh ; addps  xmm3,xmm4
- db 00Fh,011h,098h,050h,00Ah,000h,000h ; movups XMMWORD PTR [eax+0xa50],xmm3
- db 00Fh,028h,0D8h ; movaps xmm3,xmm0
- db 00Fh,059h,098h,090h,002h,000h,000h ; mulps  xmm3,XMMWORD PTR [eax+0x290]
- db 00Fh,028h,0E1h ; movaps xmm4,xmm1
- db 00Fh,059h,0A0h,0C0h,002h,000h,000h ; mulps  xmm4,XMMWORD PTR [eax+0x2c0]
- db 00Fh,058h,0DCh ; addps  xmm3,xmm4
- db 00Fh,028h,0E2h ; movaps xmm4,xmm2
- db 00Fh,059h,0A0h,0F0h,002h,000h,000h ; mulps  xmm4,XMMWORD PTR [eax+0x2f0]
- db 00Fh,058h,0DCh ; addps  xmm3,xmm4
- db 00Fh,011h,098h,060h,00Ah,000h,000h ; movups XMMWORD PTR [eax+0xa60],xmm3
- db 00Fh,059h,080h,0A0h,002h,000h,000h ; mulps  xmm0,XMMWORD PTR [eax+0x2a0]
- db 00Fh,059h,088h,0D0h,002h,000h,000h ; mulps  xmm1,XMMWORD PTR [eax+0x2d0]
- db 00Fh,058h,0C1h ; addps  xmm0,xmm1
- db 00Fh,059h,090h,000h,003h,000h,000h ; mulps  xmm2,XMMWORD PTR [eax+0x300]
- db 00Fh,058h,0C2h ; addps  xmm0,xmm2
- db 00Fh,028h,0D8h ; movaps xmm3,xmm0
- db 00Fh,010h,088h,050h,00Ah,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xa50]
- db 00Fh,010h,090h,060h,00Ah,000h,000h ; movups xmm2,XMMWORD PTR [eax+0xa60]
- db 083h,0B8h,0A0h,007h,000h,000h,000h ; cmp    DWORD PTR [eax+0x7a0],0x0
- db 00Fh,084h,09Eh,000h,000h,000h ; je     2c2 <_tnk_light+0x2c2>
- db 00Fh,028h,0C1h ; movaps xmm0,xmm1
- db 00Fh,059h,0C1h ; mulps  xmm0,xmm1
- db 00Fh,028h,0E2h ; movaps xmm4,xmm2
- db 00Fh,059h,0E2h ; mulps  xmm4,xmm2
- db 00Fh,058h,0C4h ; addps  xmm0,xmm4
- db 00Fh,028h,0E3h ; movaps xmm4,xmm3
- db 00Fh,059h,0E3h ; mulps  xmm4,xmm3
- db 00Fh,058h,0C4h ; addps  xmm0,xmm4
- db 00Fh,051h,0C0h ; sqrtps xmm0,xmm0
- db 00Fh,057h,0E4h ; xorps  xmm4,xmm4
- db 00Fh,0C2h,0E0h,001h ; cmpltps xmm4,xmm0
- db 00Fh,011h,0A0h,070h,00Ah,000h,000h ; movups XMMWORD PTR [eax+0xa70],xmm4
- db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups xmm4,XMMWORD PTR [eax+0x870]
- db 00Fh,05Eh,0E0h ; divps  xmm4,xmm0
- db 00Fh,054h,0A0h,070h,00Ah,000h,000h ; andps  xmm4,XMMWORD PTR [eax+0xa70]
- db 00Fh,028h,0C1h ; movaps xmm0,xmm1
- db 00Fh,059h,0C4h ; mulps  xmm0,xmm4
- db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps  xmm0,XMMWORD PTR [eax+0xa70]
- db 00Fh,010h,088h,070h,00Ah,000h,000h ; movups xmm1,XMMWORD PTR [eax+0xa70]
- db 00Fh,055h,088h,050h,00Ah,000h,000h ; andnps xmm1,XMMWORD PTR [eax+0xa50]
- db 00Fh,056h,0C8h ; orps   xmm1,xmm0
- db 00Fh,028h,0C2h ; movaps xmm0,xmm2
- db 00Fh,059h,0C4h ; mulps  xmm0,xmm4
- db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps  xmm0,XMMWORD PTR [eax+0xa70]
- db 00Fh,010h,090h,070h,00Ah,000h,000h ; movups xmm2,XMMWORD PTR [eax+0xa70]
- db 00Fh,055h,090h,060h,00Ah,000h,000h ; andnps xmm2,XMMWORD PTR [eax+0xa60]
- db 00Fh,056h,0D0h ; orps   xmm2,xmm0
- db 00Fh,028h,0C3h ; movaps xmm0,xmm3
- db 00Fh,059h,0C4h ; mulps  xmm0,xmm4
- db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps  xmm0,XMMWORD PTR [eax+0xa70]
- db 00Fh,010h,0A0h,070h,00Ah,000h,000h ; movups xmm4,XMMWORD PTR [eax+0xa70]
- db 00Fh,011h,098h,080h,00Ah,000h,000h ; movups XMMWORD PTR [eax+0xa80],xmm3
- db 00Fh,055h,0A0h,080h,00Ah,000h,000h ; andnps xmm4,XMMWORD PTR [eax+0xa80]
- db 00Fh,056h,0C4h ; orps   xmm0,xmm4
- db 00Fh,028h,0D8h ; movaps xmm3,xmm0
- db 08Bh,088h,090h,007h,000h,000h ; mov    ecx,DWORD PTR [eax+0x790]
- db 085h,0C9h ; test   ecx,ecx
- db 074h,05Dh ; je     329 <_tnk_light+0x329>
- db 089h,0C2h ; mov    edx,eax
- db 00Fh,028h,0C1h ; movaps xmm0,xmm1
- db 00Fh,059h,082h,010h,003h,000h,000h ; mulps  xmm0,XMMWORD PTR [edx+0x310]
- db 00Fh,028h,0E2h ; movaps xmm4,xmm2
- db 00Fh,059h,0A2h,020h,003h,000h,000h ; mulps  xmm4,XMMWORD PTR [edx+0x320]
- db 00Fh,058h,0C4h ; addps  xmm0,xmm4
- db 00Fh,028h,0E3h ; movaps xmm4,xmm3
- db 00Fh,059h,0A2h,030h,003h,000h,000h ; mulps  xmm4,XMMWORD PTR [edx+0x330]
- db 00Fh,058h,0C4h ; addps  xmm0,xmm4
- db 00Fh,057h,0E4h ; xorps  xmm4,xmm4
- db 00Fh,0C2h,0E0h,001h ; cmpltps xmm4,xmm0
- db 00Fh,054h,0C4h ; andps  xmm0,xmm4
- db 00Fh,028h,0E0h ; movaps xmm4,xmm0
- db 00Fh,059h,0A2h,010h,005h,000h,000h ; mulps  xmm4,XMMWORD PTR [edx+0x510]
- db 00Fh,058h,0ECh ; addps  xmm5,xmm4
- db 00Fh,028h,0E0h ; movaps xmm4,xmm0
- db 00Fh,059h,0A2h,020h,005h,000h,000h ; mulps  xmm4,XMMWORD PTR [edx+0x520]
- db 00Fh,058h,0F4h ; addps  xmm6,xmm4
- db 00Fh,028h,0E0h ; movaps xmm4,xmm0
- db 00Fh,059h,0A2h,030h,005h,000h,000h ; mulps  xmm4,XMMWORD PTR [edx+0x530]
- db 00Fh,058h,0FCh ; addps  xmm7,xmm4
- db 083h,0C2h,040h ; add    edx,0x40
- db 049h ; dec    ecx
- db 075h,0A5h ; jne    2ce <_tnk_light+0x2ce>
- db 00Fh,057h,0C9h ; xorps  xmm1,xmm1
- db 00Fh,059h,0A8h,060h,008h,000h,000h ; mulps  xmm5,XMMWORD PTR [eax+0x860]
- db 066h,00Fh,05Bh,0EDh ; cvtps2dq xmm5,xmm5
- db 066h,00Fh,06Bh,0EDh ; packssdw xmm5,xmm5
- db 066h,00Fh,067h,0E9h ; packuswb xmm5,xmm1
- db 00Fh,059h,0B0h,060h,008h,000h,000h ; mulps  xmm6,XMMWORD PTR [eax+0x860]
- db 066h,00Fh,05Bh,0F6h ; cvtps2dq xmm6,xmm6
- db 066h,00Fh,06Bh,0F6h ; packssdw xmm6,xmm6
- db 066h,00Fh,067h,0F1h ; packuswb xmm6,xmm1
- db 00Fh,059h,0B8h,060h,008h,000h,000h ; mulps  xmm7,XMMWORD PTR [eax+0x860]
- db 066h,00Fh,05Bh,0FFh ; cvtps2dq xmm7,xmm7
- db 066h,00Fh,06Bh,0FFh ; packssdw xmm7,xmm7
- db 066h,00Fh,067h,0F9h ; packuswb xmm7,xmm1
- db 00Fh,010h,080h,040h,007h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x740]
- db 00Fh,059h,080h,060h,008h,000h,000h ; mulps  xmm0,XMMWORD PTR [eax+0x860]
- db 066h,00Fh,05Bh,0C0h ; cvtps2dq xmm0,xmm0
- db 066h,00Fh,06Bh,0C0h ; packssdw xmm0,xmm0
- db 066h,00Fh,067h,0C1h ; packuswb xmm0,xmm1
- db 066h,00Fh,060h,0EFh ; punpcklbw xmm5,xmm7
- db 066h,00Fh,060h,0F0h ; punpcklbw xmm6,xmm0
- db 066h,00Fh,060h,0EEh ; punpcklbw xmm5,xmm6
- db 00Fh,011h,0A8h,040h,008h,000h,000h ; movups XMMWORD PTR [eax+0x840],xmm5
- db 00Fh,057h,0C9h ; xorps  xmm1,xmm1
- db 00Fh,010h,080h,040h,00Ah,000h,000h ; movups xmm0,XMMWORD PTR [eax+0xa40]
- db 00Fh,059h,080h,060h,008h,000h,000h ; mulps  xmm0,XMMWORD PTR [eax+0x860]
- db 066h,00Fh,05Bh,0C0h ; cvtps2dq xmm0,xmm0
- db 066h,00Fh,06Bh,0C0h ; packssdw xmm0,xmm0
- db 066h,00Fh,067h,0C1h ; packuswb xmm0,xmm1
- db 00Fh,028h,0D1h ; movaps xmm2,xmm1
- db 066h,00Fh,060h,0D0h ; punpcklbw xmm2,xmm0
- db 00Fh,028h,0D9h ; movaps xmm3,xmm1
- db 066h,00Fh,060h,0DAh ; punpcklbw xmm3,xmm2
- db 00Fh,011h,098h,050h,008h,000h,000h ; movups XMMWORD PTR [eax+0x850],xmm3
- db 0EBh,053h ; jmp    419 <_tnk_light+0x419>
- db 00Fh,057h,0C9h ; xorps  xmm1,xmm1
- db 00Fh,010h,080h,040h,00Ah,000h,000h ; movups xmm0,XMMWORD PTR [eax+0xa40]
- db 00Fh,059h,080h,060h,008h,000h,000h ; mulps  xmm0,XMMWORD PTR [eax+0x860]
- db 066h,00Fh,05Bh,0C0h ; cvtps2dq xmm0,xmm0
- db 066h,00Fh,06Bh,0C0h ; packssdw xmm0,xmm0
- db 066h,00Fh,067h,0C1h ; packuswb xmm0,xmm1
- db 00Fh,028h,0D1h ; movaps xmm2,xmm1
- db 066h,00Fh,060h,0D0h ; punpcklbw xmm2,xmm0
- db 00Fh,028h,0D9h ; movaps xmm3,xmm1
- db 066h,00Fh,060h,0DAh ; punpcklbw xmm3,xmm2
- db 00Fh,010h,080h,020h,008h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x820]
- db 00Fh,011h,080h,040h,008h,000h,000h ; movups XMMWORD PTR [eax+0x840],xmm0
- db 00Fh,010h,080h,030h,008h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x830]
- db 066h,00Fh,0DBh,080h,060h,009h,000h,000h ; pand   xmm0,XMMWORD PTR [eax+0x960]
- db 066h,00Fh,0EBh,0C3h ; por    xmm0,xmm3
- db 00Fh,011h,080h,050h,008h,000h,000h ; movups XMMWORD PTR [eax+0x850],xmm0
- db 05Dh ; pop    ebp
- db 05Fh ; pop    edi
- db 05Eh ; pop    esi
- db 05Bh ; pop    ebx
+ db 053h ; push	ebx
+ db 056h ; push	esi
+ db 057h ; push	edi
+ db 055h ; push	ebp
+ db 08Bh,044h,024h,014h ; mov	eax, dword ptr [esp + 0x14]
+ db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x870]
+ db 08Bh,0B0h,098h,007h,000h,000h ; mov	esi, dword ptr [eax + 0x798]
+ db 085h,0F6h ; test	esi, esi
+ db 00Fh,084h,020h,001h,000h,000h ; je	0x13d <_tnk_light+0x13d>
+ db 083h,0B8h,0B8h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7b8], 0x0
+ db 074h,016h ; je	0x3c <_tnk_light+0x3c>
+ db 00Fh,010h,080h,0E0h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x7e0]
+ db 00Fh,010h,088h,040h,009h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x940]
+ db 00Fh,055h,0C8h ; andnps	xmm1, xmm0
+ db 0E9h,0CCh,000h,000h,000h ; jmp	0x108 <_tnk_light+0x108>
+ db 00Fh,010h,0A8h,0C0h,007h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x7c0]
+ db 00Fh,010h,0B0h,0D0h,007h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x7d0]
+ db 00Fh,010h,0B8h,0E0h,007h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x7e0]
+ db 00Fh,010h,080h,0A0h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x1a0]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0E0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1e0]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,020h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x220]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,060h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x260]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 083h,0B8h,09Ch,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x79c], 0x0
+ db 075h,00Ch ; jne	0x94 <_tnk_light+0x94>
+ db 00Fh,010h,088h,040h,009h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x940]
+ db 00Fh,055h,0C8h ; andnps	xmm1, xmm0
+ db 0EBh,074h ; jmp	0x108 <_tnk_light+0x108>
+ db 00Fh,059h,0C0h ; mulps	xmm0, xmm0
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,010h,080h,080h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x180]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0C0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1c0]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,000h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x200]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,040h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x240]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,059h,0C0h ; mulps	xmm0, xmm0
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,010h,080h,090h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x190]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0D0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1d0]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,010h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x210]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,050h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x250]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,059h,0C0h ; mulps	xmm0, xmm0
+ db 00Fh,058h,0D8h ; addps	xmm3, xmm0
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,051h,0CBh ; sqrtps	xmm1, xmm3
+ db 083h,0FEh,003h ; cmp	esi, 0x3
+ db 075h,013h ; jne	0x120 <_tnk_light+0x120>
+ db 00Fh,010h,0A0h,060h,007h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x760]
+ db 00Fh,05Ch,0E1h ; subps	xmm4, xmm1
+ db 00Fh,05Eh,0A0h,070h,007h,000h,000h ; divps	xmm4, xmmword ptr [eax + 0x770]
+ db 0EBh,01Dh ; jmp	0x13d <_tnk_light+0x13d>
+ db 00Fh,010h,080h,050h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x750]
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 083h,0FEh,001h ; cmp	esi, 0x1
+ db 074h,003h ; je	0x132 <_tnk_light+0x132>
+ db 00Fh,059h,0C0h ; mulps	xmm0, xmm0
+ db 00Fh,057h,0D2h ; xorps	xmm2, xmm2
+ db 00Fh,05Ch,0D0h ; subps	xmm2, xmm0
+ db 0E8h,0E1h,002h,000h,000h ; call	0x41e <_tnk_light+0x41e>
+ db 00Fh,011h,0A0h,040h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa40], xmm4
+ db 083h,0B8h,094h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x794], 0x0
+ db 00Fh,084h,075h,002h,000h,000h ; je	0x3c6 <_tnk_light+0x3c6>
+ db 083h,0B8h,0B4h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7b4], 0x0
+ db 00Fh,085h,034h,002h,000h,000h ; jne	0x392 <_tnk_light+0x392>
+ db 00Fh,010h,0A8h,010h,007h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x710]
+ db 00Fh,010h,0B0h,020h,007h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x720]
+ db 00Fh,010h,0B8h,030h,007h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x730]
+ db 083h,0B8h,0A4h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a4], 0x0
+ db 00Fh,084h,0A9h,001h,000h,000h ; je	0x329 <_tnk_light+0x329>
+ db 00Fh,010h,080h,0F0h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x7f0]
+ db 00Fh,010h,088h,000h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x800]
+ db 00Fh,010h,090h,010h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x810]
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,059h,098h,080h,002h,000h,000h ; mulps	xmm3, xmmword ptr [eax + 0x280]
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A0h,0B0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2b0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0A0h,0E0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2e0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,011h,098h,050h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa50], xmm3
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,059h,098h,090h,002h,000h,000h ; mulps	xmm3, xmmword ptr [eax + 0x290]
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A0h,0C0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2c0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0A0h,0F0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2f0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,011h,098h,060h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa60], xmm3
+ db 00Fh,059h,080h,0A0h,002h,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0x2a0]
+ db 00Fh,059h,088h,0D0h,002h,000h,000h ; mulps	xmm1, xmmword ptr [eax + 0x2d0]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,059h,090h,000h,003h,000h,000h ; mulps	xmm2, xmmword ptr [eax + 0x300]
+ db 00Fh,058h,0C2h ; addps	xmm0, xmm2
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,010h,088h,050h,00Ah,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xa50]
+ db 00Fh,010h,090h,060h,00Ah,000h,000h ; movups	xmm2, xmmword ptr [eax + 0xa60]
+ db 083h,0B8h,0A0h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a0], 0x0
+ db 00Fh,084h,09Eh,000h,000h,000h ; je	0x2c2 <_tnk_light+0x2c2>
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 00Fh,059h,0E3h ; mulps	xmm4, xmm3
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,051h,0C0h ; sqrtps	xmm0, xmm0
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0E0h,001h ; cmpltps	xmm4, xmm0
+ db 00Fh,011h,0A0h,070h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa70], xmm4
+ db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x870]
+ db 00Fh,05Eh,0E0h ; divps	xmm4, xmm0
+ db 00Fh,054h,0A0h,070h,00Ah,000h,000h ; andps	xmm4, xmmword ptr [eax + 0xa70]
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,088h,070h,00Ah,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xa70]
+ db 00Fh,055h,088h,050h,00Ah,000h,000h ; andnps	xmm1, xmmword ptr [eax + 0xa50]
+ db 00Fh,056h,0C8h ; orps	xmm1, xmm0
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,090h,070h,00Ah,000h,000h ; movups	xmm2, xmmword ptr [eax + 0xa70]
+ db 00Fh,055h,090h,060h,00Ah,000h,000h ; andnps	xmm2, xmmword ptr [eax + 0xa60]
+ db 00Fh,056h,0D0h ; orps	xmm2, xmm0
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,0A0h,070h,00Ah,000h,000h ; movups	xmm4, xmmword ptr [eax + 0xa70]
+ db 00Fh,011h,098h,080h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa80], xmm3
+ db 00Fh,055h,0A0h,080h,00Ah,000h,000h ; andnps	xmm4, xmmword ptr [eax + 0xa80]
+ db 00Fh,056h,0C4h ; orps	xmm0, xmm4
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 08Bh,088h,090h,007h,000h,000h ; mov	ecx, dword ptr [eax + 0x790]
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,05Dh ; je	0x329 <_tnk_light+0x329>
+ db 089h,0C2h ; mov	edx, eax
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,082h,010h,003h,000h,000h ; mulps	xmm0, xmmword ptr [edx + 0x310]
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0A2h,020h,003h,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0x320]
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 00Fh,059h,0A2h,030h,003h,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0x330]
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0E0h,001h ; cmpltps	xmm4, xmm0
+ db 00Fh,054h,0C4h ; andps	xmm0, xmm4
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,059h,0A2h,010h,005h,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0x510]
+ db 00Fh,058h,0ECh ; addps	xmm5, xmm4
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,059h,0A2h,020h,005h,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0x520]
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,059h,0A2h,030h,005h,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0x530]
+ db 00Fh,058h,0FCh ; addps	xmm7, xmm4
+ db 083h,0C2h,040h ; add	edx, 0x40
+ db 049h ; dec	ecx
+ db 075h,0A5h ; jne	0x2ce <_tnk_light+0x2ce>
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,059h,0A8h,060h,008h,000h,000h ; mulps	xmm5, xmmword ptr [eax + 0x860]
+ db 066h,00Fh,05Bh,0EDh ; cvtps2dq	xmm5, xmm5
+ db 066h,00Fh,06Bh,0EDh ; packssdw	xmm5, xmm5
+ db 066h,00Fh,067h,0E9h ; packuswb	xmm5, xmm1
+ db 00Fh,059h,0B0h,060h,008h,000h,000h ; mulps	xmm6, xmmword ptr [eax + 0x860]
+ db 066h,00Fh,05Bh,0F6h ; cvtps2dq	xmm6, xmm6
+ db 066h,00Fh,06Bh,0F6h ; packssdw	xmm6, xmm6
+ db 066h,00Fh,067h,0F1h ; packuswb	xmm6, xmm1
+ db 00Fh,059h,0B8h,060h,008h,000h,000h ; mulps	xmm7, xmmword ptr [eax + 0x860]
+ db 066h,00Fh,05Bh,0FFh ; cvtps2dq	xmm7, xmm7
+ db 066h,00Fh,06Bh,0FFh ; packssdw	xmm7, xmm7
+ db 066h,00Fh,067h,0F9h ; packuswb	xmm7, xmm1
+ db 00Fh,010h,080h,040h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x740]
+ db 00Fh,059h,080h,060h,008h,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0x860]
+ db 066h,00Fh,05Bh,0C0h ; cvtps2dq	xmm0, xmm0
+ db 066h,00Fh,06Bh,0C0h ; packssdw	xmm0, xmm0
+ db 066h,00Fh,067h,0C1h ; packuswb	xmm0, xmm1
+ db 066h,00Fh,060h,0EFh ; punpcklbw	xmm5, xmm7      # xmm5 = xmm5[0],xmm7[0],xmm5[1],xmm7[1],xmm5[2],xmm7[2],xmm5[3],xmm7[3],xmm5[4],xmm7[4],xmm5[5],xmm7[5],xmm5[6],xmm7[6],xmm5[7],xmm7[7]
+ db 066h,00Fh,060h,0F0h ; punpcklbw	xmm6, xmm0      # xmm6 = xmm6[0],xmm0[0],xmm6[1],xmm0[1],xmm6[2],xmm0[2],xmm6[3],xmm0[3],xmm6[4],xmm0[4],xmm6[5],xmm0[5],xmm6[6],xmm0[6],xmm6[7],xmm0[7]
+ db 066h,00Fh,060h,0EEh ; punpcklbw	xmm5, xmm6      # xmm5 = xmm5[0],xmm6[0],xmm5[1],xmm6[1],xmm5[2],xmm6[2],xmm5[3],xmm6[3],xmm5[4],xmm6[4],xmm5[5],xmm6[5],xmm5[6],xmm6[6],xmm5[7],xmm6[7]
+ db 00Fh,011h,0A8h,040h,008h,000h,000h ; movups	xmmword ptr [eax + 0x840], xmm5
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,010h,080h,040h,00Ah,000h,000h ; movups	xmm0, xmmword ptr [eax + 0xa40]
+ db 00Fh,059h,080h,060h,008h,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0x860]
+ db 066h,00Fh,05Bh,0C0h ; cvtps2dq	xmm0, xmm0
+ db 066h,00Fh,06Bh,0C0h ; packssdw	xmm0, xmm0
+ db 066h,00Fh,067h,0C1h ; packuswb	xmm0, xmm1
+ db 00Fh,028h,0D1h ; movaps	xmm2, xmm1
+ db 066h,00Fh,060h,0D0h ; punpcklbw	xmm2, xmm0      # xmm2 = xmm2[0],xmm0[0],xmm2[1],xmm0[1],xmm2[2],xmm0[2],xmm2[3],xmm0[3],xmm2[4],xmm0[4],xmm2[5],xmm0[5],xmm2[6],xmm0[6],xmm2[7],xmm0[7]
+ db 00Fh,028h,0D9h ; movaps	xmm3, xmm1
+ db 066h,00Fh,060h,0DAh ; punpcklbw	xmm3, xmm2      # xmm3 = xmm3[0],xmm2[0],xmm3[1],xmm2[1],xmm3[2],xmm2[2],xmm3[3],xmm2[3],xmm3[4],xmm2[4],xmm3[5],xmm2[5],xmm3[6],xmm2[6],xmm3[7],xmm2[7]
+ db 00Fh,011h,098h,050h,008h,000h,000h ; movups	xmmword ptr [eax + 0x850], xmm3
+ db 0EBh,053h ; jmp	0x419 <_tnk_light+0x419>
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,010h,080h,040h,00Ah,000h,000h ; movups	xmm0, xmmword ptr [eax + 0xa40]
+ db 00Fh,059h,080h,060h,008h,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0x860]
+ db 066h,00Fh,05Bh,0C0h ; cvtps2dq	xmm0, xmm0
+ db 066h,00Fh,06Bh,0C0h ; packssdw	xmm0, xmm0
+ db 066h,00Fh,067h,0C1h ; packuswb	xmm0, xmm1
+ db 00Fh,028h,0D1h ; movaps	xmm2, xmm1
+ db 066h,00Fh,060h,0D0h ; punpcklbw	xmm2, xmm0      # xmm2 = xmm2[0],xmm0[0],xmm2[1],xmm0[1],xmm2[2],xmm0[2],xmm2[3],xmm0[3],xmm2[4],xmm0[4],xmm2[5],xmm0[5],xmm2[6],xmm0[6],xmm2[7],xmm0[7]
+ db 00Fh,028h,0D9h ; movaps	xmm3, xmm1
+ db 066h,00Fh,060h,0DAh ; punpcklbw	xmm3, xmm2      # xmm3 = xmm3[0],xmm2[0],xmm3[1],xmm2[1],xmm3[2],xmm2[2],xmm3[3],xmm2[3],xmm3[4],xmm2[4],xmm3[5],xmm2[5],xmm3[6],xmm2[6],xmm3[7],xmm2[7]
+ db 00Fh,010h,080h,020h,008h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x820]
+ db 00Fh,011h,080h,040h,008h,000h,000h ; movups	xmmword ptr [eax + 0x840], xmm0
+ db 00Fh,010h,080h,030h,008h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x830]
+ db 066h,00Fh,0DBh,080h,060h,009h,000h,000h ; pand	xmm0, xmmword ptr [eax + 0x960]
+ db 066h,00Fh,0EBh,0C3h ; por	xmm0, xmm3
+ db 00Fh,011h,080h,050h,008h,000h,000h ; movups	xmmword ptr [eax + 0x850], xmm0
+ db 05Dh ; pop	ebp
+ db 05Fh ; pop	edi
+ db 05Eh ; pop	esi
+ db 05Bh ; pop	ebx
  db 0C3h ; ret
- db 00Fh,028h,0DAh ; movaps xmm3,xmm2
- db 00Fh,010h,080h,020h,009h,000h,000h ; movups xmm0,XMMWORD PTR [eax+0x920]
- db 00Fh,0C2h,0C2h,001h ; cmpltps xmm0,xmm2
- db 00Fh,057h,0E4h ; xorps  xmm4,xmm4
- db 00Fh,028h,0CAh ; movaps xmm1,xmm2
- db 00Fh,0C2h,0CCh,001h ; cmpltps xmm1,xmm4
- db 00Fh,05Fh,090h,020h,009h,000h,000h ; maxps  xmm2,XMMWORD PTR [eax+0x920]
- db 00Fh,05Dh,0D4h ; minps  xmm2,xmm4
- db 00Fh,059h,090h,090h,008h,000h,000h ; mulps  xmm2,XMMWORD PTR [eax+0x890]
- db 0F3h,00Fh,05Bh,0E2h ; cvttps2dq xmm4,xmm2
- db 00Fh,05Bh,0ECh ; cvtdq2ps xmm5,xmm4
- db 00Fh,028h,0F2h ; movaps xmm6,xmm2
- db 00Fh,0C2h,0F5h,001h ; cmpltps xmm6,xmm5
- db 066h,00Fh,072h,0D6h,01Fh ; psrld  xmm6,0x1f
- db 066h,00Fh,0FAh,0E6h ; psubd  xmm4,xmm6
- db 00Fh,05Bh,0ECh ; cvtdq2ps xmm5,xmm4
- db 00Fh,028h,0F2h ; movaps xmm6,xmm2
- db 00Fh,05Ch,0F5h ; subps  xmm6,xmm5
- db 00Fh,010h,0A8h,000h,009h,000h,000h ; movups xmm5,XMMWORD PTR [eax+0x900]
- db 00Fh,059h,0EEh ; mulps  xmm5,xmm6
- db 00Fh,058h,0A8h,0F0h,008h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x8f0]
- db 00Fh,059h,0EEh ; mulps  xmm5,xmm6
- db 00Fh,058h,0A8h,0E0h,008h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x8e0]
- db 00Fh,059h,0EEh ; mulps  xmm5,xmm6
- db 00Fh,058h,0A8h,0D0h,008h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x8d0]
- db 00Fh,059h,0EEh ; mulps  xmm5,xmm6
- db 00Fh,058h,0A8h,0C0h,008h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x8c0]
- db 00Fh,059h,0EEh ; mulps  xmm5,xmm6
- db 00Fh,058h,0A8h,0B0h,008h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x8b0]
- db 00Fh,059h,0EEh ; mulps  xmm5,xmm6
- db 00Fh,058h,0A8h,0A0h,008h,000h,000h ; addps  xmm5,XMMWORD PTR [eax+0x8a0]
- db 066h,00Fh,0FEh,0A0h,050h,009h,000h,000h ; paddd  xmm4,XMMWORD PTR [eax+0x950]
- db 066h,00Fh,072h,0F4h,017h ; pslld  xmm4,0x17
- db 00Fh,059h,0ECh ; mulps  xmm5,xmm4
- db 00Fh,054h,0E8h ; andps  xmm5,xmm0
- db 00Fh,054h,0E9h ; andps  xmm5,xmm1
- db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups xmm4,XMMWORD PTR [eax+0x870]
- db 00Fh,057h,0C0h ; xorps  xmm0,xmm0
- db 00Fh,028h,0F8h ; movaps xmm7,xmm0
- db 00Fh,0C2h,0FBh,002h ; cmpleps xmm7,xmm3
- db 00Fh,054h,0E7h ; andps  xmm4,xmm7
- db 00Fh,056h,0ECh ; orps   xmm5,xmm4
- db 00Fh,028h,0E5h ; movaps xmm4,xmm5
+ db 00Fh,028h,0DAh ; movaps	xmm3, xmm2
+ db 00Fh,010h,080h,020h,009h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x920]
+ db 00Fh,0C2h,0C2h,001h ; cmpltps	xmm0, xmm2
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,028h,0CAh ; movaps	xmm1, xmm2
+ db 00Fh,0C2h,0CCh,001h ; cmpltps	xmm1, xmm4
+ db 00Fh,05Fh,090h,020h,009h,000h,000h ; maxps	xmm2, xmmword ptr [eax + 0x920]
+ db 00Fh,05Dh,0D4h ; minps	xmm2, xmm4
+ db 00Fh,059h,090h,090h,008h,000h,000h ; mulps	xmm2, xmmword ptr [eax + 0x890]
+ db 0F3h,00Fh,05Bh,0E2h ; cvttps2dq	xmm4, xmm2
+ db 00Fh,05Bh,0ECh ; cvtdq2ps	xmm5, xmm4
+ db 00Fh,028h,0F2h ; movaps	xmm6, xmm2
+ db 00Fh,0C2h,0F5h,001h ; cmpltps	xmm6, xmm5
+ db 066h,00Fh,072h,0D6h,01Fh ; psrld	xmm6, 0x1f
+ db 066h,00Fh,0FAh,0E6h ; psubd	xmm4, xmm6
+ db 00Fh,05Bh,0ECh ; cvtdq2ps	xmm5, xmm4
+ db 00Fh,028h,0F2h ; movaps	xmm6, xmm2
+ db 00Fh,05Ch,0F5h ; subps	xmm6, xmm5
+ db 00Fh,010h,0A8h,000h,009h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x900]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 00Fh,058h,0A8h,0F0h,008h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x8f0]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 00Fh,058h,0A8h,0E0h,008h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x8e0]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 00Fh,058h,0A8h,0D0h,008h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x8d0]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 00Fh,058h,0A8h,0C0h,008h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x8c0]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 00Fh,058h,0A8h,0B0h,008h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x8b0]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 00Fh,058h,0A8h,0A0h,008h,000h,000h ; addps	xmm5, xmmword ptr [eax + 0x8a0]
+ db 066h,00Fh,0FEh,0A0h,050h,009h,000h,000h ; paddd	xmm4, xmmword ptr [eax + 0x950]
+ db 066h,00Fh,072h,0F4h,017h ; pslld	xmm4, 0x17
+ db 00Fh,059h,0ECh ; mulps	xmm5, xmm4
+ db 00Fh,054h,0E8h ; andps	xmm5, xmm0
+ db 00Fh,054h,0E9h ; andps	xmm5, xmm1
+ db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x870]
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,028h,0F8h ; movaps	xmm7, xmm0
+ db 00Fh,0C2h,0FBh,002h ; cmpleps	xmm7, xmm3
+ db 00Fh,054h,0E7h ; andps	xmm4, xmm7
+ db 00Fh,056h,0ECh ; orps	xmm5, xmm4
+ db 00Fh,028h,0E5h ; movaps	xmm4, xmm5
  db 0C3h ; ret
 _tnk_light endp
+public _tnk_plight
+_tnk_plight proc near
+ db 053h ; push	ebx
+ db 056h ; push	esi
+ db 057h ; push	edi
+ db 055h ; push	ebp
+ db 08Bh,044h,024h,014h ; mov	eax, dword ptr [esp + 0x14]
+ db 00Fh,010h,0A8h,0C0h,007h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x7c0]
+ db 00Fh,010h,0B0h,0D0h,007h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x7d0]
+ db 00Fh,010h,0B8h,0E0h,007h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x7e0]
+ db 00Fh,010h,080h,080h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x180]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0C0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1c0]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,000h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x200]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,040h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x240]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,011h,080h,010h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa10], xmm0
+ db 00Fh,010h,080h,090h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x190]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0D0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1d0]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,010h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x210]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,050h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x250]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,011h,080h,020h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa20], xmm0
+ db 00Fh,010h,080h,0A0h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x1a0]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0E0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1e0]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,020h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x220]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,010h,088h,060h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x260]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,011h,080h,030h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa30], xmm0
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,057h,0D2h ; xorps	xmm2, xmm2
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 083h,0B8h,0A4h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a4], 0x0
+ db 00Fh,084h,042h,001h,000h,000h ; je	0x214 <_tnk_plight+0x214>
+ db 00Fh,010h,080h,0F0h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x7f0]
+ db 00Fh,010h,088h,000h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x800]
+ db 00Fh,010h,090h,010h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x810]
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,059h,098h,080h,002h,000h,000h ; mulps	xmm3, xmmword ptr [eax + 0x280]
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A0h,0B0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2b0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0A0h,0E0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2e0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,011h,098h,050h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa50], xmm3
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,059h,098h,090h,002h,000h,000h ; mulps	xmm3, xmmword ptr [eax + 0x290]
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A0h,0C0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2c0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0A0h,0F0h,002h,000h,000h ; mulps	xmm4, xmmword ptr [eax + 0x2f0]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,011h,098h,060h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa60], xmm3
+ db 00Fh,059h,080h,0A0h,002h,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0x2a0]
+ db 00Fh,059h,088h,0D0h,002h,000h,000h ; mulps	xmm1, xmmword ptr [eax + 0x2d0]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,059h,090h,000h,003h,000h,000h ; mulps	xmm2, xmmword ptr [eax + 0x300]
+ db 00Fh,058h,0C2h ; addps	xmm0, xmm2
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,010h,088h,050h,00Ah,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xa50]
+ db 00Fh,010h,090h,060h,00Ah,000h,000h ; movups	xmm2, xmmword ptr [eax + 0xa60]
+ db 083h,0B8h,0A0h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a0], 0x0
+ db 00Fh,084h,09Eh,000h,000h,000h ; je	0x214 <_tnk_plight+0x214>
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 00Fh,059h,0E3h ; mulps	xmm4, xmm3
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,051h,0C0h ; sqrtps	xmm0, xmm0
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0E0h,001h ; cmpltps	xmm4, xmm0
+ db 00Fh,011h,0A0h,070h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa70], xmm4
+ db 00Fh,010h,0A0h,070h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x870]
+ db 00Fh,05Eh,0E0h ; divps	xmm4, xmm0
+ db 00Fh,054h,0A0h,070h,00Ah,000h,000h ; andps	xmm4, xmmword ptr [eax + 0xa70]
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,088h,070h,00Ah,000h,000h ; movups	xmm1, xmmword ptr [eax + 0xa70]
+ db 00Fh,055h,088h,050h,00Ah,000h,000h ; andnps	xmm1, xmmword ptr [eax + 0xa50]
+ db 00Fh,056h,0C8h ; orps	xmm1, xmm0
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,090h,070h,00Ah,000h,000h ; movups	xmm2, xmmword ptr [eax + 0xa70]
+ db 00Fh,055h,090h,060h,00Ah,000h,000h ; andnps	xmm2, xmmword ptr [eax + 0xa60]
+ db 00Fh,056h,0D0h ; orps	xmm2, xmm0
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,070h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,0A0h,070h,00Ah,000h,000h ; movups	xmm4, xmmword ptr [eax + 0xa70]
+ db 00Fh,011h,098h,080h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa80], xmm3
+ db 00Fh,055h,0A0h,080h,00Ah,000h,000h ; andnps	xmm4, xmmword ptr [eax + 0xa80]
+ db 00Fh,056h,0C4h ; orps	xmm0, xmm4
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,011h,088h,040h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa40], xmm1
+ db 00Fh,011h,090h,050h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa50], xmm2
+ db 00Fh,011h,098h,060h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa60], xmm3
+ db 00Fh,010h,0A8h,010h,007h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x710]
+ db 00Fh,010h,0B0h,020h,007h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x720]
+ db 00Fh,010h,0B8h,030h,007h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x730]
+ db 08Bh,088h,090h,00Ah,000h,000h ; mov	ecx, dword ptr [eax + 0xa90]
+ db 085h,0C9h ; test	ecx, ecx
+ db 00Fh,084h,0CAh,001h,000h,000h ; je	0x416 <_tnk_plight+0x416>
+ db 089h,0C2h ; mov	edx, eax
+ db 089h,0C3h ; mov	ebx, eax
+ db 00Fh,010h,08Ah,0A0h,00Ah,000h,000h ; movups	xmm1, xmmword ptr [edx + 0xaa0]
+ db 00Fh,05Ch,088h,010h,00Ah,000h,000h ; subps	xmm1, xmmword ptr [eax + 0xa10]
+ db 00Fh,010h,092h,0B0h,00Ah,000h,000h ; movups	xmm2, xmmword ptr [edx + 0xab0]
+ db 00Fh,05Ch,090h,020h,00Ah,000h,000h ; subps	xmm2, xmmword ptr [eax + 0xa20]
+ db 00Fh,010h,09Ah,0C0h,00Ah,000h,000h ; movups	xmm3, xmmword ptr [edx + 0xac0]
+ db 00Fh,05Ch,098h,030h,00Ah,000h,000h ; subps	xmm3, xmmword ptr [eax + 0xa30]
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,028h,0E2h ; movaps	xmm4, xmm2
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 00Fh,059h,0E3h ; mulps	xmm4, xmm3
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,011h,080h,070h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa70], xmm0
+ db 00Fh,052h,0E0h ; rsqrtps	xmm4, xmm0
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,05Ch,080h,070h,008h,000h,000h ; subps	xmm0, xmmword ptr [eax + 0x870]
+ db 00Fh,059h,080h,080h,008h,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0x880]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,05Ch,0E0h ; subps	xmm4, xmm0
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,0C2h,080h,070h,00Ah,000h,000h,001h ; cmpltps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,011h,080h,080h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa80], xmm0
+ db 00Fh,010h,080h,070h,00Ah,000h,000h ; movups	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,080h,080h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa80]
+ db 00Fh,011h,080h,070h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa70], xmm0
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,057h,0C1h ; xorps	xmm0, xmm1
+ db 00Fh,054h,080h,080h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa80]
+ db 00Fh,057h,0C8h ; xorps	xmm1, xmm0
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,057h,0C2h ; xorps	xmm0, xmm2
+ db 00Fh,054h,080h,080h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa80]
+ db 00Fh,057h,0D0h ; xorps	xmm2, xmm0
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,057h,0C3h ; xorps	xmm0, xmm3
+ db 00Fh,054h,080h,080h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa80]
+ db 00Fh,057h,0D8h ; xorps	xmm3, xmm0
+ db 00Fh,010h,080h,070h,00Ah,000h,000h ; movups	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,010h,0A3h,040h,00Ch,000h,000h ; movups	xmm4, xmmword ptr [ebx + 0xc40]
+ db 00Fh,059h,0E0h ; mulps	xmm4, xmm0
+ db 00Fh,058h,0A3h,030h,00Ch,000h,000h ; addps	xmm4, xmmword ptr [ebx + 0xc30]
+ db 00Fh,059h,083h,050h,00Ch,000h,000h ; mulps	xmm0, xmmword ptr [ebx + 0xc50]
+ db 00Fh,059h,080h,070h,00Ah,000h,000h ; mulps	xmm0, xmmword ptr [eax + 0xa70]
+ db 00Fh,058h,0E0h ; addps	xmm4, xmm0
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,0C2h,0C4h,001h ; cmpltps	xmm0, xmm4
+ db 00Fh,011h,080h,080h,00Ah,000h,000h ; movups	xmmword ptr [eax + 0xa80], xmm0
+ db 00Fh,053h,0C4h ; rcpps	xmm0, xmm4
+ db 00Fh,059h,0E0h ; mulps	xmm4, xmm0
+ db 00Fh,05Ch,0A0h,070h,008h,000h,000h ; subps	xmm4, xmmword ptr [eax + 0x870]
+ db 00Fh,059h,0E0h ; mulps	xmm4, xmm0
+ db 00Fh,05Ch,0C4h ; subps	xmm0, xmm4
+ db 00Fh,057h,080h,070h,008h,000h,000h ; xorps	xmm0, xmmword ptr [eax + 0x870]
+ db 00Fh,054h,080h,080h,00Ah,000h,000h ; andps	xmm0, xmmword ptr [eax + 0xa80]
+ db 00Fh,057h,080h,070h,008h,000h,000h ; xorps	xmm0, xmmword ptr [eax + 0x870]
+ db 00Fh,010h,0A0h,070h,00Ah,000h,000h ; movups	xmm4, xmmword ptr [eax + 0xa70]
+ db 00Fh,0C2h,0A3h,020h,00Ch,000h,000h,002h ; cmpleps	xmm4, xmmword ptr [ebx + 0xc20]
+ db 00Fh,054h,0C4h ; andps	xmm0, xmm4
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,059h,0A2h,0A0h,00Fh,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0xfa0]
+ db 00Fh,058h,0ECh ; addps	xmm5, xmm4
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,059h,0A2h,0B0h,00Fh,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0xfb0]
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 00Fh,059h,0A2h,0C0h,00Fh,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0xfc0]
+ db 00Fh,058h,0FCh ; addps	xmm7, xmm4
+ db 083h,0B8h,0A4h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a4], 0x0
+ db 074h,04Fh ; je	0x409 <_tnk_plight+0x409>
+ db 00Fh,059h,088h,040h,00Ah,000h,000h ; mulps	xmm1, xmmword ptr [eax + 0xa40]
+ db 00Fh,059h,090h,050h,00Ah,000h,000h ; mulps	xmm2, xmmword ptr [eax + 0xa50]
+ db 00Fh,058h,0CAh ; addps	xmm1, xmm2
+ db 00Fh,059h,098h,060h,00Ah,000h,000h ; mulps	xmm3, xmmword ptr [eax + 0xa60]
+ db 00Fh,058h,0CBh ; addps	xmm1, xmm3
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0E1h,001h ; cmpltps	xmm4, xmm1
+ db 00Fh,054h,0CCh ; andps	xmm1, xmm4
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A2h,020h,00Eh,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0xe20]
+ db 00Fh,058h,0ECh ; addps	xmm5, xmm4
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A2h,030h,00Eh,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0xe30]
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0A2h,040h,00Eh,000h,000h ; mulps	xmm4, xmmword ptr [edx + 0xe40]
+ db 00Fh,058h,0FCh ; addps	xmm7, xmm4
+ db 083h,0C2h,030h ; add	edx, 0x30
+ db 083h,0C3h,040h ; add	ebx, 0x40
+ db 049h ; dec	ecx
+ db 00Fh,085h,03Ah,0FEh,0FFh,0FFh ; jne	0x250 <_tnk_plight+0x250>
+ db 00Fh,011h,0A8h,010h,007h,000h,000h ; movups	xmmword ptr [eax + 0x710], xmm5
+ db 00Fh,011h,0B0h,020h,007h,000h,000h ; movups	xmmword ptr [eax + 0x720], xmm6
+ db 00Fh,011h,0B8h,030h,007h,000h,000h ; movups	xmmword ptr [eax + 0x730], xmm7
+ db 05Dh ; pop	ebp
+ db 05Fh ; pop	edi
+ db 05Eh ; pop	esi
+ db 05Bh ; pop	ebx
+ db 0C3h ; ret
+_tnk_plight endp
+public _tnk_spec
+_tnk_spec proc near
+ db 055h ; push	ebp
+ db 089h,0E5h ; mov	ebp, esp
+ db 053h ; push	ebx
+ db 057h ; push	edi
+ db 056h ; push	esi
+ db 083h,0E4h,0F0h ; and	esp, -0x10
+ db 081h,0ECh,0F0h,000h,000h,000h ; sub	esp, 0xf0
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 083h,0B8h,0D0h,022h,000h,000h,000h ; cmp	dword ptr [eax + 0x22d0], 0x0
+ db 00Fh,084h,0A3h,000h,000h,000h ; je	0xc2 <_tnk_spec+0xc2>
+ db 00Fh,010h,080h,0E0h,022h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x22e0]
+ db 00Fh,029h,044h,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm0
+ db 00Fh,010h,080h,0F0h,022h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x22f0]
+ db 00Fh,029h,044h,024h,020h ; movaps	xmmword ptr [esp + 0x20], xmm0
+ db 00Fh,010h,080h,000h,023h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2300]
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,010h,098h,060h,008h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x860]
+ db 0F3h,00Fh,06Fh,090h,060h,001h,000h,000h ; movdqu	xmm2, xmmword ptr [eax + 0x160]
+ db 00Fh,028h,044h,024h,010h ; movaps	xmm0, xmmword ptr [esp + 0x10]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 066h,00Fh,05Bh,0C0h ; cvtps2dq	xmm0, xmm0
+ db 00Fh,028h,04Ch,024h,020h ; movaps	xmm1, xmmword ptr [esp + 0x20]
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 066h,00Fh,05Bh,0C9h ; cvtps2dq	xmm1, xmm1
+ db 00Fh,028h,064h,024h,030h ; movaps	xmm4, xmmword ptr [esp + 0x30]
+ db 00Fh,059h,0E3h ; mulps	xmm4, xmm3
+ db 066h,00Fh,05Bh,0DCh ; cvtps2dq	xmm3, xmm4
+ db 066h,00Fh,06Bh,0C0h ; packssdw	xmm0, xmm0
+ db 066h,00Fh,067h,0C0h ; packuswb	xmm0, xmm0
+ db 066h,00Fh,06Bh,0C9h ; packssdw	xmm1, xmm1
+ db 066h,00Fh,067h,0C9h ; packuswb	xmm1, xmm1
+ db 066h,00Fh,060h,0CAh ; punpcklbw	xmm1, xmm2
+ db 066h,00Fh,06Bh,0DBh ; packssdw	xmm3, xmm3
+ db 066h,00Fh,067h,0DBh ; packuswb	xmm3, xmm3
+ db 066h,00Fh,060h,0C3h ; punpcklbw	xmm0, xmm3
+ db 066h,00Fh,060h,0C1h ; punpcklbw	xmm0, xmm1
+ db 0F3h,00Fh,06Fh,088h,060h,009h,000h,000h ; movdqu	xmm1, xmmword ptr [eax + 0x960]
+ db 0F3h,00Fh,06Fh,090h,050h,008h,000h,000h ; movdqu	xmm2, xmmword ptr [eax + 0x850]
+ db 066h,00Fh,0DFh,0CAh ; pandn	xmm1, xmm2
+ db 066h,00Fh,0EBh,0C8h ; por	xmm1, xmm0
+ db 0F3h,00Fh,07Fh,088h,050h,008h,000h,000h ; movdqu	xmmword ptr [eax + 0x850], xmm1
+ db 08Dh,065h,0F4h ; lea	esp, [ebp - 0xc]
+ db 05Eh ; pop	esi
+ db 05Fh ; pop	edi
+ db 05Bh ; pop	ebx
+ db 05Dh ; pop	ebp
+ db 0C3h ; ret
+ db 00Fh,010h,098h,070h,008h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x870]
+ db 00Fh,010h,080h,0C0h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x7c0]
+ db 00Fh,029h,044h,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm0
+ db 00Fh,010h,080h,0D0h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x7d0]
+ db 00Fh,029h,044h,024h,020h ; movaps	xmmword ptr [esp + 0x20], xmm0
+ db 00Fh,010h,080h,0E0h,007h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x7e0]
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,010h,0B0h,0F0h,007h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x7f0]
+ db 00Fh,010h,088h,000h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x800]
+ db 00Fh,010h,080h,010h,008h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x810]
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,011h,0A0h,0E0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22e0], xmm4
+ db 00Fh,011h,0A0h,0F0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22f0], xmm4
+ db 00Fh,057h,0D2h ; xorps	xmm2, xmm2
+ db 00Fh,029h,094h,024h,090h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x90], xmm2
+ db 00Fh,011h,0A0h,000h,023h,000h,000h ; movups	xmmword ptr [eax + 0x2300], xmm4
+ db 00Fh,010h,090h,080h,002h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x280]
+ db 00Fh,059h,0D6h ; mulps	xmm2, xmm6
+ db 00Fh,010h,0B8h,0B0h,002h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x2b0]
+ db 00Fh,059h,0F9h ; mulps	xmm7, xmm1
+ db 00Fh,058h,0FAh ; addps	xmm7, xmm2
+ db 00Fh,010h,0A0h,0E0h,002h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x2e0]
+ db 00Fh,059h,0E0h ; mulps	xmm4, xmm0
+ db 00Fh,058h,0E7h ; addps	xmm4, xmm7
+ db 00Fh,010h,090h,090h,002h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x290]
+ db 00Fh,059h,0D6h ; mulps	xmm2, xmm6
+ db 00Fh,010h,0B8h,0C0h,002h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x2c0]
+ db 00Fh,059h,0F9h ; mulps	xmm7, xmm1
+ db 00Fh,058h,0FAh ; addps	xmm7, xmm2
+ db 00Fh,010h,0A8h,0F0h,002h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x2f0]
+ db 00Fh,059h,0E8h ; mulps	xmm5, xmm0
+ db 00Fh,058h,0EFh ; addps	xmm5, xmm7
+ db 00Fh,010h,090h,0A0h,002h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x2a0]
+ db 00Fh,059h,0D6h ; mulps	xmm2, xmm6
+ db 00Fh,010h,0B0h,0D0h,002h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x2d0]
+ db 00Fh,059h,0F1h ; mulps	xmm6, xmm1
+ db 00Fh,058h,0F2h ; addps	xmm6, xmm2
+ db 00Fh,010h,0B8h,000h,003h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x300]
+ db 00Fh,059h,0F8h ; mulps	xmm7, xmm0
+ db 00Fh,058h,0FEh ; addps	xmm7, xmm6
+ db 083h,0B8h,0A0h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a0], 0x0
+ db 074h,063h ; je	0x1fd <_tnk_spec+0x1fd>
+ db 00Fh,028h,0C4h ; movaps	xmm0, xmm4
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,028h,0CDh ; movaps	xmm1, xmm5
+ db 00Fh,059h,0CDh ; mulps	xmm1, xmm5
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 00Fh,059h,0C7h ; mulps	xmm0, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,051h,0D0h ; sqrtps	xmm2, xmm0
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,0C2h,0C2h,001h ; cmpltps	xmm0, xmm2
+ db 00Fh,028h,0CBh ; movaps	xmm1, xmm3
+ db 00Fh,05Eh,0CAh ; divps	xmm1, xmm2
+ db 00Fh,054h,0C8h ; andps	xmm1, xmm0
+ db 00Fh,028h,0D0h ; movaps	xmm2, xmm0
+ db 00Fh,055h,0D4h ; andnps	xmm2, xmm4
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,054h,0E0h ; andps	xmm4, xmm0
+ db 00Fh,056h,0E2h ; orps	xmm4, xmm2
+ db 00Fh,029h,024h,024h ; movaps	xmmword ptr [esp], xmm4
+ db 00Fh,028h,0D0h ; movaps	xmm2, xmm0
+ db 00Fh,055h,0D5h ; andnps	xmm2, xmm5
+ db 00Fh,059h,0E9h ; mulps	xmm5, xmm1
+ db 00Fh,054h,0E8h ; andps	xmm5, xmm0
+ db 00Fh,056h,0EAh ; orps	xmm5, xmm2
+ db 00Fh,029h,06Ch,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm5
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,054h,0C8h ; andps	xmm1, xmm0
+ db 00Fh,055h,0C7h ; andnps	xmm0, xmm7
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,028h,0F8h ; movaps	xmm7, xmm0
+ db 0EBh,009h ; jmp	0x206 <_tnk_spec+0x206>
+ db 00Fh,029h,06Ch,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm5
+ db 00Fh,029h,024h,024h ; movaps	xmmword ptr [esp], xmm4
+ db 00Fh,028h,0F3h ; movaps	xmm6, xmm3
+ db 00Fh,029h,0BCh,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm7
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,05Ch,0CBh ; subps	xmm1, xmm3
+ db 083h,0B8h,094h,014h,000h,000h,000h ; cmp	dword ptr [eax + 0x1494], 0x0
+ db 00Fh,029h,05Ch,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm3
+ db 00Fh,084h,016h,001h,000h,000h ; je	0x33f <_tnk_spec+0x33f>
+ db 00Fh,010h,0B0h,080h,001h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x180]
+ db 00Fh,010h,090h,090h,001h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x190]
+ db 00Fh,029h,04Ch,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm1
+ db 00Fh,010h,088h,0C0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1c0]
+ db 00Fh,010h,080h,0D0h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x1d0]
+ db 00Fh,028h,064h,024h,010h ; movaps	xmm4, xmmword ptr [esp + 0x10]
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 00Fh,058h,0CEh ; addps	xmm1, xmm6
+ db 00Fh,010h,0B8h,0A0h,001h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x1a0]
+ db 00Fh,059h,0D4h ; mulps	xmm2, xmm4
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,058h,0C2h ; addps	xmm0, xmm2
+ db 00Fh,010h,0B0h,0E0h,001h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x1e0]
+ db 00Fh,059h,0FCh ; mulps	xmm7, xmm4
+ db 00Fh,010h,0A8h,000h,002h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x200]
+ db 00Fh,059h,0F3h ; mulps	xmm6, xmm3
+ db 00Fh,010h,0A0h,010h,002h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x210]
+ db 00Fh,058h,0F7h ; addps	xmm6, xmm7
+ db 00Fh,010h,0B8h,020h,002h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x220]
+ db 00Fh,028h,054h,024h,030h ; movaps	xmm2, xmmword ptr [esp + 0x30]
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,058h,0E9h ; addps	xmm5, xmm1
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,058h,0E0h ; addps	xmm4, xmm0
+ db 00Fh,059h,0FAh ; mulps	xmm7, xmm2
+ db 00Fh,058h,0FEh ; addps	xmm7, xmm6
+ db 00Fh,028h,074h,024h,050h ; movaps	xmm6, xmmword ptr [esp + 0x50]
+ db 00Fh,010h,090h,040h,002h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x240]
+ db 00Fh,058h,0D5h ; addps	xmm2, xmm5
+ db 00Fh,010h,080h,050h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x250]
+ db 00Fh,058h,0C4h ; addps	xmm0, xmm4
+ db 00Fh,010h,0A8h,060h,002h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x260]
+ db 00Fh,058h,0EFh ; addps	xmm5, xmm7
+ db 00Fh,028h,0CAh ; movaps	xmm1, xmm2
+ db 00Fh,028h,0FAh ; movaps	xmm7, xmm2
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,028h,0D0h ; movaps	xmm2, xmm0
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 00Fh,028h,0E5h ; movaps	xmm4, xmm5
+ db 00Fh,059h,0E5h ; mulps	xmm4, xmm5
+ db 00Fh,058h,0E2h ; addps	xmm4, xmm2
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,0C2h,0CCh,001h ; cmpltps	xmm1, xmm4
+ db 00Fh,052h,0D4h ; rsqrtps	xmm2, xmm4
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,05Ch,0E6h ; subps	xmm4, xmm6
+ db 00Fh,010h,098h,080h,008h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x880]
+ db 00Fh,059h,0DCh ; mulps	xmm3, xmm4
+ db 00Fh,059h,0DAh ; mulps	xmm3, xmm2
+ db 00Fh,05Ch,0DAh ; subps	xmm3, xmm2
+ db 00Fh,057h,0D2h ; xorps	xmm2, xmm2
+ db 00Fh,058h,0DAh ; addps	xmm3, xmm2
+ db 00Fh,028h,0D7h ; movaps	xmm2, xmm7
+ db 00Fh,059h,0D3h ; mulps	xmm2, xmm3
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,059h,0DDh ; mulps	xmm3, xmm5
+ db 00Fh,054h,0D1h ; andps	xmm2, xmm1
+ db 00Fh,029h,094h,024h,090h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x90], xmm2
+ db 00Fh,054h,0C1h ; andps	xmm0, xmm1
+ db 00Fh,029h,084h,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm0
+ db 00Fh,054h,0D9h ; andps	xmm3, xmm1
+ db 00Fh,055h,04Ch,024h,060h ; andnps	xmm1, xmmword ptr [esp + 0x60]
+ db 00Fh,056h,0CBh ; orps	xmm1, xmm3
+ db 0EBh,00Bh ; jmp	0x34a <_tnk_spec+0x34a>
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,029h,084h,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm0
+ db 00Fh,028h,024h,024h ; movaps	xmm4, xmmword ptr [esp]
+ db 00Fh,028h,05Ch,024h,040h ; movaps	xmm3, xmmword ptr [esp + 0x40]
+ db 08Bh,0B8h,090h,007h,000h,000h ; mov	edi, dword ptr [eax + 0x790]
+ db 085h,0FFh ; test	edi, edi
+ db 00Fh,084h,0F1h,003h,000h,000h ; je	0x752 <_tnk_spec+0x752>
+ db 00Fh,029h,04Ch,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm1
+ db 031h,0D2h ; xor	edx, edx
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,028h,0CEh ; movaps	xmm1, xmm6
+ db 00Fh,0C2h,0C8h,007h ; cmpordps	xmm1, xmm0
+ db 00Fh,029h,08Ch,024h,0D0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xd0], xmm1
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,029h,044h,024h,020h ; movaps	xmmword ptr [esp + 0x20], xmm0
+ db 00Fh,029h,044h,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm0
+ db 00Fh,029h,05Ch,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm3
+ db 00Fh,029h,024h,024h ; movaps	xmmword ptr [esp], xmm4
+ db 0E9h,018h,002h,000h,000h ; jmp	0x5af <_tnk_spec+0x5af>
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 066h,00Fh,072h,0D0h,017h ; psrld	xmm0, 0x17
+ db 0F3h,00Fh,06Fh,088h,050h,009h,000h,000h ; movdqu	xmm1, xmmword ptr [eax + 0x950]
+ db 066h,00Fh,07Fh,08Ch,024h,0B0h,000h,000h,000h ; movdqa	xmmword ptr [esp + 0xb0], xmm1
+ db 066h,00Fh,0FAh,0C1h ; psubd	xmm0, xmm1
+ db 00Fh,029h,0ACh,024h,0C0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xc0], xmm5
+ db 00Fh,010h,0A8h,080h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1480]
+ db 00Fh,054h,0EAh ; andps	xmm5, xmm2
+ db 00Fh,056h,0EEh ; orps	xmm5, xmm6
+ db 00Fh,010h,0B8h,070h,014h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x1470]
+ db 00Fh,0C2h,0FDh,001h ; cmpltps	xmm7, xmm5
+ db 00Fh,028h,04Ch,024h,070h ; movaps	xmm1, xmmword ptr [esp + 0x70]
+ db 00Fh,059h,0CDh ; mulps	xmm1, xmm5
+ db 00Fh,054h,0CFh ; andps	xmm1, xmm7
+ db 00Fh,028h,0E7h ; movaps	xmm4, xmm7
+ db 00Fh,055h,0E5h ; andnps	xmm4, xmm5
+ db 00Fh,056h,0E1h ; orps	xmm4, xmm1
+ db 00Fh,05Bh,0C0h ; cvtdq2ps	xmm0, xmm0
+ db 00Fh,054h,0FEh ; andps	xmm7, xmm6
+ db 00Fh,058h,0F8h ; addps	xmm7, xmm0
+ db 00Fh,028h,0CEh ; movaps	xmm1, xmm6
+ db 00Fh,058h,0CCh ; addps	xmm1, xmm4
+ db 00Fh,053h,0C1h ; rcpps	xmm0, xmm1
+ db 00Fh,05Ch,0E6h ; subps	xmm4, xmm6
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,058h,0C0h ; addps	xmm0, xmm0
+ db 00Fh,05Ch,0C1h ; subps	xmm0, xmm1
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,028h,0C8h ; movaps	xmm1, xmm0
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,010h,0A0h,060h,014h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1460]
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,010h,0A8h,050h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1450]
+ db 00Fh,058h,0ECh ; addps	xmm5, xmm4
+ db 00Fh,059h,0E9h ; mulps	xmm5, xmm1
+ db 00Fh,010h,0A0h,040h,014h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1440]
+ db 00Fh,058h,0E5h ; addps	xmm4, xmm5
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,010h,0A8h,030h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1430]
+ db 00Fh,058h,0ECh ; addps	xmm5, xmm4
+ db 00Fh,059h,0E9h ; mulps	xmm5, xmm1
+ db 00Fh,058h,0EEh ; addps	xmm5, xmm6
+ db 00Fh,058h,0C0h ; addps	xmm0, xmm0
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,088h,0B0h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x8b0]
+ db 00Fh,029h,04Ch,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm1
+ db 00Fh,059h,0F9h ; mulps	xmm7, xmm1
+ db 00Fh,058h,0F8h ; addps	xmm7, xmm0
+ db 00Fh,010h,080h,020h,014h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x1420]
+ db 00Fh,059h,0C7h ; mulps	xmm0, xmm7
+ db 00Fh,010h,0B8h,020h,009h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x920]
+ db 00Fh,028h,0C8h ; movaps	xmm1, xmm0
+ db 00Fh,05Fh,0CFh ; maxps	xmm1, xmm7
+ db 00Fh,0C2h,0F8h,001h ; cmpltps	xmm7, xmm0
+ db 00Fh,057h,0EDh ; xorps	xmm5, xmm5
+ db 00Fh,0C2h,0E8h,002h ; cmpleps	xmm5, xmm0
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0C4h,001h ; cmpltps	xmm0, xmm4
+ db 00Fh,054h,0C7h ; andps	xmm0, xmm7
+ db 00Fh,05Dh,0CCh ; minps	xmm1, xmm4
+ db 00Fh,010h,0A0h,090h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x890]
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 0F3h,00Fh,05Bh,0F4h ; cvttps2dq	xmm6, xmm4
+ db 00Fh,05Bh,0FEh ; cvtdq2ps	xmm7, xmm6
+ db 00Fh,028h,0CCh ; movaps	xmm1, xmm4
+ db 00Fh,0C2h,0CFh,001h ; cmpltps	xmm1, xmm7
+ db 066h,00Fh,0FEh,0CEh ; paddd	xmm1, xmm6
+ db 00Fh,05Bh,0F1h ; cvtdq2ps	xmm6, xmm1
+ db 00Fh,05Ch,0E6h ; subps	xmm4, xmm6
+ db 00Fh,010h,0B0h,000h,009h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x900]
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,010h,0B8h,0F0h,008h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x8f0]
+ db 00Fh,058h,0FEh ; addps	xmm7, xmm6
+ db 00Fh,059h,0FCh ; mulps	xmm7, xmm4
+ db 00Fh,010h,0B0h,0E0h,008h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x8e0]
+ db 00Fh,058h,0F7h ; addps	xmm6, xmm7
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,010h,0B8h,0D0h,008h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x8d0]
+ db 00Fh,058h,0FEh ; addps	xmm7, xmm6
+ db 00Fh,059h,0FCh ; mulps	xmm7, xmm4
+ db 00Fh,010h,0B0h,0C0h,008h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x8c0]
+ db 00Fh,058h,0F7h ; addps	xmm6, xmm7
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,058h,074h,024h,070h ; addps	xmm6, xmmword ptr [esp + 0x70]
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,010h,0A0h,0A0h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x8a0]
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,028h,024h,024h ; movaps	xmm4, xmmword ptr [esp]
+ db 066h,00Fh,0FEh,08Ch,024h,0B0h,000h,000h,000h ; paddd	xmm1, xmmword ptr [esp + 0xb0]
+ db 066h,00Fh,072h,0F1h,017h ; pslld	xmm1, 0x17
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,028h,074h,024h,050h ; movaps	xmm6, xmmword ptr [esp + 0x50]
+ db 00Fh,054h,0C8h ; andps	xmm1, xmm0
+ db 00Fh,054h,0EEh ; andps	xmm5, xmm6
+ db 00Fh,056h,0E9h ; orps	xmm5, xmm1
+ db 00Fh,028h,0C6h ; movaps	xmm0, xmm6
+ db 00Fh,0C2h,0C2h,002h ; cmpleps	xmm0, xmm2
+ db 00Fh,028h,0CEh ; movaps	xmm1, xmm6
+ db 00Fh,054h,0C8h ; andps	xmm1, xmm0
+ db 00Fh,055h,0C5h ; andnps	xmm0, xmm5
+ db 00Fh,028h,0ACh,024h,0C0h,000h,000h,000h ; movaps	xmm5, xmmword ptr [esp + 0xc0]
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,059h,0C6h ; mulps	xmm0, xmm6
+ db 00Fh,054h,0C5h ; andps	xmm0, xmm5
+ db 08Dh,034h,052h ; lea	esi, [edx + 2*edx]
+ db 0C1h,0E6h,004h ; shl	esi, 0x4
+ db 00Fh,010h,08Ch,030h,020h,011h,000h,000h ; movups	xmm1, xmmword ptr [eax + esi + 0x1120]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,054h,024h,010h ; movaps	xmm2, xmmword ptr [esp + 0x10]
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 00Fh,029h,054h,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm2
+ db 00Fh,011h,090h,0E0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22e0], xmm2
+ db 00Fh,010h,08Ch,030h,030h,011h,000h,000h ; movups	xmm1, xmmword ptr [eax + esi + 0x1130]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,054h,024h,020h ; movaps	xmm2, xmmword ptr [esp + 0x20]
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 00Fh,029h,054h,024h,020h ; movaps	xmmword ptr [esp + 0x20], xmm2
+ db 00Fh,011h,090h,0F0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22f0], xmm2
+ db 00Fh,010h,08Ch,030h,040h,011h,000h,000h ; movups	xmm1, xmmword ptr [eax + esi + 0x1140]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,044h,024h,030h ; movaps	xmm0, xmmword ptr [esp + 0x30]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,011h,080h,000h,023h,000h,000h ; movups	xmmword ptr [eax + 0x2300], xmm0
+ db 042h ; inc	edx
+ db 039h,0FAh ; cmp	edx, edi
+ db 00Fh,084h,094h,0FAh,0FFh,0FFh ; je	0x43 <_tnk_spec+0x43>
+ db 089h,0D6h ; mov	esi, edx
+ db 0C1h,0E6h,006h ; shl	esi, 0x6
+ db 00Fh,010h,0BCh,030h,010h,003h,000h,000h ; movups	xmm7, xmmword ptr [eax + esi + 0x310]
+ db 00Fh,010h,084h,030h,020h,003h,000h,000h ; movups	xmm0, xmmword ptr [eax + esi + 0x320]
+ db 00Fh,010h,094h,030h,030h,003h,000h,000h ; movups	xmm2, xmmword ptr [eax + esi + 0x330]
+ db 00Fh,028h,0CCh ; movaps	xmm1, xmm4
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,058h,0D9h ; addps	xmm3, xmm1
+ db 00Fh,028h,08Ch,024h,0A0h,000h,000h,000h ; movaps	xmm1, xmmword ptr [esp + 0xa0]
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,058h,0CBh ; addps	xmm1, xmm3
+ db 00Fh,057h,0EDh ; xorps	xmm5, xmm5
+ db 00Fh,0C2h,0E9h,001h ; cmpltps	xmm5, xmm1
+ db 00Fh,054h,0ACh,024h,0D0h,000h,000h,000h ; andps	xmm5, xmmword ptr [esp + 0xd0]
+ db 00Fh,050h,0F5h ; movmskps	esi, xmm5
+ db 085h,0F6h ; test	esi, esi
+ db 00Fh,084h,0D0h,000h,000h,000h ; je	0x6d0 <_tnk_spec+0x6d0>
+ db 00Fh,058h,0BCh,024h,090h,000h,000h,000h ; addps	xmm7, xmmword ptr [esp + 0x90]
+ db 00Fh,058h,084h,024h,080h,000h,000h,000h ; addps	xmm0, xmmword ptr [esp + 0x80]
+ db 00Fh,058h,054h,024h,060h ; addps	xmm2, xmmword ptr [esp + 0x60]
+ db 00Fh,028h,0CFh ; movaps	xmm1, xmm7
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,058h,0D9h ; addps	xmm3, xmm1
+ db 00Fh,028h,0F2h ; movaps	xmm6, xmm2
+ db 00Fh,059h,0F2h ; mulps	xmm6, xmm2
+ db 00Fh,058h,0F3h ; addps	xmm6, xmm3
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,0C2h,0CEh,001h ; cmpltps	xmm1, xmm6
+ db 00Fh,052h,0E6h ; rsqrtps	xmm4, xmm6
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,05Ch,074h,024h,050h ; subps	xmm6, xmmword ptr [esp + 0x50]
+ db 00Fh,028h,0DAh ; movaps	xmm3, xmm2
+ db 00Fh,010h,090h,080h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x880]
+ db 00Fh,029h,054h,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm2
+ db 00Fh,059h,0F2h ; mulps	xmm6, xmm2
+ db 00Fh,028h,0D3h ; movaps	xmm2, xmm3
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,05Ch,0E6h ; subps	xmm4, xmm6
+ db 00Fh,059h,03Ch,024h ; mulps	xmm7, xmmword ptr [esp]
+ db 00Fh,028h,05Ch,024h,040h ; movaps	xmm3, xmmword ptr [esp + 0x40]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,058h,0C7h ; addps	xmm0, xmm7
+ db 00Fh,059h,094h,024h,0A0h,000h,000h,000h ; mulps	xmm2, xmmword ptr [esp + 0xa0]
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,059h,0D4h ; mulps	xmm2, xmm4
+ db 00Fh,054h,0CDh ; andps	xmm1, xmm5
+ db 00Fh,028h,0E9h ; movaps	xmm5, xmm1
+ db 00Fh,010h,080h,020h,023h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2320]
+ db 00Fh,0C2h,0C2h,001h ; cmpltps	xmm0, xmm2
+ db 00Fh,054h,0E8h ; andps	xmm5, xmm0
+ db 00Fh,050h,0F5h ; movmskps	esi, xmm5
+ db 085h,0F6h ; test	esi, esi
+ db 074h,04Bh ; je	0x6e0 <_tnk_spec+0x6e0>
+ db 00Fh,054h,0D5h ; andps	xmm2, xmm5
+ db 08Bh,0B0h,098h,014h,000h,000h ; mov	esi, dword ptr [eax + 0x1498]
+ db 083h,0FEh,003h ; cmp	esi, 0x3
+ db 00Fh,028h,024h,024h ; movaps	xmm4, xmmword ptr [esp]
+ db 074h,042h ; je	0x6e9 <_tnk_spec+0x6e9>
+ db 00Fh,028h,074h,024h,050h ; movaps	xmm6, xmmword ptr [esp + 0x50]
+ db 00Fh,028h,0C6h ; movaps	xmm0, xmm6
+ db 083h,0FEh,002h ; cmp	esi, 0x2
+ db 00Fh,084h,085h,0FEh,0FFh,0FFh ; je	0x53d <_tnk_spec+0x53d>
+ db 00Fh,05Dh,0D6h ; minps	xmm2, xmm6
+ db 083h,0FEh,001h ; cmp	esi, 0x1
+ db 00Fh,085h,0D3h,0FCh,0FFh,0FFh ; jne	0x397 <_tnk_spec+0x397>
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 0E9h,071h,0FEh,0FFh,0FFh ; jmp	0x53d <_tnk_spec+0x53d>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,028h,05Ch,024h,040h ; movaps	xmm3, xmmword ptr [esp + 0x40]
+ db 0E9h,0CCh,0FEh,0FFh,0FFh ; jmp	0x5a6 <_tnk_spec+0x5a6>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,028h,024h,024h ; movaps	xmm4, xmmword ptr [esp]
+ db 0E9h,0BDh,0FEh,0FFh,0FFh ; jmp	0x5a6 <_tnk_spec+0x5a6>
+ db 08Bh,088h,0D4h,022h,000h,000h ; mov	ecx, dword ptr [eax + 0x22d4]
+ db 00Fh,028h,074h,024h,050h ; movaps	xmm6, xmmword ptr [esp + 0x50]
+ db 00Fh,05Dh,0D6h ; minps	xmm2, xmm6
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 083h,0D1h,000h ; adc	ecx, 0x0
+ db 0F6h,0C1h,001h ; test	cl, 0x1
+ db 075h,01Ch ; jne	0x71e <_tnk_spec+0x71e>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0D2h ; mulps	xmm2, xmm2
+ db 089h,0CBh ; mov	ebx, ecx
+ db 0D1h,0EBh ; shr	ebx
+ db 0F6h,0C1h,002h ; test	cl, 0x2
+ db 089h,0D9h ; mov	ecx, ebx
+ db 074h,0F2h ; je	0x710 <_tnk_spec+0x710>
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 073h,01Ch ; jae	0x742 <_tnk_spec+0x742>
+ db 0E9h,012h,0FEh,0FFh,0FFh ; jmp	0x53d <_tnk_spec+0x53d>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 089h,0CBh ; mov	ebx, ecx
+ db 0D1h,0EBh ; shr	ebx
+ db 083h,0F9h,004h ; cmp	ecx, 0x4
+ db 089h,0D9h ; mov	ecx, ebx
+ db 00Fh,082h,0FBh,0FDh,0FFh,0FFh ; jb	0x53d <_tnk_spec+0x53d>
+ db 00Fh,059h,0D2h ; mulps	xmm2, xmm2
+ db 00Fh,028h,0CEh ; movaps	xmm1, xmm6
+ db 0F6h,0C1h,002h ; test	cl, 0x2
+ db 074h,0E3h ; je	0x730 <_tnk_spec+0x730>
+ db 00Fh,028h,0CAh ; movaps	xmm1, xmm2
+ db 0EBh,0DEh ; jmp	0x730 <_tnk_spec+0x730>
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,029h,044h,024h,020h ; movaps	xmmword ptr [esp + 0x20], xmm0
+ db 00Fh,029h,044h,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm0
+ db 0E9h,0DAh,0F8h,0FFh,0FFh ; jmp	0x43 <_tnk_spec+0x43>
+_tnk_spec endp
+public _tnk_cv
+_tnk_cv proc near
+ db 055h ; push	ebp
+ db 089h,0E5h ; mov	ebp, esp
+ db 053h ; push	ebx
+ db 057h ; push	edi
+ db 056h ; push	esi
+ db 083h,0E4h,0F0h ; and	esp, -0x10
+ db 081h,0ECh,0C0h,000h,000h,000h ; sub	esp, 0xc0
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 08Bh,090h,0B4h,014h,000h,000h ; mov	edx, dword ptr [eax + 0x14b4]
+ db 08Bh,088h,090h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x1490]
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,008h ; je	0x2a <_tnk_cv+0x2a>
+ db 08Bh,0B8h,0B0h,014h,000h,000h ; mov	edi, dword ptr [eax + 0x14b0]
+ db 0EBh,002h ; jmp	0x2c <_tnk_cv+0x2c>
+ db 031h,0FFh ; xor	edi, edi
+ db 00Fh,010h,090h,030h,01Fh,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x1f30]
+ db 0F3h,00Fh,010h,088h,0B8h,014h,000h,000h ; movss	xmm1, dword ptr [eax + 0x14b8]
+ db 00Fh,0C6h,0C9h,000h ; shufps	xmm1, xmm1, 0x0
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,057h,0F6h ; xorps	xmm6, xmm6
+ db 00Fh,057h,0EDh ; xorps	xmm5, xmm5
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 0F6h,0C2h,001h ; test	dl, 0x1
+ db 074h,03Fh ; je	0x92 <_tnk_cv+0x92>
+ db 00Fh,010h,098h,020h,008h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x820]
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 00Fh,054h,0E2h ; andps	xmm4, xmm2
+ db 00Fh,05Bh,0F4h ; cvtdq2ps	xmm6, xmm4
+ db 00Fh,059h,0F1h ; mulps	xmm6, xmm1
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 066h,00Fh,072h,0D4h,008h ; psrld	xmm4, 0x8
+ db 066h,00Fh,0DBh,0E2h ; pand	xmm4, xmm2
+ db 00Fh,05Bh,0ECh ; cvtdq2ps	xmm5, xmm4
+ db 00Fh,059h,0E9h ; mulps	xmm5, xmm1
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 066h,00Fh,072h,0D4h,010h ; psrld	xmm4, 0x10
+ db 066h,00Fh,0DBh,0E2h ; pand	xmm4, xmm2
+ db 00Fh,05Bh,0E4h ; cvtdq2ps	xmm4, xmm4
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 0F6h,0C2h,002h ; test	dl, 0x2
+ db 075h,01Fh ; jne	0xae <_tnk_cv+0xae>
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 0F6h,0C2h,004h ; test	dl, 0x4
+ db 075h,02Bh ; jne	0xc2 <_tnk_cv+0xc2>
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,029h,04Ch,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm1
+ db 00Fh,029h,04Ch,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm1
+ db 00Fh,029h,04Ch,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm1
+ db 0E9h,087h,000h,000h,000h ; jmp	0x135 <_tnk_cv+0x135>
+ db 066h,00Fh,072h,0D3h,018h ; psrld	xmm3, 0x18
+ db 066h,00Fh,0DBh,0DAh ; pand	xmm3, xmm2
+ db 00Fh,05Bh,0DBh ; cvtdq2ps	xmm3, xmm3
+ db 00Fh,059h,0D9h ; mulps	xmm3, xmm1
+ db 0F6h,0C2h,004h ; test	dl, 0x4
+ db 074h,0D5h ; je	0x97 <_tnk_cv+0x97>
+ db 00Fh,029h,09Ch,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm3
+ db 00Fh,028h,0FCh ; movaps	xmm7, xmm4
+ db 00Fh,010h,098h,030h,008h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x830]
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 00Fh,054h,0E2h ; andps	xmm4, xmm2
+ db 00Fh,05Bh,0E4h ; cvtdq2ps	xmm4, xmm4
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,029h,064h,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm4
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 066h,00Fh,072h,0D4h,008h ; psrld	xmm4, 0x8
+ db 066h,00Fh,0DBh,0E2h ; pand	xmm4, xmm2
+ db 00Fh,05Bh,0E4h ; cvtdq2ps	xmm4, xmm4
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,029h,064h,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm4
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 066h,00Fh,072h,0D4h,010h ; psrld	xmm4, 0x10
+ db 066h,00Fh,0DBh,0E2h ; pand	xmm4, xmm2
+ db 00Fh,05Bh,0E4h ; cvtdq2ps	xmm4, xmm4
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,029h,064h,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm4
+ db 0F6h,0C2h,008h ; test	dl, 0x8
+ db 074h,012h ; je	0x12a <_tnk_cv+0x12a>
+ db 066h,00Fh,072h,0D3h,018h ; psrld	xmm3, 0x18
+ db 066h,00Fh,0DBh,0DAh ; pand	xmm3, xmm2
+ db 00Fh,05Bh,0C3h ; cvtdq2ps	xmm0, xmm3
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 00Fh,028h,0E7h ; movaps	xmm4, xmm7
+ db 00Fh,028h,09Ch,024h,080h,000h,000h,000h ; movaps	xmm3, xmmword ptr [esp + 0x80]
+ db 085h,0C9h ; test	ecx, ecx
+ db 00Fh,095h,044h,024h,00Bh ; setne	byte ptr [esp + 0xb]
+ db 08Bh,0B0h,0DCh,022h,000h,000h ; mov	esi, dword ptr [eax + 0x22dc]
+ db 08Bh,088h,010h,023h,000h,000h ; mov	ecx, dword ptr [eax + 0x2310]
+ db 089h,0CAh ; mov	edx, ecx
+ db 083h,0E2h,002h ; and	edx, 0x2
+ db 009h,0F2h ; or	edx, esi
+ db 089h,054h,024h,02Ch ; mov	dword ptr [esp + 0x2c], edx
+ db 089h,0CBh ; mov	ebx, ecx
+ db 083h,0E3h,006h ; and	ebx, 0x6
+ db 009h,0F3h ; or	ebx, esi
+ db 089h,0C2h ; mov	edx, eax
+ db 089h,04Ch,024h,00Ch ; mov	dword ptr [esp + 0xc], ecx
+ db 089h,0C8h ; mov	eax, ecx
+ db 083h,0E0h,008h ; and	eax, 0x8
+ db 009h,0F0h ; or	eax, esi
+ db 00Fh,095h,0C1h ; setne	cl
+ db 00Fh,029h,0A4h,024h,090h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x90], xmm4
+ db 00Fh,029h,0ACh,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm5
+ db 00Fh,029h,074h,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm6
+ db 08Bh,082h,0A4h,014h,000h,000h ; mov	eax, dword ptr [edx + 0x14a4]
+ db 083h,0F8h,001h ; cmp	eax, 0x1
+ db 074h,036h ; je	0x1c0 <_tnk_cv+0x1c0>
+ db 00Fh,028h,0D8h ; movaps	xmm3, xmm0
+ db 00Fh,028h,064h,024h,050h ; movaps	xmm4, xmmword ptr [esp + 0x50]
+ db 00Fh,028h,06Ch,024h,060h ; movaps	xmm5, xmmword ptr [esp + 0x60]
+ db 00Fh,028h,074h,024h,070h ; movaps	xmm6, xmmword ptr [esp + 0x70]
+ db 083h,0F8h,002h ; cmp	eax, 0x2
+ db 074h,01Fh ; je	0x1c0 <_tnk_cv+0x1c0>
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 00Fh,010h,0B0h,000h,01Eh,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x1e00]
+ db 00Fh,010h,0A8h,010h,01Eh,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1e10]
+ db 00Fh,010h,0A0h,020h,01Eh,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1e20]
+ db 00Fh,010h,098h,030h,01Eh,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1e30]
+ db 00Fh,029h,09Ch,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm3
+ db 020h,04Ch,024h,00Bh ; and	byte ptr [esp + 0xb], cl
+ db 08Bh,044h,024h,02Ch ; mov	eax, dword ptr [esp + 0x2c]
+ db 009h,0D8h ; or	eax, ebx
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 00Fh,084h,0B2h,000h,000h,000h ; je	0x28d <_tnk_cv+0x28d>
+ db 08Bh,088h,0A8h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x14a8]
+ db 00Fh,028h,094h,024h,090h,000h,000h,000h ; movaps	xmm2, xmmword ptr [esp + 0x90]
+ db 00Fh,029h,054h,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm2
+ db 00Fh,028h,0BCh,024h,0A0h,000h,000h,000h ; movaps	xmm7, xmmword ptr [esp + 0xa0]
+ db 00Fh,029h,07Ch,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm7
+ db 00Fh,028h,04Ch,024h,010h ; movaps	xmm1, xmmword ptr [esp + 0x10]
+ db 00Fh,028h,0C1h ; movaps	xmm0, xmm1
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 074h,03Dh ; je	0x245 <_tnk_cv+0x245>
+ db 00Fh,028h,044h,024h,050h ; movaps	xmm0, xmmword ptr [esp + 0x50]
+ db 00Fh,029h,044h,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm0
+ db 00Fh,028h,044h,024h,060h ; movaps	xmm0, xmmword ptr [esp + 0x60]
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,028h,044h,024h,070h ; movaps	xmm0, xmmword ptr [esp + 0x70]
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 074h,01Fh ; je	0x245 <_tnk_cv+0x245>
+ db 00Fh,010h,080h,040h,01Eh,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x1e40]
+ db 00Fh,010h,098h,050h,01Eh,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1e50]
+ db 00Fh,029h,05Ch,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm3
+ db 00Fh,010h,098h,060h,01Eh,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1e60]
+ db 00Fh,029h,05Ch,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm3
+ db 085h,0DBh ; test	ebx, ebx
+ db 074h,032h ; je	0x27b <_tnk_cv+0x27b>
+ db 08Bh,080h,0ACh,014h,000h,000h ; mov	eax, dword ptr [eax + 0x14ac]
+ db 083h,0F8h,001h ; cmp	eax, 0x1
+ db 074h,033h ; je	0x287 <_tnk_cv+0x287>
+ db 083h,0F8h,002h ; cmp	eax, 0x2
+ db 00Fh,085h,091h,000h,000h,000h ; jne	0x2ee <_tnk_cv+0x2ee>
+ db 00Fh,028h,054h,024h,050h ; movaps	xmm2, xmmword ptr [esp + 0x50]
+ db 00Fh,028h,07Ch,024h,060h ; movaps	xmm7, xmmword ptr [esp + 0x60]
+ db 00Fh,028h,05Ch,024h,070h ; movaps	xmm3, xmmword ptr [esp + 0x70]
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 080h,07Ch,024h,00Bh,000h ; cmp	byte ptr [esp + 0xb], 0x0
+ db 075h,01Eh ; jne	0x294 <_tnk_cv+0x294>
+ db 0E9h,092h,000h,000h,000h ; jmp	0x30d <_tnk_cv+0x30d>
+ db 080h,07Ch,024h,00Bh,000h ; cmp	byte ptr [esp + 0xb], 0x0
+ db 075h,012h ; jne	0x294 <_tnk_cv+0x294>
+ db 0E9h,086h,000h,000h,000h ; jmp	0x30d <_tnk_cv+0x30d>
+ db 00Fh,028h,0D9h ; movaps	xmm3, xmm1
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 080h,07Ch,024h,00Bh,000h ; cmp	byte ptr [esp + 0xb], 0x0
+ db 074h,079h ; je	0x30d <_tnk_cv+0x30d>
+ db 083h,0FFh,001h ; cmp	edi, 0x1
+ db 074h,074h ; je	0x30d <_tnk_cv+0x30d>
+ db 00Fh,028h,04Ch,024h,050h ; movaps	xmm1, xmmword ptr [esp + 0x50]
+ db 00Fh,029h,08Ch,024h,090h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x90], xmm1
+ db 00Fh,028h,04Ch,024h,060h ; movaps	xmm1, xmmword ptr [esp + 0x60]
+ db 00Fh,029h,08Ch,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm1
+ db 00Fh,028h,04Ch,024h,070h ; movaps	xmm1, xmmword ptr [esp + 0x70]
+ db 00Fh,029h,04Ch,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm1
+ db 083h,0FFh,002h ; cmp	edi, 0x2
+ db 074h,04Bh ; je	0x30d <_tnk_cv+0x30d>
+ db 00Fh,010h,088h,0C0h,01Eh,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1ec0]
+ db 00Fh,029h,04Ch,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm1
+ db 00Fh,010h,088h,0D0h,01Eh,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1ed0]
+ db 00Fh,029h,08Ch,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm1
+ db 00Fh,010h,088h,0E0h,01Eh,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1ee0]
+ db 00Fh,029h,08Ch,024h,090h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x90], xmm1
+ db 0EBh,01Fh ; jmp	0x30d <_tnk_cv+0x30d>
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 00Fh,010h,098h,080h,01Eh,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1e80]
+ db 00Fh,010h,0B8h,090h,01Eh,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x1e90]
+ db 00Fh,010h,090h,0A0h,01Eh,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x1ea0]
+ db 080h,07Ch,024h,00Bh,000h ; cmp	byte ptr [esp + 0xb], 0x0
+ db 075h,087h ; jne	0x294 <_tnk_cv+0x294>
+ db 08Bh,07Dh,00Ch ; mov	edi, dword ptr [ebp + 0xc]
+ db 085h,0DBh ; test	ebx, ebx
+ db 00Fh,084h,016h,001h,000h,000h ; je	0x42e <_tnk_cv+0x42e>
+ db 00Fh,010h,088h,000h,01Fh,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1f00]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,058h,0D9h ; addps	xmm3, xmm1
+ db 08Bh,088h,0A0h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x14a0]
+ db 085h,0C9h ; test	ecx, ecx
+ db 00Fh,0B6h,05Ch,024h,00Bh ; movzx	ebx, byte ptr [esp + 0xb]
+ db 089h,0F2h ; mov	edx, esi
+ db 074h,03Ch ; je	0x372 <_tnk_cv+0x372>
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 00Fh,085h,01Bh,003h,000h,000h ; jne	0x65a <_tnk_cv+0x65a>
+ db 031h,0F6h ; xor	esi, esi
+ db 0F6h,0C1h,001h ; test	cl, 0x1
+ db 00Fh,0B6h,05Ch,024h,00Bh ; movzx	ebx, byte ptr [esp + 0xb]
+ db 08Bh,07Dh,00Ch ; mov	edi, dword ptr [ebp + 0xc]
+ db 074h,024h ; je	0x372 <_tnk_cv+0x372>
+ db 083h,0BCh,0B0h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c0], 0x0
+ db 074h,01Ah ; je	0x372 <_tnk_cv+0x372>
+ db 08Dh,004h,0F6h ; lea	eax, [esi + 8*esi]
+ db 0C1h,0E0h,004h ; shl	eax, 0x4
+ db 08Bh,04Dh,008h ; mov	ecx, dword ptr [ebp + 0x8]
+ db 00Fh,010h,08Ch,001h,030h,015h,000h,000h ; movups	xmm1, xmmword ptr [ecx + eax + 0x1530]
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,058h,0D9h ; addps	xmm3, xmm1
+ db 00Fh,011h,01Fh ; movups	xmmword ptr [edi], xmm3
+ db 00Fh,010h,088h,010h,01Fh,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1f10]
+ db 00Fh,059h,04Ch,024h,030h ; mulps	xmm1, xmmword ptr [esp + 0x30]
+ db 00Fh,058h,0F9h ; addps	xmm7, xmm1
+ db 08Bh,088h,0A0h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x14a0]
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,03Eh ; je	0x3cc <_tnk_cv+0x3cc>
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 00Fh,085h,016h,003h,000h,000h ; jne	0x6ad <_tnk_cv+0x6ad>
+ db 031h,0F6h ; xor	esi, esi
+ db 0F6h,0C1h,001h ; test	cl, 0x1
+ db 00Fh,0B6h,05Ch,024h,00Bh ; movzx	ebx, byte ptr [esp + 0xb]
+ db 08Bh,07Dh,00Ch ; mov	edi, dword ptr [ebp + 0xc]
+ db 074h,026h ; je	0x3cc <_tnk_cv+0x3cc>
+ db 083h,0BCh,0B0h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c0], 0x0
+ db 074h,01Ch ; je	0x3cc <_tnk_cv+0x3cc>
+ db 08Dh,004h,0F6h ; lea	eax, [esi + 8*esi]
+ db 0C1h,0E0h,004h ; shl	eax, 0x4
+ db 08Bh,04Dh,008h ; mov	ecx, dword ptr [ebp + 0x8]
+ db 00Fh,010h,08Ch,001h,040h,015h,000h,000h ; movups	xmm1, xmmword ptr [ecx + eax + 0x1540]
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 00Fh,059h,04Ch,024h,030h ; mulps	xmm1, xmmword ptr [esp + 0x30]
+ db 00Fh,058h,0F9h ; addps	xmm7, xmm1
+ db 00Fh,011h,07Fh,010h ; movups	xmmword ptr [edi + 0x10], xmm7
+ db 00Fh,010h,088h,020h,01Fh,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1f20]
+ db 00Fh,059h,04Ch,024h,040h ; mulps	xmm1, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 08Bh,088h,0A0h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x14a0]
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,054h ; je	0x43d <_tnk_cv+0x43d>
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 00Fh,028h,07Ch,024h,010h ; movaps	xmm7, xmmword ptr [esp + 0x10]
+ db 00Fh,085h,00Ah,003h,000h,000h ; jne	0x701 <_tnk_cv+0x701>
+ db 031h,0F6h ; xor	esi, esi
+ db 0F6h,0C1h,001h ; test	cl, 0x1
+ db 00Fh,0B6h,05Ch,024h,00Bh ; movzx	ebx, byte ptr [esp + 0xb]
+ db 08Bh,07Dh,00Ch ; mov	edi, dword ptr [ebp + 0xc]
+ db 074h,03Ch ; je	0x442 <_tnk_cv+0x442>
+ db 083h,0BCh,0B0h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c0], 0x0
+ db 074h,032h ; je	0x442 <_tnk_cv+0x442>
+ db 08Dh,004h,0F6h ; lea	eax, [esi + 8*esi]
+ db 0C1h,0E0h,004h ; shl	eax, 0x4
+ db 08Bh,04Dh,008h ; mov	ecx, dword ptr [ebp + 0x8]
+ db 00Fh,010h,08Ch,001h,050h,015h,000h,000h ; movups	xmm1, xmmword ptr [ecx + eax + 0x1550]
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 00Fh,059h,04Ch,024h,040h ; mulps	xmm1, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 0EBh,014h ; jmp	0x442 <_tnk_cv+0x442>
+ db 00Fh,010h,01Fh ; movups	xmm3, xmmword ptr [edi]
+ db 00Fh,028h,07Ch,024h,010h ; movaps	xmm7, xmmword ptr [esp + 0x10]
+ db 00Fh,0B6h,05Ch,024h,00Bh ; movzx	ebx, byte ptr [esp + 0xb]
+ db 0EBh,00Bh ; jmp	0x448 <_tnk_cv+0x448>
+ db 00Fh,028h,07Ch,024h,010h ; movaps	xmm7, xmmword ptr [esp + 0x10]
+ db 00Fh,011h,057h,020h ; movups	xmmword ptr [edi + 0x20], xmm2
+ db 089h,0D6h ; mov	esi, edx
+ db 00Fh,011h,098h,010h,007h,000h,000h ; movups	xmmword ptr [eax + 0x710], xmm3
+ db 00Fh,010h,04Fh,010h ; movups	xmm1, xmmword ptr [edi + 0x10]
+ db 00Fh,011h,088h,020h,007h,000h,000h ; movups	xmmword ptr [eax + 0x720], xmm1
+ db 00Fh,010h,04Fh,020h ; movups	xmm1, xmmword ptr [edi + 0x20]
+ db 00Fh,011h,088h,030h,007h,000h,000h ; movups	xmmword ptr [eax + 0x730], xmm1
+ db 083h,0B8h,0A0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 0x14a0], 0x0
+ db 00Fh,028h,094h,024h,0A0h,000h,000h,000h ; movaps	xmm2, xmmword ptr [esp + 0xa0]
+ db 00Fh,028h,09Ch,024h,090h,000h,000h,000h ; movaps	xmm3, xmmword ptr [esp + 0x90]
+ db 00Fh,084h,0B0h,001h,000h,000h ; je	0x632 <_tnk_cv+0x632>
+ db 08Bh,04Ch,024h,00Ch ; mov	ecx, dword ptr [esp + 0xc]
+ db 083h,0E1h,001h ; and	ecx, 0x1
+ db 009h,0F1h ; or	ecx, esi
+ db 089h,04Ch,024h,00Ch ; mov	dword ptr [esp + 0xc], ecx
+ db 08Dh,0B8h,080h,015h,000h,000h ; lea	edi, [eax + 0x1580]
+ db 031h,0D2h ; xor	edx, edx
+ db 031h,0F6h ; xor	esi, esi
+ db 031h,0C9h ; xor	ecx, ecx
+ db 0EBh,017h ; jmp	0x4b4 <_tnk_cv+0x4b4>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 046h ; inc	esi
+ db 041h ; inc	ecx
+ db 081h,0C7h,090h,000h,000h,000h ; add	edi, 0x90
+ db 03Bh,088h,0A0h,014h,000h,000h ; cmp	ecx, dword ptr [eax + 0x14a0]
+ db 00Fh,083h,07Eh,001h,000h,000h ; jae	0x632 <_tnk_cv+0x632>
+ db 083h,0BCh,088h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*ecx + 0x14c0], 0x0
+ db 089h,054h,024h,010h ; mov	dword ptr [esp + 0x10], edx
+ db 00Fh,084h,08Ah,000h,000h,000h ; je	0x550 <_tnk_cv+0x550>
+ db 084h,0DBh ; test	bl, bl
+ db 074h,036h ; je	0x500 <_tnk_cv+0x500>
+ db 08Dh,014h,076h ; lea	edx, [esi + 2*esi]
+ db 0C1h,0E2h,004h ; shl	edx, 0x4
+ db 00Fh,010h,04Fh,0E0h ; movups	xmm1, xmmword ptr [edi - 0x20]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,011h,08Ch,010h,020h,011h,000h,000h ; movups	xmmword ptr [eax + edx + 0x1120], xmm1
+ db 00Fh,010h,04Fh,0F0h ; movups	xmm1, xmmword ptr [edi - 0x10]
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,011h,08Ch,010h,030h,011h,000h,000h ; movups	xmmword ptr [eax + edx + 0x1130], xmm1
+ db 00Fh,010h,00Fh ; movups	xmm1, xmmword ptr [edi]
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 00Fh,011h,08Ch,010h,040h,011h,000h,000h ; movups	xmmword ptr [eax + edx + 0x1140], xmm1
+ db 08Bh,054h,024h,010h ; mov	edx, dword ptr [esp + 0x10]
+ db 083h,07Ch,024h,00Ch,000h ; cmp	dword ptr [esp + 0xc], 0x0
+ db 074h,099h ; je	0x4a0 <_tnk_cv+0x4a0>
+ db 089h,0F2h ; mov	edx, esi
+ db 0C1h,0E2h,006h ; shl	edx, 0x6
+ db 00Fh,010h,04Fh,080h ; movups	xmm1, xmmword ptr [edi - 0x80]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,011h,08Ch,010h,010h,005h,000h,000h ; movups	xmmword ptr [eax + edx + 0x510], xmm1
+ db 00Fh,010h,04Fh,090h ; movups	xmm1, xmmword ptr [edi - 0x70]
+ db 00Fh,059h,0CDh ; mulps	xmm1, xmm5
+ db 00Fh,011h,08Ch,010h,020h,005h,000h,000h ; movups	xmmword ptr [eax + edx + 0x520], xmm1
+ db 00Fh,010h,04Fh,0A0h ; movups	xmm1, xmmword ptr [edi - 0x60]
+ db 00Fh,059h,0CCh ; mulps	xmm1, xmm4
+ db 00Fh,011h,08Ch,010h,030h,005h,000h,000h ; movups	xmmword ptr [eax + edx + 0x530], xmm1
+ db 08Bh,054h,024h,010h ; mov	edx, dword ptr [esp + 0x10]
+ db 0E9h,05Eh,0FFh,0FFh,0FFh ; jmp	0x4a0 <_tnk_cv+0x4a0>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 083h,07Ch,024h,02Ch,000h ; cmp	dword ptr [esp + 0x2c], 0x0
+ db 074h,050h ; je	0x5a7 <_tnk_cv+0x5a7>
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 08Bh,080h,0D8h,022h,000h,000h ; mov	eax, dword ptr [eax + 0x22d8]
+ db 00Fh,0A3h,0D0h ; bt	eax, edx
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 073h,03Fh ; jae	0x5a7 <_tnk_cv+0x5a7>
+ db 08Bh,054h,024h,010h ; mov	edx, dword ptr [esp + 0x10]
+ db 08Dh,014h,052h ; lea	edx, [edx + 2*edx]
+ db 0C1h,0E2h,004h ; shl	edx, 0x4
+ db 00Fh,010h,04Fh,0B0h ; movups	xmm1, xmmword ptr [edi - 0x50]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,011h,08Ch,010h,0A0h,00Fh,000h,000h ; movups	xmmword ptr [eax + edx + 0xfa0], xmm1
+ db 00Fh,010h,04Fh,0C0h ; movups	xmm1, xmmword ptr [edi - 0x40]
+ db 00Fh,059h,04Ch,024h,030h ; mulps	xmm1, xmmword ptr [esp + 0x30]
+ db 00Fh,011h,08Ch,010h,0B0h,00Fh,000h,000h ; movups	xmmword ptr [eax + edx + 0xfb0], xmm1
+ db 00Fh,010h,04Fh,0D0h ; movups	xmm1, xmmword ptr [edi - 0x30]
+ db 00Fh,059h,04Ch,024h,040h ; mulps	xmm1, xmmword ptr [esp + 0x40]
+ db 00Fh,011h,08Ch,010h,0C0h,00Fh,000h,000h ; movups	xmmword ptr [eax + edx + 0xfc0], xmm1
+ db 08Bh,054h,024h,010h ; mov	edx, dword ptr [esp + 0x10]
+ db 08Dh,004h,052h ; lea	eax, [edx + 2*edx]
+ db 084h,0DBh ; test	bl, bl
+ db 074h,03Dh ; je	0x5eb <_tnk_cv+0x5eb>
+ db 089h,0C2h ; mov	edx, eax
+ db 0C1h,0E2h,004h ; shl	edx, 0x4
+ db 00Fh,010h,04Fh,0E0h ; movups	xmm1, xmmword ptr [edi - 0x20]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 08Bh,05Dh,008h ; mov	ebx, dword ptr [ebp + 0x8]
+ db 00Fh,011h,08Ch,01Ah,0A0h,012h,000h,000h ; movups	xmmword ptr [edx + ebx + 0x12a0], xmm1
+ db 00Fh,010h,04Fh,0F0h ; movups	xmm1, xmmword ptr [edi - 0x10]
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,011h,08Ch,01Ah,0B0h,012h,000h,000h ; movups	xmmword ptr [edx + ebx + 0x12b0], xmm1
+ db 00Fh,010h,00Fh ; movups	xmm1, xmmword ptr [edi]
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 00Fh,011h,08Ch,01Ah,0C0h,012h,000h,000h ; movups	xmmword ptr [edx + ebx + 0x12c0], xmm1
+ db 08Bh,054h,024h,010h ; mov	edx, dword ptr [esp + 0x10]
+ db 00Fh,0B6h,05Ch,024h,00Bh ; movzx	ebx, byte ptr [esp + 0xb]
+ db 083h,07Ch,024h,00Ch,000h ; cmp	dword ptr [esp + 0xc], 0x0
+ db 074h,037h ; je	0x629 <_tnk_cv+0x629>
+ db 0C1h,0E0h,004h ; shl	eax, 0x4
+ db 00Fh,010h,04Fh,080h ; movups	xmm1, xmmword ptr [edi - 0x80]
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 08Bh,055h,008h ; mov	edx, dword ptr [ebp + 0x8]
+ db 00Fh,011h,08Ch,002h,020h,00Eh,000h,000h ; movups	xmmword ptr [edx + eax + 0xe20], xmm1
+ db 00Fh,010h,04Fh,090h ; movups	xmm1, xmmword ptr [edi - 0x70]
+ db 00Fh,059h,0CDh ; mulps	xmm1, xmm5
+ db 00Fh,011h,08Ch,002h,030h,00Eh,000h,000h ; movups	xmmword ptr [edx + eax + 0xe30], xmm1
+ db 00Fh,010h,04Fh,0A0h ; movups	xmm1, xmmword ptr [edi - 0x60]
+ db 00Fh,059h,0CCh ; mulps	xmm1, xmm4
+ db 00Fh,011h,08Ch,002h,040h,00Eh,000h,000h ; movups	xmmword ptr [edx + eax + 0xe40], xmm1
+ db 08Bh,054h,024h,010h ; mov	edx, dword ptr [esp + 0x10]
+ db 042h ; inc	edx
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 0E9h,06Fh,0FEh,0FFh,0FFh ; jmp	0x4a1 <_tnk_cv+0x4a1>
+ db 00Fh,028h,084h,024h,080h,000h,000h,000h ; movaps	xmm0, xmmword ptr [esp + 0x80]
+ db 00Fh,011h,080h,040h,007h,000h,000h ; movups	xmmword ptr [eax + 0x740], xmm0
+ db 08Bh,04Dh,00Ch ; mov	ecx, dword ptr [ebp + 0xc]
+ db 00Fh,011h,041h,030h ; movups	xmmword ptr [ecx + 0x30], xmm0
+ db 0C7h,080h,0DCh,022h,000h,000h,000h,000h,000h,000h ; mov	dword ptr [eax + 0x22dc], 0x0
+ db 08Dh,065h,0F4h ; lea	esp, [ebp - 0xc]
+ db 05Eh ; pop	esi
+ db 05Fh ; pop	edi
+ db 05Bh ; pop	ebx
+ db 05Dh ; pop	ebp
+ db 0C3h ; ret
+ db 089h,0CBh ; mov	ebx, ecx
+ db 083h,0E3h,0FEh ; and	ebx, -0x2
+ db 08Dh,0B8h,030h,015h,000h,000h ; lea	edi, [eax + 0x1530]
+ db 031h,0F6h ; xor	esi, esi
+ db 0EBh,018h ; jmp	0x681 <_tnk_cv+0x681>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 083h,0C6h,002h ; add	esi, 0x2
+ db 081h,0C7h,020h,001h,000h,000h ; add	edi, 0x120
+ db 039h,0F3h ; cmp	ebx, esi
+ db 00Fh,084h,0C0h,0FCh,0FFh,0FFh ; je	0x341 <_tnk_cv+0x341>
+ db 083h,0BCh,0B0h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c0], 0x0
+ db 074h,009h ; je	0x694 <_tnk_cv+0x694>
+ db 00Fh,010h,00Fh ; movups	xmm1, xmmword ptr [edi]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,058h,0D9h ; addps	xmm3, xmm1
+ db 083h,0BCh,0B0h,0C4h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c4], 0x0
+ db 074h,0D2h ; je	0x670 <_tnk_cv+0x670>
+ db 00Fh,010h,08Fh,090h,000h,000h,000h ; movups	xmm1, xmmword ptr [edi + 0x90]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,058h,0D9h ; addps	xmm3, xmm1
+ db 0EBh,0C3h ; jmp	0x670 <_tnk_cv+0x670>
+ db 089h,0CBh ; mov	ebx, ecx
+ db 083h,0E3h,0FEh ; and	ebx, -0x2
+ db 08Dh,0B8h,040h,015h,000h,000h ; lea	edi, [eax + 0x1540]
+ db 031h,0F6h ; xor	esi, esi
+ db 0EBh,015h ; jmp	0x6d1 <_tnk_cv+0x6d1>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 083h,0C6h,002h ; add	esi, 0x2
+ db 081h,0C7h,020h,001h,000h,000h ; add	edi, 0x120
+ db 039h,0F3h ; cmp	ebx, esi
+ db 00Fh,084h,0C8h,0FCh,0FFh,0FFh ; je	0x399 <_tnk_cv+0x399>
+ db 083h,0BCh,0B0h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c0], 0x0
+ db 074h,00Bh ; je	0x6e6 <_tnk_cv+0x6e6>
+ db 00Fh,010h,00Fh ; movups	xmm1, xmmword ptr [edi]
+ db 00Fh,059h,04Ch,024h,030h ; mulps	xmm1, xmmword ptr [esp + 0x30]
+ db 00Fh,058h,0F9h ; addps	xmm7, xmm1
+ db 083h,0BCh,0B0h,0C4h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c4], 0x0
+ db 074h,0D0h ; je	0x6c0 <_tnk_cv+0x6c0>
+ db 00Fh,010h,08Fh,090h,000h,000h,000h ; movups	xmm1, xmmword ptr [edi + 0x90]
+ db 00Fh,059h,04Ch,024h,030h ; mulps	xmm1, xmmword ptr [esp + 0x30]
+ db 00Fh,058h,0F9h ; addps	xmm7, xmm1
+ db 0EBh,0BFh ; jmp	0x6c0 <_tnk_cv+0x6c0>
+ db 089h,0CBh ; mov	ebx, ecx
+ db 083h,0E3h,0FEh ; and	ebx, -0x2
+ db 08Dh,0B8h,050h,015h,000h,000h ; lea	edi, [eax + 0x1550]
+ db 031h,0F6h ; xor	esi, esi
+ db 0EBh,011h ; jmp	0x721 <_tnk_cv+0x721>
+ db 083h,0C6h,002h ; add	esi, 0x2
+ db 081h,0C7h,020h,001h,000h,000h ; add	edi, 0x120
+ db 039h,0F3h ; cmp	ebx, esi
+ db 00Fh,084h,0D8h,0FCh,0FFh,0FFh ; je	0x3f9 <_tnk_cv+0x3f9>
+ db 083h,0BCh,0B0h,0C0h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c0], 0x0
+ db 074h,00Bh ; je	0x736 <_tnk_cv+0x736>
+ db 00Fh,010h,00Fh ; movups	xmm1, xmmword ptr [edi]
+ db 00Fh,059h,04Ch,024h,040h ; mulps	xmm1, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 083h,0BCh,0B0h,0C4h,014h,000h,000h,000h ; cmp	dword ptr [eax + 4*esi + 0x14c4], 0x0
+ db 074h,0D0h ; je	0x710 <_tnk_cv+0x710>
+ db 00Fh,010h,08Fh,090h,000h,000h,000h ; movups	xmm1, xmmword ptr [edi + 0x90]
+ db 00Fh,059h,04Ch,024h,040h ; mulps	xmm1, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 0EBh,0BFh ; jmp	0x710 <_tnk_cv+0x710>
+_tnk_cv endp
+public _tnk_splight
+_tnk_splight proc near
+ db 055h ; push	ebp
+ db 089h,0E5h ; mov	ebp, esp
+ db 053h ; push	ebx
+ db 057h ; push	edi
+ db 056h ; push	esi
+ db 083h,0E4h,0F0h ; and	esp, -0x10
+ db 081h,0ECh,0B0h,001h,000h,000h ; sub	esp, 0x1b0
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 083h,0B8h,090h,014h,000h,000h,000h ; cmp	dword ptr [eax + 0x1490], 0x0
+ db 00Fh,095h,0C1h ; setne	cl
+ db 08Bh,0B0h,0A4h,007h,000h,000h ; mov	esi, dword ptr [eax + 0x7a4]
+ db 085h,0F6h ; test	esi, esi
+ db 00Fh,095h,0C2h ; setne	dl
+ db 020h,0CAh ; and	dl, cl
+ db 088h,054h,024h,00Fh ; mov	byte ptr [esp + 0xf], dl
+ db 00Fh,010h,0B0h,060h,001h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x160]
+ db 00Fh,010h,080h,080h,001h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x180]
+ db 00Fh,010h,088h,070h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x870]
+ db 00Fh,029h,04Ch,024h,010h ; movaps	xmmword ptr [esp + 0x10], xmm1
+ db 00Fh,010h,0A0h,0C0h,007h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x7c0]
+ db 00Fh,010h,090h,0D0h,007h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x7d0]
+ db 00Fh,010h,098h,0E0h,007h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x7e0]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,010h,088h,0C0h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1c0]
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,010h,080h,000h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x200]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,029h,044h,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm0
+ db 00Fh,010h,088h,090h,001h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x190]
+ db 00Fh,059h,0CCh ; mulps	xmm1, xmm4
+ db 00Fh,010h,0A8h,0D0h,001h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1d0]
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,058h,0E9h ; addps	xmm5, xmm1
+ db 00Fh,010h,088h,010h,002h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x210]
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 00Fh,058h,0CDh ; addps	xmm1, xmm5
+ db 00Fh,010h,0A8h,0A0h,001h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1a0]
+ db 00Fh,059h,0ECh ; mulps	xmm5, xmm4
+ db 00Fh,010h,0A0h,0E0h,001h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1e0]
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,010h,0B8h,040h,002h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x240]
+ db 00Fh,058h,0E5h ; addps	xmm4, xmm5
+ db 00Fh,028h,0EEh ; movaps	xmm5, xmm6
+ db 00Fh,010h,090h,020h,002h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x220]
+ db 00Fh,059h,0D3h ; mulps	xmm2, xmm3
+ db 00Fh,010h,080h,050h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x250]
+ db 00Fh,029h,084h,024h,000h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x100], xmm0
+ db 00Fh,058h,0D4h ; addps	xmm2, xmm4
+ db 00Fh,028h,0DFh ; movaps	xmm3, xmm7
+ db 00Fh,010h,080h,060h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x260]
+ db 00Fh,029h,084h,024h,0F0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xf0], xmm0
+ db 00Fh,028h,0C6h ; movaps	xmm0, xmm6
+ db 00Fh,029h,0B4h,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm6
+ db 089h,0B4h,024h,09Ch,000h,000h,000h ; mov	dword ptr [esp + 0x9c], esi
+ db 085h,0F6h ; test	esi, esi
+ db 00Fh,029h,074h,024h,020h ; movaps	xmmword ptr [esp + 0x20], xmm6
+ db 00Fh,084h,00Bh,001h,000h,000h ; je	0x21b <_tnk_splight+0x21b>
+ db 00Fh,029h,09Ch,024h,0D0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xd0], xmm3
+ db 00Fh,010h,0A8h,0F0h,007h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x7f0]
+ db 00Fh,010h,0A0h,000h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x800]
+ db 00Fh,010h,098h,010h,008h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x810]
+ db 00Fh,010h,0B8h,080h,002h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x280]
+ db 00Fh,010h,0B0h,090h,002h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x290]
+ db 00Fh,059h,0FDh ; mulps	xmm7, xmm5
+ db 00Fh,010h,080h,0B0h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2b0]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,058h,0C7h ; addps	xmm0, xmm7
+ db 00Fh,010h,0B8h,0E0h,002h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x2e0]
+ db 00Fh,059h,0FBh ; mulps	xmm7, xmm3
+ db 00Fh,058h,0F8h ; addps	xmm7, xmm0
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,010h,080h,0C0h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2c0]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,058h,0C6h ; addps	xmm0, xmm6
+ db 00Fh,010h,0B0h,0F0h,002h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x2f0]
+ db 00Fh,059h,0F3h ; mulps	xmm6, xmm3
+ db 00Fh,058h,0F0h ; addps	xmm6, xmm0
+ db 00Fh,010h,080h,0A0h,002h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2a0]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,010h,0A8h,0D0h,002h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x2d0]
+ db 00Fh,059h,0ECh ; mulps	xmm5, xmm4
+ db 00Fh,058h,0E8h ; addps	xmm5, xmm0
+ db 00Fh,010h,080h,000h,003h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x300]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,058h,0C5h ; addps	xmm0, xmm5
+ db 083h,0B8h,0A0h,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7a0], 0x0
+ db 074h,069h ; je	0x20b <_tnk_splight+0x20b>
+ db 00Fh,028h,0E8h ; movaps	xmm5, xmm0
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 00Fh,059h,0C7h ; mulps	xmm0, xmm7
+ db 00Fh,028h,0DEh ; movaps	xmm3, xmm6
+ db 00Fh,059h,0DEh ; mulps	xmm3, xmm6
+ db 00Fh,058h,0D8h ; addps	xmm3, xmm0
+ db 00Fh,028h,0C5h ; movaps	xmm0, xmm5
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,058h,0C3h ; addps	xmm0, xmm3
+ db 00Fh,051h,0C0h ; sqrtps	xmm0, xmm0
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,0C2h,0D8h,001h ; cmpltps	xmm3, xmm0
+ db 00Fh,028h,064h,024h,010h ; movaps	xmm4, xmmword ptr [esp + 0x10]
+ db 00Fh,05Eh,0E0h ; divps	xmm4, xmm0
+ db 00Fh,054h,0E3h ; andps	xmm4, xmm3
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,055h,0C7h ; andnps	xmm0, xmm7
+ db 00Fh,059h,0FCh ; mulps	xmm7, xmm4
+ db 00Fh,054h,0FBh ; andps	xmm7, xmm3
+ db 00Fh,056h,0F8h ; orps	xmm7, xmm0
+ db 00Fh,029h,0BCh,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm7
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,055h,0C6h ; andnps	xmm0, xmm6
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,054h,0F3h ; andps	xmm6, xmm3
+ db 00Fh,056h,0F0h ; orps	xmm6, xmm0
+ db 00Fh,059h,0E5h ; mulps	xmm4, xmm5
+ db 00Fh,054h,0E3h ; andps	xmm4, xmm3
+ db 00Fh,055h,0DDh ; andnps	xmm3, xmm5
+ db 00Fh,056h,0DCh ; orps	xmm3, xmm4
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 0EBh,008h ; jmp	0x213 <_tnk_splight+0x213>
+ db 00Fh,029h,0BCh,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm7
+ db 00Fh,028h,09Ch,024h,0D0h,000h,000h,000h ; movaps	xmm3, xmmword ptr [esp + 0xd0]
+ db 00Fh,029h,084h,024h,010h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x110], xmm0
+ db 00Fh,058h,05Ch,024h,030h ; addps	xmm3, xmmword ptr [esp + 0x30]
+ db 00Fh,028h,084h,024h,000h,001h,000h,000h ; movaps	xmm0, xmmword ptr [esp + 0x100]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,029h,084h,024h,000h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x100], xmm0
+ db 00Fh,028h,084h,024h,0F0h,000h,000h,000h ; movaps	xmm0, xmmword ptr [esp + 0xf0]
+ db 00Fh,058h,0C2h ; addps	xmm0, xmm2
+ db 00Fh,029h,084h,024h,0F0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xf0], xmm0
+ db 080h,07Ch,024h,00Fh,000h ; cmp	byte ptr [esp + 0xf], 0x0
+ db 00Fh,029h,09Ch,024h,0D0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xd0], xmm3
+ db 00Fh,029h,0B4h,024h,020h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x120], xmm6
+ db 00Fh,084h,0C2h,000h,000h,000h ; je	0x32b <_tnk_splight+0x32b>
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,011h,098h,0E0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22e0], xmm3
+ db 00Fh,011h,098h,0F0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22f0], xmm3
+ db 00Fh,011h,098h,000h,023h,000h,000h ; movups	xmmword ptr [eax + 0x2300], xmm3
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,05Ch,064h,024h,010h ; subps	xmm4, xmmword ptr [esp + 0x10]
+ db 083h,0B8h,094h,014h,000h,000h,000h ; cmp	dword ptr [eax + 0x1494], 0x0
+ db 00Fh,084h,0ABh,000h,000h,000h ; je	0x343 <_tnk_splight+0x343>
+ db 00Fh,028h,0BCh,024h,0D0h,000h,000h,000h ; movaps	xmm7, xmmword ptr [esp + 0xd0]
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 00Fh,059h,0C7h ; mulps	xmm0, xmm7
+ db 00Fh,028h,0ECh ; movaps	xmm5, xmm4
+ db 00Fh,028h,0A4h,024h,000h,001h,000h,000h ; movaps	xmm4, xmmword ptr [esp + 0x100]
+ db 00Fh,028h,0CCh ; movaps	xmm1, xmm4
+ db 00Fh,059h,0CCh ; mulps	xmm1, xmm4
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,028h,0B4h,024h,0F0h,000h,000h,000h ; movaps	xmm6, xmmword ptr [esp + 0xf0]
+ db 00Fh,028h,0D6h ; movaps	xmm2, xmm6
+ db 00Fh,059h,0D6h ; mulps	xmm2, xmm6
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,0C2h,0C2h,001h ; cmpltps	xmm0, xmm2
+ db 00Fh,052h,0DAh ; rsqrtps	xmm3, xmm2
+ db 00Fh,059h,0D3h ; mulps	xmm2, xmm3
+ db 00Fh,059h,0D3h ; mulps	xmm2, xmm3
+ db 00Fh,05Ch,054h,024h,010h ; subps	xmm2, xmmword ptr [esp + 0x10]
+ db 00Fh,010h,088h,080h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x880]
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,057h,0D2h ; xorps	xmm2, xmm2
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 00Fh,05Ch,0CBh ; subps	xmm1, xmm3
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,058h,0CAh ; addps	xmm1, xmm2
+ db 00Fh,028h,0D7h ; movaps	xmm2, xmm7
+ db 00Fh,059h,0D1h ; mulps	xmm2, xmm1
+ db 00Fh,054h,0D0h ; andps	xmm2, xmm0
+ db 00Fh,029h,094h,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm2
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,054h,0E0h ; andps	xmm4, xmm0
+ db 00Fh,029h,0A4h,024h,0E0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xe0], xmm4
+ db 00Fh,059h,0CEh ; mulps	xmm1, xmm6
+ db 00Fh,054h,0C8h ; andps	xmm1, xmm0
+ db 00Fh,055h,0C5h ; andnps	xmm0, xmm5
+ db 00Fh,056h,0C1h ; orps	xmm0, xmm1
+ db 00Fh,028h,0E0h ; movaps	xmm4, xmm0
+ db 0EBh,02Bh ; jmp	0x356 <_tnk_splight+0x356>
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,029h,09Ch,024h,0E0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xe0], xmm3
+ db 00Fh,028h,0E3h ; movaps	xmm4, xmm3
+ db 0E9h,00Eh,004h,000h,000h ; jmp	0x751 <_tnk_splight+0x751>
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,029h,084h,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm0
+ db 00Fh,029h,084h,024h,0E0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xe0], xmm0
+ db 08Bh,0B0h,090h,007h,000h,000h ; mov	esi, dword ptr [eax + 0x790]
+ db 085h,0F6h ; test	esi, esi
+ db 00Fh,084h,0E5h,003h,000h,000h ; je	0x749 <_tnk_splight+0x749>
+ db 031h,0FFh ; xor	edi, edi
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,028h,04Ch,024h,010h ; movaps	xmm1, xmmword ptr [esp + 0x10]
+ db 00Fh,0C2h,0C8h,007h ; cmpordps	xmm1, xmm0
+ db 00Fh,029h,04Ch,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm1
+ db 00Fh,029h,05Ch,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm3
+ db 00Fh,029h,05Ch,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm3
+ db 00Fh,029h,05Ch,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm3
+ db 00Fh,029h,0A4h,024h,0C0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xc0], xmm4
+ db 0E9h,013h,002h,000h,000h ; jmp	0x5a6 <_tnk_splight+0x5a6>
+ db 00Fh,028h,0DDh ; movaps	xmm3, xmm5
+ db 066h,00Fh,072h,0D3h,017h ; psrld	xmm3, 0x17
+ db 0F3h,00Fh,06Fh,088h,050h,009h,000h,000h ; movdqu	xmm1, xmmword ptr [eax + 0x950]
+ db 066h,00Fh,07Fh,08Ch,024h,0B0h,000h,000h,000h ; movdqa	xmmword ptr [esp + 0xb0], xmm1
+ db 066h,00Fh,0FAh,0D9h ; psubd	xmm3, xmm1
+ db 00Fh,010h,0A0h,080h,014h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1480]
+ db 00Fh,054h,0E5h ; andps	xmm4, xmm5
+ db 00Fh,028h,074h,024h,010h ; movaps	xmm6, xmmword ptr [esp + 0x10]
+ db 00Fh,056h,0E6h ; orps	xmm4, xmm6
+ db 00Fh,010h,088h,070h,014h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x1470]
+ db 00Fh,0C2h,0CCh,001h ; cmpltps	xmm1, xmm4
+ db 00Fh,028h,044h,024h,060h ; movaps	xmm0, xmmword ptr [esp + 0x60]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,054h,0C1h ; andps	xmm0, xmm1
+ db 00Fh,028h,0D1h ; movaps	xmm2, xmm1
+ db 00Fh,055h,0D4h ; andnps	xmm2, xmm4
+ db 00Fh,056h,0D0h ; orps	xmm2, xmm0
+ db 00Fh,05Bh,0C3h ; cvtdq2ps	xmm0, xmm3
+ db 00Fh,054h,0CEh ; andps	xmm1, xmm6
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,028h,0DEh ; movaps	xmm3, xmm6
+ db 00Fh,058h,0DAh ; addps	xmm3, xmm2
+ db 00Fh,053h,0C3h ; rcpps	xmm0, xmm3
+ db 00Fh,05Ch,0D6h ; subps	xmm2, xmm6
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,058h,0C0h ; addps	xmm0, xmm0
+ db 00Fh,05Ch,0C3h ; subps	xmm0, xmm3
+ db 00Fh,059h,0C2h ; mulps	xmm0, xmm2
+ db 00Fh,028h,0D0h ; movaps	xmm2, xmm0
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,010h,098h,060h,014h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1460]
+ db 00Fh,059h,0DAh ; mulps	xmm3, xmm2
+ db 00Fh,010h,0A0h,050h,014h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1450]
+ db 00Fh,058h,0E3h ; addps	xmm4, xmm3
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,010h,098h,040h,014h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1440]
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,059h,0DAh ; mulps	xmm3, xmm2
+ db 00Fh,010h,0A0h,030h,014h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x1430]
+ db 00Fh,058h,0E3h ; addps	xmm4, xmm3
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,058h,0E6h ; addps	xmm4, xmm6
+ db 00Fh,058h,0C0h ; addps	xmm0, xmm0
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,010h,090h,0B0h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x8b0]
+ db 00Fh,029h,054h,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm2
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,010h,080h,020h,014h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x1420]
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,010h,090h,020h,009h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x920]
+ db 00Fh,028h,0C8h ; movaps	xmm1, xmm0
+ db 00Fh,05Fh,0CAh ; maxps	xmm1, xmm2
+ db 00Fh,0C2h,0D0h,001h ; cmpltps	xmm2, xmm0
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 00Fh,0C2h,0D8h,002h ; cmpleps	xmm3, xmm0
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0C4h,001h ; cmpltps	xmm0, xmm4
+ db 00Fh,054h,0C2h ; andps	xmm0, xmm2
+ db 00Fh,05Dh,0CCh ; minps	xmm1, xmm4
+ db 00Fh,010h,090h,090h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x890]
+ db 00Fh,059h,0D1h ; mulps	xmm2, xmm1
+ db 0F3h,00Fh,05Bh,0E2h ; cvttps2dq	xmm4, xmm2
+ db 00Fh,05Bh,0F4h ; cvtdq2ps	xmm6, xmm4
+ db 00Fh,028h,0CAh ; movaps	xmm1, xmm2
+ db 00Fh,0C2h,0CEh,001h ; cmpltps	xmm1, xmm6
+ db 066h,00Fh,0FEh,0CCh ; paddd	xmm1, xmm4
+ db 00Fh,05Bh,0E1h ; cvtdq2ps	xmm4, xmm1
+ db 00Fh,05Ch,0D4h ; subps	xmm2, xmm4
+ db 00Fh,010h,0A0h,000h,009h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x900]
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,010h,0B0h,0F0h,008h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x8f0]
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,059h,0F2h ; mulps	xmm6, xmm2
+ db 00Fh,010h,0A0h,0E0h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x8e0]
+ db 00Fh,058h,0E6h ; addps	xmm4, xmm6
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,010h,0B0h,0D0h,008h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x8d0]
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,059h,0F2h ; mulps	xmm6, xmm2
+ db 00Fh,010h,0A0h,0C0h,008h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x8c0]
+ db 00Fh,058h,0E6h ; addps	xmm4, xmm6
+ db 00Fh,028h,074h,024h,010h ; movaps	xmm6, xmmword ptr [esp + 0x10]
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,058h,064h,024h,060h ; addps	xmm4, xmmword ptr [esp + 0x60]
+ db 00Fh,059h,0E2h ; mulps	xmm4, xmm2
+ db 00Fh,010h,090h,0A0h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x8a0]
+ db 00Fh,058h,0E2h ; addps	xmm4, xmm2
+ db 066h,00Fh,0FEh,08Ch,024h,0B0h,000h,000h,000h ; paddd	xmm1, xmmword ptr [esp + 0xb0]
+ db 066h,00Fh,072h,0F1h,017h ; pslld	xmm1, 0x17
+ db 00Fh,059h,0CCh ; mulps	xmm1, xmm4
+ db 00Fh,028h,0A4h,024h,0C0h,000h,000h,000h ; movaps	xmm4, xmmword ptr [esp + 0xc0]
+ db 00Fh,054h,0C8h ; andps	xmm1, xmm0
+ db 00Fh,054h,0DEh ; andps	xmm3, xmm6
+ db 00Fh,056h,0D9h ; orps	xmm3, xmm1
+ db 00Fh,028h,0CEh ; movaps	xmm1, xmm6
+ db 00Fh,0C2h,0CDh,002h ; cmpleps	xmm1, xmm5
+ db 00Fh,028h,0C6h ; movaps	xmm0, xmm6
+ db 00Fh,054h,0C1h ; andps	xmm0, xmm1
+ db 00Fh,055h,0CBh ; andnps	xmm1, xmm3
+ db 00Fh,056h,0C8h ; orps	xmm1, xmm0
+ db 00Fh,059h,04Ch,024h,010h ; mulps	xmm1, xmmword ptr [esp + 0x10]
+ db 00Fh,054h,0CFh ; andps	xmm1, xmm7
+ db 08Dh,00Ch,07Fh ; lea	ecx, [edi + 2*edi]
+ db 0C1h,0E1h,004h ; shl	ecx, 0x4
+ db 00Fh,010h,084h,008h,020h,011h,000h,000h ; movups	xmm0, xmmword ptr [eax + ecx + 0x1120]
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,028h,054h,024h,070h ; movaps	xmm2, xmmword ptr [esp + 0x70]
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,029h,054h,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm2
+ db 00Fh,011h,090h,0E0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22e0], xmm2
+ db 00Fh,010h,084h,008h,030h,011h,000h,000h ; movups	xmm0, xmmword ptr [eax + ecx + 0x1130]
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,028h,054h,024h,040h ; movaps	xmm2, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,029h,054h,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm2
+ db 00Fh,011h,090h,0F0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22f0], xmm2
+ db 00Fh,010h,084h,008h,040h,011h,000h,000h ; movups	xmm0, xmmword ptr [eax + ecx + 0x1140]
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,028h,04Ch,024h,050h ; movaps	xmm1, xmmword ptr [esp + 0x50]
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,029h,04Ch,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm1
+ db 00Fh,011h,088h,000h,023h,000h,000h ; movups	xmmword ptr [eax + 0x2300], xmm1
+ db 047h ; inc	edi
+ db 039h,0F7h ; cmp	edi, esi
+ db 00Fh,084h,09Eh,001h,000h,000h ; je	0x744 <_tnk_splight+0x744>
+ db 089h,0F9h ; mov	ecx, edi
+ db 0C1h,0E1h,006h ; shl	ecx, 0x6
+ db 00Fh,010h,094h,008h,010h,003h,000h,000h ; movups	xmm2, xmmword ptr [eax + ecx + 0x310]
+ db 00Fh,010h,08Ch,008h,020h,003h,000h,000h ; movups	xmm1, xmmword ptr [eax + ecx + 0x320]
+ db 00Fh,010h,0ACh,008h,030h,003h,000h,000h ; movups	xmm5, xmmword ptr [eax + ecx + 0x330]
+ db 00Fh,028h,0B4h,024h,080h,000h,000h,000h ; movaps	xmm6, xmmword ptr [esp + 0x80]
+ db 00Fh,028h,0C6h ; movaps	xmm0, xmm6
+ db 00Fh,059h,0C2h ; mulps	xmm0, xmm2
+ db 00Fh,028h,09Ch,024h,020h,001h,000h,000h ; movaps	xmm3, xmmword ptr [esp + 0x120]
+ db 00Fh,059h,0D9h ; mulps	xmm3, xmm1
+ db 00Fh,058h,0D8h ; addps	xmm3, xmm0
+ db 00Fh,028h,084h,024h,010h,001h,000h,000h ; movaps	xmm0, xmmword ptr [esp + 0x110]
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,058h,0C3h ; addps	xmm0, xmm3
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 00Fh,0C2h,0D8h,001h ; cmpltps	xmm3, xmm0
+ db 00Fh,054h,05Ch,024h,030h ; andps	xmm3, xmmword ptr [esp + 0x30]
+ db 00Fh,050h,0CBh ; movmskps	ecx, xmm3
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,09Dh ; je	0x59d <_tnk_splight+0x59d>
+ db 00Fh,058h,094h,024h,0A0h,000h,000h,000h ; addps	xmm2, xmmword ptr [esp + 0xa0]
+ db 00Fh,058h,08Ch,024h,0E0h,000h,000h,000h ; addps	xmm1, xmmword ptr [esp + 0xe0]
+ db 00Fh,058h,0ECh ; addps	xmm5, xmm4
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,059h,0C2h ; mulps	xmm0, xmm2
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,058h,0E0h ; addps	xmm4, xmm0
+ db 00Fh,029h,0B4h,024h,080h,000h,000h,000h ; movaps	xmmword ptr [esp + 0x80], xmm6
+ db 00Fh,028h,0F5h ; movaps	xmm6, xmm5
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,058h,0F4h ; addps	xmm6, xmm4
+ db 00Fh,057h,0FFh ; xorps	xmm7, xmm7
+ db 00Fh,0C2h,0FEh,001h ; cmpltps	xmm7, xmm6
+ db 00Fh,052h,0E6h ; rsqrtps	xmm4, xmm6
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,05Ch,074h,024h,010h ; subps	xmm6, xmmword ptr [esp + 0x10]
+ db 00Fh,010h,080h,080h,008h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x880]
+ db 00Fh,029h,044h,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm0
+ db 00Fh,059h,0F0h ; mulps	xmm6, xmm0
+ db 00Fh,059h,0F4h ; mulps	xmm6, xmm4
+ db 00Fh,05Ch,0E6h ; subps	xmm4, xmm6
+ db 00Fh,059h,094h,024h,080h,000h,000h,000h ; mulps	xmm2, xmmword ptr [esp + 0x80]
+ db 00Fh,059h,08Ch,024h,020h,001h,000h,000h ; mulps	xmm1, xmmword ptr [esp + 0x120]
+ db 00Fh,058h,0CAh ; addps	xmm1, xmm2
+ db 00Fh,059h,0ACh,024h,010h,001h,000h,000h ; mulps	xmm5, xmmword ptr [esp + 0x110]
+ db 00Fh,058h,0E9h ; addps	xmm5, xmm1
+ db 00Fh,059h,0ECh ; mulps	xmm5, xmm4
+ db 00Fh,054h,0FBh ; andps	xmm7, xmm3
+ db 00Fh,010h,088h,020h,023h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x2320]
+ db 00Fh,0C2h,0CDh,001h ; cmpltps	xmm1, xmm5
+ db 00Fh,054h,0F9h ; andps	xmm7, xmm1
+ db 00Fh,050h,0CFh ; movmskps	ecx, xmm7
+ db 085h,0C9h ; test	ecx, ecx
+ db 074h,03Ah ; je	0x6d0 <_tnk_splight+0x6d0>
+ db 00Fh,054h,0EFh ; andps	xmm5, xmm7
+ db 08Bh,088h,098h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x1498]
+ db 083h,0F9h,003h ; cmp	ecx, 0x3
+ db 00Fh,028h,0A4h,024h,0C0h,000h,000h,000h ; movaps	xmm4, xmmword ptr [esp + 0xc0]
+ db 074h,031h ; je	0x6dd <_tnk_splight+0x6dd>
+ db 00Fh,028h,04Ch,024h,010h ; movaps	xmm1, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 00Fh,084h,078h,0FEh,0FFh,0FFh ; je	0x532 <_tnk_splight+0x532>
+ db 00Fh,05Dh,06Ch,024h,010h ; minps	xmm5, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 00Fh,085h,0CBh,0FCh,0FFh,0FFh ; jne	0x393 <_tnk_splight+0x393>
+ db 00Fh,028h,0CDh ; movaps	xmm1, xmm5
+ db 0E9h,062h,0FEh,0FFh,0FFh ; jmp	0x532 <_tnk_splight+0x532>
+ db 00Fh,028h,0A4h,024h,0C0h,000h,000h,000h ; movaps	xmm4, xmmword ptr [esp + 0xc0]
+ db 0E9h,0C0h,0FEh,0FFh,0FFh ; jmp	0x59d <_tnk_splight+0x59d>
+ db 08Bh,098h,0D4h,022h,000h,000h ; mov	ebx, dword ptr [eax + 0x22d4]
+ db 00Fh,05Dh,06Ch,024h,010h ; minps	xmm5, xmmword ptr [esp + 0x10]
+ db 083h,0FBh,001h ; cmp	ebx, 0x1
+ db 083h,0D3h,000h ; adc	ebx, 0x0
+ db 0F6h,0C3h,001h ; test	bl, 0x1
+ db 075h,01Bh ; jne	0x70e <_tnk_splight+0x70e>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0EDh ; mulps	xmm5, xmm5
+ db 089h,0D9h ; mov	ecx, ebx
+ db 0D1h,0E9h ; shr	ecx
+ db 0F6h,0C3h,002h ; test	bl, 0x2
+ db 089h,0CBh ; mov	ebx, ecx
+ db 074h,0F2h ; je	0x700 <_tnk_splight+0x700>
+ db 00Fh,028h,0CDh ; movaps	xmm1, xmm5
+ db 083h,0FBh,002h ; cmp	ebx, 0x2
+ db 073h,01Ch ; jae	0x732 <_tnk_splight+0x732>
+ db 0E9h,017h,0FEh,0FFh,0FFh ; jmp	0x532 <_tnk_splight+0x532>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 089h,0D9h ; mov	ecx, ebx
+ db 0D1h,0E9h ; shr	ecx
+ db 083h,0FBh,004h ; cmp	ebx, 0x4
+ db 089h,0CBh ; mov	ebx, ecx
+ db 00Fh,082h,000h,0FEh,0FFh,0FFh ; jb	0x532 <_tnk_splight+0x532>
+ db 00Fh,059h,0EDh ; mulps	xmm5, xmm5
+ db 00Fh,028h,044h,024h,010h ; movaps	xmm0, xmmword ptr [esp + 0x10]
+ db 0F6h,0C3h,002h ; test	bl, 0x2
+ db 074h,0E1h ; je	0x720 <_tnk_splight+0x720>
+ db 00Fh,028h,0C5h ; movaps	xmm0, xmm5
+ db 0EBh,0DCh ; jmp	0x720 <_tnk_splight+0x720>
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,028h,084h,024h,0A0h,000h,000h,000h ; movaps	xmm0, xmmword ptr [esp + 0xa0]
+ db 00Fh,010h,088h,010h,007h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x710]
+ db 00Fh,010h,090h,020h,007h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x720]
+ db 00Fh,029h,054h,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm2
+ db 00Fh,010h,090h,030h,007h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x730]
+ db 00Fh,029h,054h,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm2
+ db 08Bh,0B0h,090h,00Ah,000h,000h ; mov	esi, dword ptr [eax + 0xa90]
+ db 085h,0F6h ; test	esi, esi
+ db 00Fh,084h,0A6h,008h,000h,000h ; je	0x1024 <_tnk_splight+0x1024>
+ db 00Fh,010h,090h,080h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x880]
+ db 00Fh,029h,054h,024h,070h ; movaps	xmmword ptr [esp + 0x70], xmm2
+ db 031h,0FFh ; xor	edi, edi
+ db 00Fh,029h,0A4h,024h,0C0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xc0], xmm4
+ db 00Fh,028h,0E9h ; movaps	xmm5, xmm1
+ db 00Fh,029h,084h,024h,0A0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xa0], xmm0
+ db 0E9h,06Fh,002h,000h,000h ; jmp	0xa13 <_tnk_splight+0xa13>
+ db 00Fh,028h,0D7h ; movaps	xmm2, xmm7
+ db 066h,00Fh,072h,0D2h,017h ; psrld	xmm2, 0x17
+ db 0F3h,00Fh,06Fh,080h,050h,009h,000h,000h ; movdqu	xmm0, xmmword ptr [eax + 0x950]
+ db 066h,00Fh,07Fh,044h,024h,060h ; movdqa	xmmword ptr [esp + 0x60], xmm0
+ db 066h,00Fh,0FAh,0D0h ; psubd	xmm2, xmm0
+ db 00Fh,029h,0BCh,024h,030h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x130], xmm7
+ db 00Fh,010h,098h,080h,014h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1480]
+ db 00Fh,054h,0DFh ; andps	xmm3, xmm7
+ db 00Fh,028h,074h,024h,010h ; movaps	xmm6, xmmword ptr [esp + 0x10]
+ db 00Fh,056h,0DEh ; orps	xmm3, xmm6
+ db 00Fh,010h,0B8h,070h,014h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x1470]
+ db 00Fh,0C2h,0FBh,001h ; cmpltps	xmm7, xmm3
+ db 00Fh,028h,06Ch,024h,070h ; movaps	xmm5, xmmword ptr [esp + 0x70]
+ db 00Fh,059h,0EBh ; mulps	xmm5, xmm3
+ db 00Fh,054h,0EFh ; andps	xmm5, xmm7
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 00Fh,055h,0C3h ; andnps	xmm0, xmm3
+ db 00Fh,056h,0C5h ; orps	xmm0, xmm5
+ db 00Fh,05Bh,0D2h ; cvtdq2ps	xmm2, xmm2
+ db 00Fh,054h,0FEh ; andps	xmm7, xmm6
+ db 00Fh,058h,0FAh ; addps	xmm7, xmm2
+ db 00Fh,028h,0DEh ; movaps	xmm3, xmm6
+ db 00Fh,058h,0D8h ; addps	xmm3, xmm0
+ db 00Fh,053h,0D3h ; rcpps	xmm2, xmm3
+ db 00Fh,05Ch,0C6h ; subps	xmm0, xmm6
+ db 00Fh,059h,0DAh ; mulps	xmm3, xmm2
+ db 00Fh,059h,0DAh ; mulps	xmm3, xmm2
+ db 00Fh,058h,0D2h ; addps	xmm2, xmm2
+ db 00Fh,05Ch,0D3h ; subps	xmm2, xmm3
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,059h,0C2h ; mulps	xmm0, xmm2
+ db 00Fh,010h,098h,060h,014h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1460]
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,010h,0A8h,050h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1450]
+ db 00Fh,058h,0EBh ; addps	xmm5, xmm3
+ db 00Fh,059h,0E8h ; mulps	xmm5, xmm0
+ db 00Fh,010h,098h,040h,014h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x1440]
+ db 00Fh,058h,0DDh ; addps	xmm3, xmm5
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,010h,0A8h,030h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1430]
+ db 00Fh,058h,0EBh ; addps	xmm5, xmm3
+ db 00Fh,059h,0E8h ; mulps	xmm5, xmm0
+ db 00Fh,058h,0EEh ; addps	xmm5, xmm6
+ db 00Fh,058h,0D2h ; addps	xmm2, xmm2
+ db 00Fh,059h,0D5h ; mulps	xmm2, xmm5
+ db 00Fh,010h,080h,0B0h,008h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x8b0]
+ db 00Fh,029h,084h,024h,040h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x140], xmm0
+ db 00Fh,059h,0F8h ; mulps	xmm7, xmm0
+ db 00Fh,058h,0FAh ; addps	xmm7, xmm2
+ db 00Fh,010h,0B0h,020h,014h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x1420]
+ db 00Fh,059h,0F7h ; mulps	xmm6, xmm7
+ db 00Fh,010h,090h,020h,009h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x920]
+ db 00Fh,028h,0FEh ; movaps	xmm7, xmm6
+ db 00Fh,05Fh,0FAh ; maxps	xmm7, xmm2
+ db 00Fh,0C2h,0D6h,001h ; cmpltps	xmm2, xmm6
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 00Fh,0C2h,0DEh,002h ; cmpleps	xmm3, xmm6
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,0C2h,0F0h,001h ; cmpltps	xmm6, xmm0
+ db 00Fh,054h,0F2h ; andps	xmm6, xmm2
+ db 00Fh,05Dh,0F8h ; minps	xmm7, xmm0
+ db 00Fh,010h,090h,090h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x890]
+ db 00Fh,059h,0D7h ; mulps	xmm2, xmm7
+ db 0F3h,00Fh,05Bh,0EAh ; cvttps2dq	xmm5, xmm2
+ db 00Fh,05Bh,0FDh ; cvtdq2ps	xmm7, xmm5
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,0C2h,0C7h,001h ; cmpltps	xmm0, xmm7
+ db 066h,00Fh,0FEh,0C5h ; paddd	xmm0, xmm5
+ db 00Fh,05Bh,0E8h ; cvtdq2ps	xmm5, xmm0
+ db 00Fh,05Ch,0D5h ; subps	xmm2, xmm5
+ db 00Fh,010h,0A8h,000h,009h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x900]
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,010h,0B8h,0F0h,008h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x8f0]
+ db 00Fh,058h,0FDh ; addps	xmm7, xmm5
+ db 00Fh,059h,0FAh ; mulps	xmm7, xmm2
+ db 00Fh,010h,0A8h,0E0h,008h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x8e0]
+ db 00Fh,058h,0EFh ; addps	xmm5, xmm7
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,010h,0B8h,0D0h,008h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x8d0]
+ db 00Fh,058h,0FDh ; addps	xmm7, xmm5
+ db 00Fh,059h,0FAh ; mulps	xmm7, xmm2
+ db 00Fh,010h,0A8h,0C0h,008h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x8c0]
+ db 00Fh,058h,0EFh ; addps	xmm5, xmm7
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,058h,0ACh,024h,040h,001h,000h,000h ; addps	xmm5, xmmword ptr [esp + 0x140]
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,010h,090h,0A0h,008h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x8a0]
+ db 00Fh,058h,0EAh ; addps	xmm5, xmm2
+ db 066h,00Fh,0FEh,044h,024h,060h ; paddd	xmm0, xmmword ptr [esp + 0x60]
+ db 066h,00Fh,072h,0F0h,017h ; pslld	xmm0, 0x17
+ db 00Fh,059h,0C5h ; mulps	xmm0, xmm5
+ db 00Fh,054h,0C6h ; andps	xmm0, xmm6
+ db 00Fh,028h,06Ch,024h,010h ; movaps	xmm5, xmmword ptr [esp + 0x10]
+ db 00Fh,054h,0DDh ; andps	xmm3, xmm5
+ db 00Fh,056h,0D8h ; orps	xmm3, xmm0
+ db 00Fh,028h,0D5h ; movaps	xmm2, xmm5
+ db 00Fh,0C2h,094h,024h,030h,001h,000h,000h,002h ; cmpleps	xmm2, xmmword ptr [esp + 0x130]
+ db 00Fh,028h,0C5h ; movaps	xmm0, xmm5
+ db 00Fh,054h,0C2h ; andps	xmm0, xmm2
+ db 00Fh,055h,0D3h ; andnps	xmm2, xmm3
+ db 00Fh,056h,0D0h ; orps	xmm2, xmm0
+ db 08Dh,04Fh,008h ; lea	ecx, [edi + 0x8]
+ db 00Fh,059h,094h,024h,0B0h,000h,000h,000h ; mulps	xmm2, xmmword ptr [esp + 0xb0]
+ db 00Fh,054h,0E2h ; andps	xmm4, xmm2
+ db 08Dh,00Ch,049h ; lea	ecx, [ecx + 2*ecx]
+ db 0C1h,0E1h,004h ; shl	ecx, 0x4
+ db 00Fh,010h,084h,008h,020h,011h,000h,000h ; movups	xmm0, xmmword ptr [eax + ecx + 0x1120]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,010h,090h,0E0h,022h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x22e0]
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,010h,080h,0F0h,022h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x22f0]
+ db 00Fh,011h,090h,0E0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22e0], xmm2
+ db 00Fh,010h,094h,008h,030h,011h,000h,000h ; movups	xmm2, xmmword ptr [eax + ecx + 0x1130]
+ db 00Fh,059h,0D4h ; mulps	xmm2, xmm4
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,011h,090h,0F0h,022h,000h,000h ; movups	xmmword ptr [eax + 0x22f0], xmm2
+ db 00Fh,010h,080h,000h,023h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2300]
+ db 00Fh,010h,094h,008h,040h,011h,000h,000h ; movups	xmm2, xmmword ptr [eax + ecx + 0x1140]
+ db 00Fh,059h,0D4h ; mulps	xmm2, xmm4
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,011h,090h,000h,023h,000h,000h ; movups	xmmword ptr [eax + 0x2300], xmm2
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,0C2h,0C1h,001h ; cmpltps	xmm0, xmm1
+ db 00Fh,054h,0C1h ; andps	xmm0, xmm1
+ db 00Fh,059h,084h,024h,0B0h,000h,000h,000h ; mulps	xmm0, xmmword ptr [esp + 0xb0]
+ db 00Fh,010h,08Ch,018h,020h,00Eh,000h,000h ; movups	xmm1, xmmword ptr [eax + ebx + 0xe20]
+ db 00Fh,010h,094h,018h,030h,00Eh,000h,000h ; movups	xmm2, xmmword ptr [eax + ebx + 0xe30]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,06Ch,024h,030h ; movaps	xmm5, xmmword ptr [esp + 0x30]
+ db 00Fh,058h,0E9h ; addps	xmm5, xmm1
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,028h,04Ch,024h,050h ; movaps	xmm1, xmmword ptr [esp + 0x50]
+ db 00Fh,058h,0CAh ; addps	xmm1, xmm2
+ db 00Fh,029h,04Ch,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm1
+ db 00Fh,010h,08Ch,018h,040h,00Eh,000h,000h ; movups	xmm1, xmmword ptr [eax + ebx + 0xe40]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,044h,024h,040h ; movaps	xmm0, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,029h,044h,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm0
+ db 047h ; inc	edi
+ db 039h,0F7h ; cmp	edi, esi
+ db 00Fh,084h,014h,006h,000h,000h ; je	0x1027 <_tnk_splight+0x1027>
+ db 00Fh,029h,06Ch,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm5
+ db 08Dh,01Ch,07Fh ; lea	ebx, [edi + 2*edi]
+ db 0C1h,0E3h,004h ; shl	ebx, 0x4
+ db 00Fh,010h,0A4h,018h,0A0h,00Ah,000h,000h ; movups	xmm4, xmmword ptr [eax + ebx + 0xaa0]
+ db 00Fh,010h,0ACh,018h,0B0h,00Ah,000h,000h ; movups	xmm5, xmmword ptr [eax + ebx + 0xab0]
+ db 00Fh,05Ch,0A4h,024h,0D0h,000h,000h,000h ; subps	xmm4, xmmword ptr [esp + 0xd0]
+ db 00Fh,05Ch,0ACh,024h,000h,001h,000h,000h ; subps	xmm5, xmmword ptr [esp + 0x100]
+ db 00Fh,010h,0BCh,018h,0C0h,00Ah,000h,000h ; movups	xmm7, xmmword ptr [eax + ebx + 0xac0]
+ db 00Fh,05Ch,0BCh,024h,0F0h,000h,000h,000h ; subps	xmm7, xmmword ptr [esp + 0xf0]
+ db 00Fh,028h,0C4h ; movaps	xmm0, xmm4
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,028h,0CDh ; movaps	xmm1, xmm5
+ db 00Fh,059h,0CDh ; mulps	xmm1, xmm5
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 00Fh,059h,0C7h ; mulps	xmm0, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,052h,0C8h ; rsqrtps	xmm1, xmm0
+ db 00Fh,028h,0D1h ; movaps	xmm2, xmm1
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,059h,0D1h ; mulps	xmm2, xmm1
+ db 00Fh,05Ch,054h,024h,010h ; subps	xmm2, xmmword ptr [esp + 0x10]
+ db 00Fh,059h,054h,024h,070h ; mulps	xmm2, xmmword ptr [esp + 0x70]
+ db 00Fh,059h,0D1h ; mulps	xmm2, xmm1
+ db 00Fh,05Ch,0CAh ; subps	xmm1, xmm2
+ db 00Fh,028h,0D3h ; movaps	xmm2, xmm3
+ db 00Fh,0C2h,0D0h,001h ; cmpltps	xmm2, xmm0
+ db 00Fh,059h,0C1h ; mulps	xmm0, xmm1
+ db 00Fh,054h,0C2h ; andps	xmm0, xmm2
+ db 089h,0F9h ; mov	ecx, edi
+ db 0C1h,0E1h,006h ; shl	ecx, 0x6
+ db 00Fh,010h,09Ch,008h,020h,00Ch,000h,000h ; movups	xmm3, xmmword ptr [eax + ecx + 0xc20]
+ db 00Fh,028h,0F0h ; movaps	xmm6, xmm0
+ db 00Fh,0C2h,0F3h,002h ; cmpleps	xmm6, xmm3
+ db 00Fh,050h,0D6h ; movmskps	edx, xmm6
+ db 085h,0D2h ; test	edx, edx
+ db 00Fh,084h,002h,001h,000h,000h ; je	0xbb0 <_tnk_splight+0xbb0>
+ db 00Fh,054h,0CAh ; andps	xmm1, xmm2
+ db 00Fh,059h,0E1h ; mulps	xmm4, xmm1
+ db 00Fh,059h,0E9h ; mulps	xmm5, xmm1
+ db 00Fh,059h,0F9h ; mulps	xmm7, xmm1
+ db 00Fh,010h,08Ch,008h,030h,00Ch,000h,000h ; movups	xmm1, xmmword ptr [eax + ecx + 0xc30]
+ db 00Fh,010h,094h,008h,040h,00Ch,000h,000h ; movups	xmm2, xmmword ptr [eax + ecx + 0xc40]
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,058h,0D1h ; addps	xmm2, xmm1
+ db 00Fh,010h,08Ch,008h,050h,00Ch,000h,000h ; movups	xmm1, xmmword ptr [eax + ecx + 0xc50]
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,058h,0CAh ; addps	xmm1, xmm2
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,0C2h,0D9h,001h ; cmpltps	xmm3, xmm1
+ db 00Fh,053h,0C1h ; rcpps	xmm0, xmm1
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,028h,054h,024h,010h ; movaps	xmm2, xmmword ptr [esp + 0x10]
+ db 00Fh,05Ch,0CAh ; subps	xmm1, xmm2
+ db 00Fh,059h,0C8h ; mulps	xmm1, xmm0
+ db 00Fh,05Ch,0C1h ; subps	xmm0, xmm1
+ db 00Fh,054h,0C3h ; andps	xmm0, xmm3
+ db 00Fh,055h,0DAh ; andnps	xmm3, xmm2
+ db 00Fh,056h,0D8h ; orps	xmm3, xmm0
+ db 00Fh,029h,074h,024h,060h ; movaps	xmmword ptr [esp + 0x60], xmm6
+ db 00Fh,054h,0DEh ; andps	xmm3, xmm6
+ db 083h,0BCh,0B8h,050h,01Fh,000h,000h,000h ; cmp	dword ptr [eax + 4*edi + 0x1f50], 0x0
+ db 00Fh,029h,0ACh,024h,050h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x150], xmm5
+ db 00Fh,029h,0A4h,024h,040h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x140], xmm4
+ db 00Fh,084h,0EEh,002h,000h,000h ; je	0xe1b <_tnk_splight+0xe1b>
+ db 00Fh,010h,094h,018h,010h,021h,000h,000h ; movups	xmm2, xmmword ptr [eax + ebx + 0x2110]
+ db 00Fh,010h,0B4h,018h,020h,021h,000h,000h ; movups	xmm6, xmmword ptr [eax + ebx + 0x2120]
+ db 00Fh,010h,084h,018h,090h,01Fh,000h,000h ; movups	xmm0, xmmword ptr [eax + ebx + 0x1f90]
+ db 00Fh,010h,08Ch,018h,0A0h,01Fh,000h,000h ; movups	xmm1, xmmword ptr [eax + ebx + 0x1fa0]
+ db 00Fh,059h,0C4h ; mulps	xmm0, xmm4
+ db 00Fh,059h,0CDh ; mulps	xmm1, xmm5
+ db 00Fh,028h,0EAh ; movaps	xmm5, xmm2
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,010h,084h,018h,0B0h,01Fh,000h,000h ; movups	xmm0, xmmword ptr [eax + ebx + 0x1fb0]
+ db 00Fh,059h,0C7h ; mulps	xmm0, xmm7
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,057h,0C9h ; xorps	xmm1, xmm1
+ db 00Fh,05Ch,0C8h ; subps	xmm1, xmm0
+ db 00Fh,028h,0E1h ; movaps	xmm4, xmm1
+ db 00Fh,05Ch,0E2h ; subps	xmm4, xmm2
+ db 00Fh,029h,0B4h,024h,090h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x190], xmm6
+ db 00Fh,05Ch,0F2h ; subps	xmm6, xmm2
+ db 00Fh,05Eh,0E6h ; divps	xmm4, xmm6
+ db 08Bh,08Ch,0B8h,070h,01Fh,000h,000h ; mov	ecx, dword ptr [eax + 4*edi + 0x1f70]
+ db 083h,0F9h,003h ; cmp	ecx, 0x3
+ db 074h,032h ; je	0xbbf <_tnk_splight+0xbbf>
+ db 00Fh,028h,054h,024h,010h ; movaps	xmm2, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 00Fh,084h,062h,002h,000h,000h ; je	0xdfd <_tnk_splight+0xdfd>
+ db 00Fh,05Dh,064h,024h,010h ; minps	xmm4, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 075h,07Fh ; jne	0xc24 <_tnk_splight+0xc24>
+ db 00Fh,028h,0D4h ; movaps	xmm2, xmm4
+ db 0E9h,050h,002h,000h,000h ; jmp	0xdfd <_tnk_splight+0xdfd>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 00Fh,028h,06Ch,024h,030h ; movaps	xmm5, xmmword ptr [esp + 0x30]
+ db 0E9h,04Bh,0FEh,0FFh,0FFh ; jmp	0xa0a <_tnk_splight+0xa0a>
+ db 08Bh,088h,0D4h,022h,000h,000h ; mov	ecx, dword ptr [eax + 0x22d4]
+ db 00Fh,05Dh,064h,024h,010h ; minps	xmm4, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 083h,0D1h,000h ; adc	ecx, 0x0
+ db 0F6h,0C1h,001h ; test	cl, 0x1
+ db 075h,019h ; jne	0xbee <_tnk_splight+0xbee>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0E4h ; mulps	xmm4, xmm4
+ db 089h,0CAh ; mov	edx, ecx
+ db 0D1h,0EAh ; shr	edx
+ db 0F6h,0C1h,002h ; test	cl, 0x2
+ db 089h,0D1h ; mov	ecx, edx
+ db 074h,0F2h ; je	0xbe0 <_tnk_splight+0xbe0>
+ db 00Fh,028h,0D4h ; movaps	xmm2, xmm4
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 073h,01Ch ; jae	0xc12 <_tnk_splight+0xc12>
+ db 0E9h,002h,002h,000h,000h ; jmp	0xdfd <_tnk_splight+0xdfd>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 089h,0CAh ; mov	edx, ecx
+ db 0D1h,0EAh ; shr	edx
+ db 083h,0F9h,004h ; cmp	ecx, 0x4
+ db 089h,0D1h ; mov	ecx, edx
+ db 00Fh,082h,0EBh,001h,000h,000h ; jb	0xdfd <_tnk_splight+0xdfd>
+ db 00Fh,059h,0E4h ; mulps	xmm4, xmm4
+ db 00Fh,028h,044h,024h,010h ; movaps	xmm0, xmmword ptr [esp + 0x10]
+ db 0F6h,0C1h,002h ; test	cl, 0x2
+ db 074h,0E1h ; je	0xc00 <_tnk_splight+0xc00>
+ db 00Fh,028h,0C4h ; movaps	xmm0, xmm4
+ db 0EBh,0DCh ; jmp	0xc00 <_tnk_splight+0xc00>
+ db 00Fh,029h,0BCh,024h,030h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x130], xmm7
+ db 00Fh,029h,09Ch,024h,0B0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xb0], xmm3
+ db 00Fh,028h,0DCh ; movaps	xmm3, xmm4
+ db 066h,00Fh,072h,0D3h,017h ; psrld	xmm3, 0x17
+ db 0F3h,00Fh,06Fh,080h,050h,009h,000h,000h ; movdqu	xmm0, xmmword ptr [eax + 0x950]
+ db 066h,00Fh,07Fh,084h,024h,070h,001h,000h,000h ; movdqa	xmmword ptr [esp + 0x170], xmm0
+ db 066h,00Fh,0FAh,0D8h ; psubd	xmm3, xmm0
+ db 00Fh,029h,0ACh,024h,080h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x180], xmm5
+ db 00Fh,010h,0A8h,080h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1480]
+ db 00Fh,054h,0ECh ; andps	xmm5, xmm4
+ db 00Fh,056h,06Ch,024h,010h ; orps	xmm5, xmmword ptr [esp + 0x10]
+ db 00Fh,010h,090h,070h,014h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x1470]
+ db 00Fh,0C2h,0D5h,001h ; cmpltps	xmm2, xmm5
+ db 00Fh,028h,074h,024h,070h ; movaps	xmm6, xmmword ptr [esp + 0x70]
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,054h,0F2h ; andps	xmm6, xmm2
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,055h,0C5h ; andnps	xmm0, xmm5
+ db 00Fh,056h,0C6h ; orps	xmm0, xmm6
+ db 00Fh,05Bh,0DBh ; cvtdq2ps	xmm3, xmm3
+ db 00Fh,054h,054h,024h,010h ; andps	xmm2, xmmword ptr [esp + 0x10]
+ db 00Fh,058h,0D3h ; addps	xmm2, xmm3
+ db 00Fh,028h,06Ch,024h,010h ; movaps	xmm5, xmmword ptr [esp + 0x10]
+ db 00Fh,058h,0E8h ; addps	xmm5, xmm0
+ db 00Fh,053h,0DDh ; rcpps	xmm3, xmm5
+ db 00Fh,05Ch,044h,024h,010h ; subps	xmm0, xmmword ptr [esp + 0x10]
+ db 00Fh,059h,0EBh ; mulps	xmm5, xmm3
+ db 00Fh,059h,0EBh ; mulps	xmm5, xmm3
+ db 00Fh,058h,0DBh ; addps	xmm3, xmm3
+ db 00Fh,05Ch,0DDh ; subps	xmm3, xmm5
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,010h,0A8h,060h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1460]
+ db 00Fh,059h,0E8h ; mulps	xmm5, xmm0
+ db 00Fh,010h,0B0h,050h,014h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x1450]
+ db 00Fh,058h,0F5h ; addps	xmm6, xmm5
+ db 00Fh,059h,0F0h ; mulps	xmm6, xmm0
+ db 00Fh,010h,0A8h,040h,014h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x1440]
+ db 00Fh,058h,0EEh ; addps	xmm5, xmm6
+ db 00Fh,059h,0E8h ; mulps	xmm5, xmm0
+ db 00Fh,010h,0B0h,030h,014h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x1430]
+ db 00Fh,058h,0F5h ; addps	xmm6, xmm5
+ db 00Fh,059h,0F0h ; mulps	xmm6, xmm0
+ db 00Fh,058h,074h,024h,010h ; addps	xmm6, xmmword ptr [esp + 0x10]
+ db 00Fh,058h,0DBh ; addps	xmm3, xmm3
+ db 00Fh,059h,0DEh ; mulps	xmm3, xmm6
+ db 00Fh,010h,080h,0B0h,008h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x8b0]
+ db 00Fh,029h,084h,024h,060h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x160], xmm0
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 00Fh,058h,0D3h ; addps	xmm2, xmm3
+ db 00Fh,010h,0ACh,018h,030h,021h,000h,000h ; movups	xmm5, xmmword ptr [eax + ebx + 0x2130]
+ db 00Fh,059h,0EAh ; mulps	xmm5, xmm2
+ db 00Fh,010h,080h,020h,009h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x920]
+ db 00Fh,028h,0F5h ; movaps	xmm6, xmm5
+ db 00Fh,05Fh,0F0h ; maxps	xmm6, xmm0
+ db 00Fh,028h,0F8h ; movaps	xmm7, xmm0
+ db 00Fh,0C2h,0FDh,001h ; cmpltps	xmm7, xmm5
+ db 00Fh,057h,0DBh ; xorps	xmm3, xmm3
+ db 00Fh,0C2h,0DDh,002h ; cmpleps	xmm3, xmm5
+ db 00Fh,028h,0D5h ; movaps	xmm2, xmm5
+ db 00Fh,057h,0C0h ; xorps	xmm0, xmm0
+ db 00Fh,0C2h,0D0h,001h ; cmpltps	xmm2, xmm0
+ db 00Fh,054h,0D7h ; andps	xmm2, xmm7
+ db 00Fh,05Dh,0F0h ; minps	xmm6, xmm0
+ db 00Fh,010h,0A8h,090h,008h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x890]
+ db 00Fh,059h,0EEh ; mulps	xmm5, xmm6
+ db 0F3h,00Fh,05Bh,0F5h ; cvttps2dq	xmm6, xmm5
+ db 00Fh,05Bh,0FEh ; cvtdq2ps	xmm7, xmm6
+ db 00Fh,028h,0C5h ; movaps	xmm0, xmm5
+ db 00Fh,0C2h,0C7h,001h ; cmpltps	xmm0, xmm7
+ db 066h,00Fh,0FEh,0C6h ; paddd	xmm0, xmm6
+ db 00Fh,05Bh,0F0h ; cvtdq2ps	xmm6, xmm0
+ db 00Fh,05Ch,0EEh ; subps	xmm5, xmm6
+ db 00Fh,010h,0B0h,000h,009h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x900]
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,010h,0B8h,0F0h,008h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x8f0]
+ db 00Fh,058h,0FEh ; addps	xmm7, xmm6
+ db 00Fh,059h,0FDh ; mulps	xmm7, xmm5
+ db 00Fh,010h,0B0h,0E0h,008h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x8e0]
+ db 00Fh,058h,0F7h ; addps	xmm6, xmm7
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,010h,0B8h,0D0h,008h,000h,000h ; movups	xmm7, xmmword ptr [eax + 0x8d0]
+ db 00Fh,058h,0FEh ; addps	xmm7, xmm6
+ db 00Fh,059h,0FDh ; mulps	xmm7, xmm5
+ db 00Fh,010h,0B0h,0C0h,008h,000h,000h ; movups	xmm6, xmmword ptr [eax + 0x8c0]
+ db 00Fh,058h,0F7h ; addps	xmm6, xmm7
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,058h,0B4h,024h,060h,001h,000h,000h ; addps	xmm6, xmmword ptr [esp + 0x160]
+ db 00Fh,059h,0F5h ; mulps	xmm6, xmm5
+ db 00Fh,010h,0A8h,0A0h,008h,000h,000h ; movups	xmm5, xmmword ptr [eax + 0x8a0]
+ db 00Fh,058h,0F5h ; addps	xmm6, xmm5
+ db 00Fh,028h,0ACh,024h,080h,001h,000h,000h ; movaps	xmm5, xmmword ptr [esp + 0x180]
+ db 066h,00Fh,0FEh,084h,024h,070h,001h,000h,000h ; paddd	xmm0, xmmword ptr [esp + 0x170]
+ db 066h,00Fh,072h,0F0h,017h ; pslld	xmm0, 0x17
+ db 00Fh,059h,0C6h ; mulps	xmm0, xmm6
+ db 00Fh,028h,074h,024h,010h ; movaps	xmm6, xmmword ptr [esp + 0x10]
+ db 00Fh,054h,0C2h ; andps	xmm0, xmm2
+ db 00Fh,054h,0DEh ; andps	xmm3, xmm6
+ db 00Fh,056h,0D8h ; orps	xmm3, xmm0
+ db 00Fh,028h,0D6h ; movaps	xmm2, xmm6
+ db 00Fh,0C2h,0D4h,002h ; cmpleps	xmm2, xmm4
+ db 00Fh,028h,0C6h ; movaps	xmm0, xmm6
+ db 00Fh,054h,0C2h ; andps	xmm0, xmm2
+ db 00Fh,055h,0D3h ; andnps	xmm2, xmm3
+ db 00Fh,028h,09Ch,024h,0B0h,000h,000h,000h ; movaps	xmm3, xmmword ptr [esp + 0xb0]
+ db 00Fh,028h,0BCh,024h,030h,001h,000h,000h ; movaps	xmm7, xmmword ptr [esp + 0x130]
+ db 00Fh,056h,0D0h ; orps	xmm2, xmm0
+ db 00Fh,0C2h,0E9h,001h ; cmpltps	xmm5, xmm1
+ db 00Fh,0C2h,08Ch,024h,090h,001h,000h,000h,001h ; cmpltps	xmm1, xmmword ptr [esp + 0x190]
+ db 00Fh,054h,0D1h ; andps	xmm2, xmm1
+ db 00Fh,055h,04Ch,024h,010h ; andnps	xmm1, xmmword ptr [esp + 0x10]
+ db 00Fh,056h,0CAh ; orps	xmm1, xmm2
+ db 00Fh,054h,0CDh ; andps	xmm1, xmm5
+ db 00Fh,059h,0D9h ; mulps	xmm3, xmm1
+ db 00Fh,028h,06Ch,024h,030h ; movaps	xmm5, xmmword ptr [esp + 0x30]
+ db 08Bh,088h,0D8h,022h,000h,000h ; mov	ecx, dword ptr [eax + 0x22d8]
+ db 00Fh,0A3h,0F9h ; bt	ecx, edi
+ db 00Fh,028h,064h,024h,060h ; movaps	xmm4, xmmword ptr [esp + 0x60]
+ db 073h,03Eh ; jae	0xe6e <_tnk_splight+0xe6e>
+ db 00Fh,010h,084h,018h,0A0h,00Fh,000h,000h ; movups	xmm0, xmmword ptr [eax + ebx + 0xfa0]
+ db 00Fh,010h,08Ch,018h,0B0h,00Fh,000h,000h ; movups	xmm1, xmmword ptr [eax + ebx + 0xfb0]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,058h,0E8h ; addps	xmm5, xmm0
+ db 00Fh,059h,0CBh ; mulps	xmm1, xmm3
+ db 00Fh,028h,044h,024h,050h ; movaps	xmm0, xmmword ptr [esp + 0x50]
+ db 00Fh,058h,0C1h ; addps	xmm0, xmm1
+ db 00Fh,029h,044h,024h,050h ; movaps	xmmword ptr [esp + 0x50], xmm0
+ db 00Fh,010h,084h,018h,0C0h,00Fh,000h,000h ; movups	xmm0, xmmword ptr [eax + ebx + 0xfc0]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,028h,04Ch,024h,040h ; movaps	xmm1, xmmword ptr [esp + 0x40]
+ db 00Fh,058h,0C8h ; addps	xmm1, xmm0
+ db 00Fh,029h,04Ch,024h,040h ; movaps	xmmword ptr [esp + 0x40], xmm1
+ db 083h,0BCh,024h,09Ch,000h,000h,000h,000h ; cmp	dword ptr [esp + 0x9c], 0x0
+ db 00Fh,084h,044h,001h,000h,000h ; je	0xfc0 <_tnk_splight+0xfc0>
+ db 00Fh,029h,09Ch,024h,0B0h,000h,000h,000h ; movaps	xmmword ptr [esp + 0xb0], xmm3
+ db 00Fh,029h,06Ch,024h,030h ; movaps	xmmword ptr [esp + 0x30], xmm5
+ db 00Fh,028h,084h,024h,080h,000h,000h,000h ; movaps	xmm0, xmmword ptr [esp + 0x80]
+ db 00Fh,028h,09Ch,024h,040h,001h,000h,000h ; movaps	xmm3, xmmword ptr [esp + 0x140]
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,028h,094h,024h,020h,001h,000h,000h ; movaps	xmm2, xmmword ptr [esp + 0x120]
+ db 00Fh,028h,0ACh,024h,050h,001h,000h,000h ; movaps	xmm5, xmmword ptr [esp + 0x150]
+ db 00Fh,059h,0D5h ; mulps	xmm2, xmm5
+ db 00Fh,058h,0D0h ; addps	xmm2, xmm0
+ db 00Fh,028h,08Ch,024h,010h,001h,000h,000h ; movaps	xmm1, xmmword ptr [esp + 0x110]
+ db 00Fh,059h,0CFh ; mulps	xmm1, xmm7
+ db 00Fh,058h,0CAh ; addps	xmm1, xmm2
+ db 080h,07Ch,024h,00Fh,000h ; cmp	byte ptr [esp + 0xf], 0x0
+ db 00Fh,084h,0E5h,0FAh,0FFh,0FFh ; je	0x9b0 <_tnk_splight+0x9b0>
+ db 00Fh,057h,0D2h ; xorps	xmm2, xmm2
+ db 00Fh,0C2h,0D1h,001h ; cmpltps	xmm2, xmm1
+ db 00Fh,028h,0C2h ; movaps	xmm0, xmm2
+ db 00Fh,054h,0C4h ; andps	xmm0, xmm4
+ db 00Fh,050h,0C8h ; movmskps	ecx, xmm0
+ db 085h,0C9h ; test	ecx, ecx
+ db 00Fh,084h,0CDh,0FAh,0FFh,0FFh ; je	0x9b0 <_tnk_splight+0x9b0>
+ db 00Fh,058h,09Ch,024h,0A0h,000h,000h,000h ; addps	xmm3, xmmword ptr [esp + 0xa0]
+ db 00Fh,058h,0ACh,024h,0E0h,000h,000h,000h ; addps	xmm5, xmmword ptr [esp + 0xe0]
+ db 00Fh,058h,0BCh,024h,0C0h,000h,000h,000h ; addps	xmm7, xmmword ptr [esp + 0xc0]
+ db 00Fh,028h,0C3h ; movaps	xmm0, xmm3
+ db 00Fh,059h,0C3h ; mulps	xmm0, xmm3
+ db 00Fh,028h,0F4h ; movaps	xmm6, xmm4
+ db 00Fh,028h,0E5h ; movaps	xmm4, xmm5
+ db 00Fh,059h,0E5h ; mulps	xmm4, xmm5
+ db 00Fh,058h,0E0h ; addps	xmm4, xmm0
+ db 00Fh,029h,08Ch,024h,050h,001h,000h,000h ; movaps	xmmword ptr [esp + 0x150], xmm1
+ db 00Fh,028h,0CBh ; movaps	xmm1, xmm3
+ db 00Fh,028h,0DFh ; movaps	xmm3, xmm7
+ db 00Fh,059h,0DFh ; mulps	xmm3, xmm7
+ db 00Fh,058h,0DCh ; addps	xmm3, xmm4
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,0C2h,0E3h,001h ; cmpltps	xmm4, xmm3
+ db 00Fh,052h,0C3h ; rsqrtps	xmm0, xmm3
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,05Ch,05Ch,024h,010h ; subps	xmm3, xmmword ptr [esp + 0x10]
+ db 00Fh,059h,05Ch,024h,070h ; mulps	xmm3, xmmword ptr [esp + 0x70]
+ db 00Fh,059h,0D8h ; mulps	xmm3, xmm0
+ db 00Fh,05Ch,0C3h ; subps	xmm0, xmm3
+ db 00Fh,059h,08Ch,024h,080h,000h,000h,000h ; mulps	xmm1, xmmword ptr [esp + 0x80]
+ db 00Fh,059h,0ACh,024h,020h,001h,000h,000h ; mulps	xmm5, xmmword ptr [esp + 0x120]
+ db 00Fh,058h,0E9h ; addps	xmm5, xmm1
+ db 00Fh,028h,08Ch,024h,050h,001h,000h,000h ; movaps	xmm1, xmmword ptr [esp + 0x150]
+ db 00Fh,059h,0BCh,024h,010h,001h,000h,000h ; mulps	xmm7, xmmword ptr [esp + 0x110]
+ db 00Fh,058h,0FDh ; addps	xmm7, xmm5
+ db 00Fh,059h,0F8h ; mulps	xmm7, xmm0
+ db 00Fh,054h,0E2h ; andps	xmm4, xmm2
+ db 00Fh,010h,080h,020h,023h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2320]
+ db 00Fh,0C2h,0C7h,001h ; cmpltps	xmm0, xmm7
+ db 00Fh,054h,0E0h ; andps	xmm4, xmm0
+ db 00Fh,054h,0E6h ; andps	xmm4, xmm6
+ db 00Fh,050h,0CCh ; movmskps	ecx, xmm4
+ db 085h,0C9h ; test	ecx, ecx
+ db 00Fh,084h,027h,0FAh,0FFh,0FFh ; je	0x9b0 <_tnk_splight+0x9b0>
+ db 00Fh,054h,0FCh ; andps	xmm7, xmm4
+ db 08Bh,088h,098h,014h,000h,000h ; mov	ecx, dword ptr [eax + 0x1498]
+ db 083h,0F9h,003h ; cmp	ecx, 0x3
+ db 074h,033h ; je	0xfca <_tnk_splight+0xfca>
+ db 00Fh,028h,054h,024h,010h ; movaps	xmm2, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 00Fh,084h,0A3h,0F9h,0FFh,0FFh ; je	0x948 <_tnk_splight+0x948>
+ db 00Fh,05Dh,07Ch,024h,010h ; minps	xmm7, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 00Fh,085h,0F1h,0F7h,0FFh,0FFh ; jne	0x7a4 <_tnk_splight+0x7a4>
+ db 00Fh,028h,0D7h ; movaps	xmm2, xmm7
+ db 0E9h,08Dh,0F9h,0FFh,0FFh ; jmp	0x948 <_tnk_splight+0x948>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,028h,05Ch,024h,020h ; movaps	xmm3, xmmword ptr [esp + 0x20]
+ db 0E9h,040h,0FAh,0FFh,0FFh ; jmp	0xa0a <_tnk_splight+0xa0a>
+ db 08Bh,088h,0D4h,022h,000h,000h ; mov	ecx, dword ptr [eax + 0x22d4]
+ db 00Fh,05Dh,07Ch,024h,010h ; minps	xmm7, xmmword ptr [esp + 0x10]
+ db 083h,0F9h,001h ; cmp	ecx, 0x1
+ db 083h,0D1h,000h ; adc	ecx, 0x0
+ db 0F6h,0C1h,001h ; test	cl, 0x1
+ db 075h,00Eh ; jne	0xfee <_tnk_splight+0xfee>
+ db 00Fh,059h,0FFh ; mulps	xmm7, xmm7
+ db 089h,0CAh ; mov	edx, ecx
+ db 0D1h,0EAh ; shr	edx
+ db 0F6h,0C1h,002h ; test	cl, 0x2
+ db 089h,0D1h ; mov	ecx, edx
+ db 074h,0F2h ; je	0xfe0 <_tnk_splight+0xfe0>
+ db 00Fh,028h,0D7h ; movaps	xmm2, xmm7
+ db 083h,0F9h,002h ; cmp	ecx, 0x2
+ db 073h,01Ch ; jae	0x1012 <_tnk_splight+0x1012>
+ db 0E9h,04Dh,0F9h,0FFh,0FFh ; jmp	0x948 <_tnk_splight+0x948>
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 00Fh,059h,0D0h ; mulps	xmm2, xmm0
+ db 089h,0CAh ; mov	edx, ecx
+ db 0D1h,0EAh ; shr	edx
+ db 083h,0F9h,004h ; cmp	ecx, 0x4
+ db 089h,0D1h ; mov	ecx, edx
+ db 00Fh,082h,036h,0F9h,0FFh,0FFh ; jb	0x948 <_tnk_splight+0x948>
+ db 00Fh,059h,0FFh ; mulps	xmm7, xmm7
+ db 00Fh,028h,044h,024h,010h ; movaps	xmm0, xmmword ptr [esp + 0x10]
+ db 0F6h,0C1h,002h ; test	cl, 0x2
+ db 074h,0E1h ; je	0x1000 <_tnk_splight+0x1000>
+ db 00Fh,028h,0C7h ; movaps	xmm0, xmm7
+ db 0EBh,0DCh ; jmp	0x1000 <_tnk_splight+0x1000>
+ db 00Fh,028h,0E9h ; movaps	xmm5, xmm1
+ db 00Fh,0B6h,04Ch,024h,00Fh ; movzx	ecx, byte ptr [esp + 0xf]
+ db 00Fh,011h,0A8h,010h,007h,000h,000h ; movups	xmmword ptr [eax + 0x710], xmm5
+ db 00Fh,028h,044h,024h,050h ; movaps	xmm0, xmmword ptr [esp + 0x50]
+ db 00Fh,011h,080h,020h,007h,000h,000h ; movups	xmmword ptr [eax + 0x720], xmm0
+ db 00Fh,028h,044h,024h,040h ; movaps	xmm0, xmmword ptr [esp + 0x40]
+ db 00Fh,011h,080h,030h,007h,000h,000h ; movups	xmmword ptr [eax + 0x730], xmm0
+ db 089h,088h,0D0h,022h,000h,000h ; mov	dword ptr [eax + 0x22d0], ecx
+ db 08Dh,065h,0F4h ; lea	esp, [ebp - 0xc]
+ db 05Eh ; pop	esi
+ db 05Fh ; pop	edi
+ db 05Bh ; pop	ebx
+ db 05Dh ; pop	ebp
+ db 0C3h ; ret
+_tnk_splight endp
+public _tnk_vcodes
+_tnk_vcodes proc near
+ db 055h ; push	ebp
+ db 089h,0E5h ; mov	ebp, esp
+ db 057h ; push	edi
+ db 056h ; push	esi
+ db 083h,0E4h,0FCh ; and	esp, -0x4
+ db 08Bh,045h,008h ; mov	eax, dword ptr [ebp + 0x8]
+ db 083h,0B8h,0ACh,007h,000h,000h,000h ; cmp	dword ptr [eax + 0x7ac], 0x0
+ db 00Fh,084h,0A5h,000h,000h,000h ; je	0xbd <_tnk_vcodes+0xbd>
+ db 031h,0C9h ; xor	ecx, ecx
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 090h ; nop
+ db 08Bh,090h,0B0h,007h,000h,000h ; mov	edx, dword ptr [eax + 0x7b0]
+ db 08Dh,034h,011h ; lea	esi, [ecx + edx]
+ db 08Bh,0B8h,0ECh,009h,000h,000h ; mov	edi, dword ptr [eax + 0x9ec]
+ db 00Fh,010h,01Ch,0B7h ; movups	xmm3, xmmword ptr [edi + 4*esi]
+ db 08Bh,0B8h,0F0h,009h,000h,000h ; mov	edi, dword ptr [eax + 0x9f0]
+ db 00Fh,010h,004h,0B7h ; movups	xmm0, xmmword ptr [edi + 4*esi]
+ db 08Bh,0B8h,0F8h,009h,000h,000h ; mov	edi, dword ptr [eax + 0x9f8]
+ db 00Fh,010h,014h,0B7h ; movups	xmm2, xmmword ptr [edi + 4*esi]
+ db 00Fh,010h,088h,080h,008h,000h,000h ; movups	xmm1, xmmword ptr [eax + 0x880]
+ db 00Fh,059h,0CAh ; mulps	xmm1, xmm2
+ db 00Fh,057h,0E4h ; xorps	xmm4, xmm4
+ db 00Fh,05Ch,0E1h ; subps	xmm4, xmm1
+ db 00Fh,028h,0E9h ; movaps	xmm5, xmm1
+ db 00Fh,0C2h,0EBh,001h ; cmpltps	xmm5, xmm3
+ db 00Fh,0C2h,0DCh,001h ; cmpltps	xmm3, xmm4
+ db 00Fh,010h,090h,040h,023h,000h,000h ; movups	xmm2, xmmword ptr [eax + 0x2340]
+ db 00Fh,054h,0D3h ; andps	xmm2, xmm3
+ db 00Fh,010h,098h,050h,023h,000h,000h ; movups	xmm3, xmmword ptr [eax + 0x2350]
+ db 00Fh,054h,0DDh ; andps	xmm3, xmm5
+ db 00Fh,0C2h,0C8h,001h ; cmpltps	xmm1, xmm0
+ db 00Fh,0C2h,0C4h,001h ; cmpltps	xmm0, xmm4
+ db 00Fh,010h,0A0h,060h,023h,000h,000h ; movups	xmm4, xmmword ptr [eax + 0x2360]
+ db 00Fh,054h,0E0h ; andps	xmm4, xmm0
+ db 00Fh,010h,080h,070h,023h,000h,000h ; movups	xmm0, xmmword ptr [eax + 0x2370]
+ db 00Fh,054h,0C1h ; andps	xmm0, xmm1
+ db 00Fh,056h,0C3h ; orps	xmm0, xmm3
+ db 00Fh,056h,0C2h ; orps	xmm0, xmm2
+ db 00Fh,056h,0C4h ; orps	xmm0, xmm4
+ db 066h,00Fh,06Bh,0C0h ; packssdw	xmm0, xmm0
+ db 066h,00Fh,067h,0C0h ; packuswb	xmm0, xmm0
+ db 003h,090h,014h,023h,000h,000h ; add	edx, dword ptr [eax + 0x2314]
+ db 066h,00Fh,07Eh,004h,011h ; movd	dword ptr [ecx + edx], xmm0
+ db 083h,0C1h,004h ; add	ecx, 0x4
+ db 03Bh,088h,0ACh,007h,000h,000h ; cmp	ecx, dword ptr [eax + 0x7ac]
+ db 00Fh,082h,063h,0FFh,0FFh,0FFh ; jb	0x20 <_tnk_vcodes+0x20>
+ db 08Dh,065h,0F8h ; lea	esp, [ebp - 0x8]
+ db 05Eh ; pop	esi
+ db 05Fh ; pop	edi
+ db 05Dh ; pop	ebp
+ db 0C3h ; ret
+_tnk_vcodes endp
 end

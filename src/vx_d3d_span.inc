@@ -58,6 +58,11 @@ static void vxs_conv_c(const vxs_frame *f) {
 }
 /* the largest of count 16-bit indices (INDEXEDTRIANGLELIST2's token: three a triangle, back to back) */
 static uint32_t vxs_max16_c(const uint8_t *p,uint32_t count) {uint32_t m=0,k,a;for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;if(a>m)m=a;}return m;}
+/* .645: count 16-bit indices copied to dst, with their smallest and largest (mm[0], mm[1]; 0xFFFF and 0 for none): the driver's T&L
+ * stages an INDEXEDTRIANGLELIST2's indices and needs their range (tn_draw's loop did it one index at a time, with two compares each:
+ * the largest single line of the T&L on the host's count, 11% of it) */
+static void vxs_cmm16_c(const uint8_t *p,uint16_t *dst,uint32_t count,uint32_t *mm) {uint32_t lo=0xFFFF,hi=0,k,a;
+ for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;dst[k]=(uint16_t)a;if(a<lo)lo=a;if(a>hi)hi=a;}mm[0]=lo;mm[1]=hi;}
 /* VXS KERNELS END */
 #define VXS_OFF(f,o) typedef char vxs_off_##f[(offsetof(vxs_frame,f)==(o))?1:-1];
 #ifdef __WATCOMC__
@@ -67,6 +72,8 @@ VXS_OFF(kbias,96) VXS_OFF(kgu,112) VXS_OFF(kz,128) VXS_OFF(kw,144) VXS_OFF(kone,
 extern uint32_t __cdecl vxs_check(const vxs_frame *f);
 extern void __cdecl vxs_conv(const vxs_frame *f);
 extern uint32_t __cdecl vxs_max16(const uint8_t *p,uint32_t count);
+extern void __cdecl vxs_cmm16(const uint8_t *p,uint16_t *dst,uint32_t count,uint32_t *mm);
+#define VXS_CMM16(p,d,n,m) do{if(vx_d3d_sse2)vxs_cmm16(p,d,n,m);else vxs_cmm16_c(p,d,n,m);}while(0)
 #define VXS_MAX16(p,n) (vx_d3d_sse2?vxs_max16(p,n):vxs_max16_c(p,n))
 #define VXS_CHECK(f) (vx_d3d_sse2?vxs_check(f):vxs_check_c(f))
 #define VXS_CONV(f) do{if(vx_d3d_sse2)vxs_conv(f);else vxs_conv_c(f);}while(0)
@@ -74,6 +81,7 @@ extern uint32_t __cdecl vxs_max16(const uint8_t *p,uint32_t count);
 #define VXS_CHECK(f) vxs_check_c(f)
 #define VXS_CONV(f) vxs_conv_c(f)
 #define VXS_MAX16(p,n) vxs_max16_c(p,n)
+#define VXS_CMM16(p,d,n,m) vxs_cmm16_c(p,d,n,m)
 #endif
 uint32_t vx_d3d_sse2,vx_d3d_vxs[4]; /* vx_d3d_sse2: the HAL sets it from the VxD's 0xFFFFFE34 (SSE2 and OSFXSR); vx_d3d_vxs: [0] spans,
  * [1] vertices passed by vxs_check, [2] spans converted by vxs_conv, [3] their vertices */

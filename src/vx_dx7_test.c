@@ -2255,10 +2255,37 @@ static double ss_scene(const char *what,LPDIRECTDRAWSURFACE7 t,DWORD w,DWORD h,i
  IDirectDrawSurface7_DeleteAttachedSurface(t,0,z);IDirectDrawSurface7_Release(z);fflush(logfile);
  return ms;
 }
+/* v2.97 (.639): a nearest-pixel stretch at another ratio against the CPU's rule, source pixel floor((2n + 1) x sw / (2 x dw)). Every
+ * source pixel has a colour of its own, so one sample taken from the wrong side of a boundary shows. */
+static void ss_ratio(LPDIRECTDRAWSURFACE7 out,DWORD sw,DWORD sh,DWORD dw,DWORD dh) {
+ char what[96];LPDIRECTDRAWSURFACE7 src;DDSURFACEDESC2 ss,so;RECT dr;DWORD x,y,bad=0,fx=0,fy=0,fa=0,fb=0;HRESULT hr;double t0,t1;int k;
+ sprintf(what,"the %lu x %lu source",(unsigned long)sw,(unsigned long)sh);
+ src=ss_surface(sw,sh,DDSCAPS_OFFSCREENPLAIN|DDSCAPS_3DDEVICE,what);if(!src){check("the ratio test's source surface",0);return;}
+ memset(&ss,0,sizeof(ss));ss.dwSize=sizeof(ss);
+ if(FAILED(IDirectDrawSurface7_Lock(src,0,&ss,DDLOCK_WAIT|DDLOCK_WRITEONLY,0))){check("the ratio test's source Lock",0);IDirectDrawSurface7_Release(src);return;}
+ for(y=0;y<sh;y++)for(x=0;x<sw;x++){DWORD v=(x*2654435761UL)^(y*40503UL*65537UL)^((x+y)<<11);BYTE *p=(BYTE*)ss.lpSurface+y*ss.lPitch;
+  if(ss.ddpfPixelFormat.dwRGBBitCount==32)((DWORD*)p)[x]=(v>>8)&0x00FFFFFFUL;else ((WORD*)p)[x]=(WORD)(v>>16);}
+ IDirectDrawSurface7_Unlock(src,0);
+ dr.left=0;dr.top=0;dr.right=(LONG)dw;dr.bottom=(LONG)dh;
+ hr=IDirectDrawSurface7_Blt(out,&dr,src,0,DDBLT_WAIT,0);ss_wait(out,0,0,0);
+ t0=ss_ms();for(k=0;k<10;k++)IDirectDrawSurface7_Blt(out,&dr,src,0,DDBLT_WAIT,0);ss_wait(out,0,0,0);t1=ss_ms();
+ memset(&ss,0,sizeof(ss));ss.dwSize=sizeof(ss);memset(&so,0,sizeof(so));so.dwSize=sizeof(so);
+ if(SUCCEEDED(hr)&&SUCCEEDED(IDirectDrawSurface7_Lock(src,0,&ss,DDLOCK_WAIT|DDLOCK_READONLY,0))){
+  if(SUCCEEDED(IDirectDrawSurface7_Lock(out,0,&so,DDLOCK_WAIT|DDLOCK_READONLY,0))){
+   for(y=0;y<dh;y++)for(x=0;x<dw;x++){DWORD w=rgb(&ss,(2*x+1)*sw/(2*dw),(2*y+1)*sh/(2*dh)),g=rgb(&so,x,y);if(w!=g){if(!bad){fx=x;fy=y;fa=w;fb=g;}bad++;}}
+   IDirectDrawSurface7_Unlock(out,0);
+   fprintf(logfile,"   %lu x %lu to %lu x %lu: %lu of %lu pixels differ from the CPU's choice, %.2f ms a Blt",(unsigned long)sw,(unsigned long)sh,(unsigned long)dw,(unsigned long)dh,
+    (unsigned long)bad,(unsigned long)(dw*dh),(t1-t0)/10.0);
+   if(bad)fprintf(logfile,"; the first at (%lu,%lu): %06lX wanted, %06lX read",(unsigned long)fx,(unsigned long)fy,(unsigned long)fa,(unsigned long)fb);
+   fprintf(logfile,"\n");sprintf(what,"a %lu x %lu to %lu x %lu Blt takes the CPU's pixels (ACCEL_STRETCH3D 0 and 1)",(unsigned long)sw,(unsigned long)sh,(unsigned long)dw,(unsigned long)dh);check(what,bad==0);}
+  IDirectDrawSurface7_Unlock(src,0);}
+ else check("the ratio test's Blt",0);
+ IDirectDrawSurface7_Release(src);
+}
 static void ss_tests(void) {
  HDC dc=GetDC(0);int bpp=GetDeviceCaps(dc,BITSPIXEL),zbits,ok0=0,ok1=0,ok2=0,k;LPDIRECTDRAWSURFACE7 t640=0,big=0,bigtex=0,tex=0,out=0;double m0=0,m1=0,m2=0,t0,t1;DWORD px=0,tw=1280,th=960;
  ReleaseDC(0,dc);zbits=bpp==16?16:32;
- fprintf(logfile,"\nVXDX7 --ss (v2.96): the supersampling test; the desktop has %d bits a pixel, the depth buffers %d\n",bpp,zbits);
+ fprintf(logfile,"\nVXDX7 --ss (v2.97): the supersampling test; the desktop has %d bits a pixel, the depth buffers %d\n",bpp,zbits);
  tex=make_texture(256,256,0,DDSCAPS_VIDEOMEMORY,0,"the scene's texture");
  t640=ss_surface(640,480,DDSCAPS_OFFSCREENPLAIN|DDSCAPS_3DDEVICE,"the 640 x 480 target");
  out=ss_surface(640,480,DDSCAPS_OFFSCREENPLAIN|DDSCAPS_3DDEVICE,"the 640 x 480 target the big picture is shrunk into");
@@ -2287,7 +2314,9 @@ static void ss_tests(void) {
    t0=ss_ms();for(k=0;k<20;k++)IDirectDrawSurface7_Blt(out,0,big,0,DDBLT_WAIT,0);ss_wait(out,0,0,0);t1=ss_ms();
    fprintf(logfile,"   20 Blts: %.2f ms each\n",(t1-t0)/20.0);
    if(ss_checker(big,1280,960)&&SUCCEEDED(IDirectDrawSurface7_Blt(out,0,big,0,DDBLT_WAIT,0))&&ss_wait(out,321,241,&px))
-    fprintf(logfile,"   a one-pixel checkerboard shrunk: the pixel at (321,241) is %06lX: %s\n",(unsigned long)px,ss_grey(px));}
+    fprintf(logfile,"   a one-pixel checkerboard shrunk: the pixel at (321,241) is %06lX: %s\n",(unsigned long)px,ss_grey(px));
+   fprintf(logfile,"3b. other ratios (v2.97): no source pixel may be taken from the wrong side of a boundary\n");
+   ss_ratio(out,960,720,640,480);ss_ratio(out,640,496,620,480);ss_ratio(out,320,240,640,480);ss_ratio(out,800,600,640,480);}
   else check("the stretching Blt",0);}
  if(bigtex){ /* 4: drawn into a texture target, shrunk by a textured quad */
   IDirect3DDevice7 *d=0;tl_vertex q[6];float u1=1280.0F/(float)tw,v1=960.0F/(float)th;
@@ -2334,7 +2363,7 @@ int main(int argc,char **argv) {
  {int k;for(k=1;k<argc;k++)if(!strcmp(argv[k],"--nohang"))no_hang=1;} /* v2.72 */
  if(argc==2&&no_hang)do_tex=1; /* VXDX7 --nohang: the texture tests without the hang */
  logfile=fopen("VXDX7.TXT","w");if(!logfile)return 1;
- fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.96); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
+ fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.97); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
  code_probe("at start, before DirectDraw");
  ddlib=LoadLibraryA("DDRAW.DLL");if(!ddlib){fprintf(logfile,"DDRAW.DLL missing\n");failures++;goto done;}
  create=(HRESULT (WINAPI *)(GUID *,void **,REFIID,IUnknown *))GetProcAddress(ddlib,"DirectDrawCreateEx");

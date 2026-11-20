@@ -188,7 +188,7 @@ static void tex_csub2d(GLcontext *ctx,GLenum target,GLint level,GLint x,GLint y,
  struct gl_texture_object *t,struct gl_texture_image *ti)
  {SYNC_OR_FAIL(t);_mesa_store_compressed_texsubimage2d(ctx,target,level,x,y,w,h,fmt,size,data,t,ti);tex_dirty(t);}
 static void tex_param(GLcontext *ctx,GLenum target,struct gl_texture_object *t,GLenum pname,const GLfloat *params)
- {(void)target;(void)params;if(pname==GL_TEXTURE_BASE_LEVEL||pname==GL_TEXTURE_MAX_LEVEL||pname==GL_GENERATE_MIPMAP_SGIS){(void)SYNC(t);tex_dirty(t);}} /* (a failed read back stays marked: the copy is made again only after it) */
+ {(void)target;(void)params;if(pname==GL_TEXTURE_BASE_LEVEL||pname==GL_TEXTURE_MAX_LEVEL){(void)SYNC(t);tex_dirty(t);} /* .639 (review): not GL_GENERATE_MIPMAP_SGIS: Mesa only stores that policy, and the next image write marks the copy through the image callbacks; the copy was uploaded again for nothing */} /* (a failed read back stays marked: the copy is made again only after it) */
 static void tex_palette(GLcontext *ctx,struct gl_texture_object *t) {(void)ctx;if(t)tex_dirty(t);else pal_gen++;}
 static void tex_delete(GLcontext *ctx,struct gl_texture_object *t) {tex_free(t);_mesa_delete_texture_object(ctx,t);}
 /* v10.321: glGetTexImage and glGenerateMipmapEXT read Mesa's images: read back first; the generated levels make the copy stale */
@@ -413,6 +413,7 @@ static int upload_(vxgl_ctx *c,struct gl_texture_object *t,vxgl_tex *x,const vxg
    x->failed=GL_TRUE;x->fail_levels=levels;x->fail_format=fmt;x->fail_mem=GL_TRUE;x->fail_freed=vxgl_texmem_freed;
    {static int n;if(n++<8)vxgl_log("texture %u %ux%u, %u levels%s: no video memory copy (software)\n",t->Name,w,h,levels,cube?", cube":pl->vol?", 3D":"");}return 0;}
  }
+ x->dirty=1; /* .639 (review): not clean until the last level is filled: a fill that failed part-way left the copy marked clean with its new shape, and vxgl_tex_rtt took it as render-to-texture storage */
  x->w=w;x->h=h;x->levels=levels;x->format=fmt;x->base=pl->base;x->cube=cube;x->vol=pl->vol;
  x->sw=pl->sw;x->sh=pl->sh;x->sd=pl->sd;x->padS=pl->padS;x->padT=pl->padT;x->ring=pl->ring;x->dmode=pl->dmode;x->ctab=pl->ctab;
  fill_direct=0;
@@ -584,7 +585,7 @@ static GLuint prepare(vxgl_ctx *c,int unit,int stage,GLenum *base,vxgl_plan *pl)
     (!vxgl_gl_border||!(vx_d3d_feat&VX_F_BORDER)||linear_used(t,pl->mm)))PREPSW;
  /* GL_CLAMP filtered linearly takes in the border colour at the edges; the engine clamps to the edge texel (as the cards of the time
   * did, and games expect): such textures go to software, which does it exactly */
- if((t->WrapS==GL_MIRROR_CLAMP_EXT||(!one&&t->WrapT==GL_MIRROR_CLAMP_EXT)||(vol&&t->WrapR==GL_CLAMP))&&linear_used(t,pl->mm))PREPSW; /* .637: GL_CLAMP on s and t is the edge clamp (above) */ /* v10.357: the ring copy (pl->cx) is exact */ /* v10.353: MIRROR_CLAMP_EXT as GL_CLAMP */
+ if((t->WrapS==GL_MIRROR_CLAMP_EXT||(!one&&t->WrapT==GL_MIRROR_CLAMP_EXT))&&linear_used(t,pl->mm))PREPSW; /* .638: a volume's GL_CLAMP on r too (it was left in software in .637: the same rule half applied) */ /* .637: GL_CLAMP on s and t is the edge clamp (above) */ /* v10.357: the ring copy (pl->cx) is exact */ /* v10.353: MIRROR_CLAMP_EXT as GL_CLAMP */
  /* v10.330 (review #17): a depth texture with a colour table goes to software (the depth mode's conversion returned before the table).
   * (review #13): a border sampled through a colour table too: the copy's texels are looked up, the sampler's border colour and the ring
   * were not. (review #14): a depth texture's border is its red as the depth, converted by the depth mode as its texels are (swrast) */
@@ -648,9 +649,9 @@ int vxgl_tex_rtt(vxgl_ctx *c,struct gl_texture_object *t,GLuint level,int make,v
  if(!t||t->Target!=GL_TEXTURE_2D||level>=MAX_TEXTURE_LEVELS||!(ti=t->Image[0][level]))return 0;
  if(ti->Border||ti->IsCompressed||ti->_BaseFormat!=GL_RGB||!ti->Width||!ti->Height||ti->Width>2048||ti->Height>2048)return 0;
  if(!(x=tex_of(t,1)))return 0;
- if(!x->no_ring){int k,any=0;for(k=0;k<3;k++)if(x->spare[k].levels)any=1;x->no_ring=1;if(any){vxgl_hw_flush_all();vxgl_batch_flush();spare_free(x);}} /* v10.366: vxgl_fbo.c keeps &x->m */
+ if(!x->no_ring){int k,any=0;for(k=0;k<3;k++)if(x->spare[k].levels)any=1;x->no_ring=1;if(any){vxgl_engine_lock();vxgl_hw_flush_all();vxgl_batch_flush();spare_free(x);vxgl_engine_unlock();}} /* .706 (a review of .703): under the engine lock, as every other flush-and-free */ /* v10.366: vxgl_fbo.c keeps &x->m */
  if(!make){if(!x->m.levels||x->dirty||vxgl_texmem_lost(&x->m))return 0;}
- else if(x->m.levels&&vxgl_texmem_lost(&x->m)){int f;x->vnew=0;vxgl_hw_flush_all();vxgl_batch_flush();free_copy(x);memset(&x->m,0,sizeof(x->m));for(f=0;f<5;f++)memset(&x->cf[f],0,sizeof(x->cf[f]));x->dirty=1;} /* made again below */
+ else if(x->m.levels&&vxgl_texmem_lost(&x->m)){int f;x->vnew=0;vxgl_engine_lock();vxgl_hw_flush_all();vxgl_batch_flush();free_copy(x);vxgl_engine_unlock(); /* .706 */memset(&x->m,0,sizeof(x->m));for(f=0;f<5;f++)memset(&x->cf[f],0,sizeof(x->cf[f]));x->dirty=1;} /* made again below */
  if(x->m.levels&&!x->dirty&&!x->cube&&!x->vol&&x->format==VX3DN_TEX_XRGB8888&&!x->padS&&!x->padT&&!x->dmode&&!x->ctab&&level>=x->base&&level<x->base+x->m.levels) {
   GLuint l=level-x->base,lw=x->m.w>>l,lh=x->m.h>>l;if(!lw)lw=1;if(!lh)lh=1;
   if(lw==ti->Width&&lh==ti->Height){*mp=&x->m;*lp=l;return 1;}}

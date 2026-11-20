@@ -1,6 +1,6 @@
 {
   "scope": "Execute the linked Win32 D3D callbacks with synthetic runtime/VxD services.",
-  "passed": 92,
+  "passed": 95,
   "cases": [
     "linked ContextCreate takes an IDirectDrawSurface interface from a pre-DirectX 7 runtime call",
     "linked Miscellaneous2Callbacks offers CreateSurfaceEx, GetDriverState and DestroyDDLocal",
@@ -8,6 +8,8 @@
     "linked state-only DP2 accepts no VB/FVF and preserves x87 control word",
     "linked DP2 honors nonzero command offset, vertex count units and native packet ABI",
     ".550: draw packets held across DrawPrimitives2 calls go in one VxD call at the next Lock; a refused held packet is dropped, not retried",
+    ".663 (audit 01): a held draw survives a legacy RenderState call and goes at the next Lock",
+    ".663 (audit 04): a legacy Clear sends the held draws first, then the clear",
     "linked legacy RenderState and GetState exchange the applied flat-shade state",
     "empty legacy state callback requires no execute-buffer allocation",
     "linked execute-buffer TRIANGLE instruction translates to the same GPU path",
@@ -21,7 +23,7 @@
     "linked unknown-parser notification accepts the callback address without dereferencing its code",
     "linked CALLBACKS3 has NULL obsolete/reserved entries and bounds its output copy",
     "linked capability query respects a truncated expected-size buffer",
-    "destroying an unmapped context surface invalidates the context before address reuse",
+    "destroying an unmapped context surface unbinds it from the context (not lost) before address reuse",
     "state-only DP2 never reads a poisoned unused vertex union or validates its count/stride",
     "v10.428: ZWRITEENABLE recorded in the runtime's state array but never sent reaches the context at the end of the next call",
     "v10.428: a value is taken only when the array changed since the last call; an array the runtime does not keep changes nothing",
@@ -50,6 +52,7 @@
     "v10.470: a DllMain attach in a process that already drew through the HAL keeps its contexts and surface tables",
     "shared table-pool exhaustion returns OUTOFMEMORY without corrupting existing handles",
     "DestroyDDLocal makes its shared table block reusable after exhaustion",
+    "rebinding the same RTT colour surface keeps both clears on the same target and skips the GPU wait",
     "v10.456 ACCEL_D3D_RTTEX: DP2 SETRENDERTARGET draws into a render-target texture as an X8R8G8B8 target; leaving it waits for the engine once; the same surface is then sampled as a texture",
     "v10.479: DP2 SETRENDERTARGET refused after its wait (bad depth handle): the render-target texture stays the target and marked; the next change waits again",
     "v10.456: ACCEL_D3D_RTTEX 0: a texture is refused as a render target, as before",

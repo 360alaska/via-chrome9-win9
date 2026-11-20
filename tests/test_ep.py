@@ -86,9 +86,19 @@ def one(lib,s,depth,split):
             if kind=='d':sup.append((ok,r.dropped()-d1))
     else:res.append(r.dp2(b''.join(c for _,c in s)))
     return res,r.packets,r.dropped()-d0,sup,bytes(r.ctx.state)
+def norm651(b):
+    """.651: the reference's packet as .651 builds it: in the plain two-unit layout unit 1 reads the second coordinate slot (stages.set[1]
+    1, not 0 when the stages share a set; the vertex words are the same)"""
+    q=T.Packet.from_buffer_copy(b)
+    if q.stages.units==2 and not q.stages.layout and not q.stages.s3 and q.stages.set[1]==0:q.stages.set[1]=1
+    return bytes(q)
+def is_bump3(b):
+    """.662: a packet of the three-stage bump form (stage 1 BUMPENVMAP between a base and an environment map, XP's T153-T156 layout)"""
+    q=T.Packet.from_buffer_copy(b)
+    return q.stages.units==3 and q.stages.ps==1 and q.stages.ntau==3 and q.stages.nkc>=1 and q.stages.kc_reg[0]==12
 def main():
     new=load(Path(__file__).resolve().parent/'core.so');ref=load(os.environ['VX_REF_CORE']) if os.environ.get('VX_REF_CORE') else None
-    rnd=random.Random(552);draws=drops=packets=refcmp=0
+    rnd=random.Random(552);draws=drops=packets=refcmp=bump3=0
     for n in range(N):
         s=stream(rnd);depth=rnd.choice((0,3,12,13))
         a_res,a_pk,a_drop,_,a_state=one(new,s,depth,0)
@@ -104,8 +114,10 @@ def main():
             for k,(ok,dd) in enumerate(b_sup):
                 if not ok and not dd:raise SystemExit('stream %d: draw %d is unsupported and was not left out'%(n,k))
             draws+=nd;drops+=sum(1 for ok,dd in b_sup if not ok);packets+=len(a_pk)
-        if ref:
+        if ref and any(is_bump3(x) for x in a_pk):bump3+=1 # .662: the reference leaves stage-1 bump mapping out; test_core's T153-T156 check these packets
+        elif ref:
             r_res,r_pk,r_drop,_,r_state=one(ref,s,depth,0)
+            r_pk=[norm651(x) for x in r_pk]
             if (r_res,r_pk,r_drop,r_state)!=(a_res,a_pk,a_drop,a_state):raise SystemExit('stream %d: the reference library differs (answers %s / %s, packets %d / %d, left out %d / %d)'%(n,r_res,a_res,len(r_pk),len(a_pk),r_drop,a_drop))
             refcmp+=1
     # .553: ValidateDevice (vx_d3d_draw_status with a resolver -> the template's validation build) comes outside a DrawPrimitives2
@@ -134,6 +146,6 @@ def main():
     ep=(U*4).in_dll(new,'vx_d3d_ep')
     print('%d streams: %d draws, %d left out as unsupported, %d packets; one call and a call a command agree, and with vx_d3d_supported'%(N,draws,drops,packets))
     print('composes done %d, used again %d; support answers worked out %d, used again %d'%tuple(ep))
-    if ref:print('%d streams the same through the reference library (answers, error offsets, packets, drops, final state)'%refcmp)
+    if ref:print('%d streams the same through the reference library (answers, error offsets, packets, drops, final state); %d with the three-stage bump form (.662) not compared'%(refcmp,bump3))
     if not drops or not packets or not ep[3]:raise SystemExit('the streams did not exercise both answers')
 main()

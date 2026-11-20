@@ -14,7 +14,7 @@
   "le": {
     "format": "LE",
     "objects": 2,
-    "internal_fixups": 8128,
+    "internal_fixups": 8402,
     "device_id": "4333",
     "device_name": "VX85598",
     "ddb_ordinal": 1,
@@ -536,7 +536,7 @@
     }
   },
   "engine": {
-    "passed": 1274,
+    "passed": 1275,
     "cases": [
       "16bpp fill 0 0",
       "16bpp fill 0 1f",
@@ -1711,6 +1711,7 @@
       "stuck: fired XOR not replayed; future access fenced; the cursor exclusion is released (v10.139)",
       "unrecoverable offscreen fault fences DIB device and all primary locks",
       "lab ownership prevents engine access",
+      "primary Lock cursor bracket: begun only when DONE, ended whatever the engine state, never closing another (.657)",
       "default threshold keeps small fill (flags 0) on the CPU",
       "default threshold keeps small fill (flags 16) on the CPU",
       "default threshold keeps a 20x20 DirectDraw copy on the CPU",
@@ -2040,12 +2041,13 @@
     ]
   },
   "flip": {
-    "passed": 76,
+    "passed": 78,
     "cases": [
       "16bpp calibration takes the known unit and makes no BIOS call",
       "16bpp flip programs CR0C/0D/34 and waits for the blank",
       "16bpp direct flips make no BIOS call",
-      "16bpp .555: a NOVSYNC flip is the one-frame flip (the chip takes the address at the blank: the old front is guarded until then)",
+      "16bpp .555 (ACCEL_FLIP_TEAR 0): a NOVSYNC flip is the one-frame flip (the chip takes the address at the blank: the old front is guarded until then)",
+      "16bpp .696: a NOVSYNC flip (ACCEL_FLIP_TEAR 1) is written at once with CR32 bit 0 (real-time flipping), no blank wait; a vsync flip after it clears the bit and waits",
       "16bpp dword aligned offsets are accepted",
       "16bpp misaligned or out-of-memory flip targets are refused without touching the CRTC",
       "16bpp flip interval 3 waits for three blanks",
@@ -2082,7 +2084,8 @@
       "32bpp calibration takes the known unit and makes no BIOS call",
       "32bpp flip programs CR0C/0D/34 and waits for the blank",
       "32bpp direct flips make no BIOS call",
-      "32bpp .555: a NOVSYNC flip is the one-frame flip (the chip takes the address at the blank: the old front is guarded until then)",
+      "32bpp .555 (ACCEL_FLIP_TEAR 0): a NOVSYNC flip is the one-frame flip (the chip takes the address at the blank: the old front is guarded until then)",
+      "32bpp .696: a NOVSYNC flip (ACCEL_FLIP_TEAR 1) is written at once with CR32 bit 0 (real-time flipping), no blank wait; a vsync flip after it clears the bit and waits",
       "32bpp dword aligned offsets are accepted",
       "32bpp misaligned or out-of-memory flip targets are refused without touching the CRTC",
       "32bpp flip interval 3 waits for three blanks",
@@ -2121,10 +2124,12 @@
     ]
   },
   "directdraw": {
-    "passed": 225,
+    "passed": 252,
     "cases": [
       "16bpp HAL initialization and callback pointer",
       "16bpp DirectDraw primary Lock/Unlock excludes and restores cursor",
+      "16bpp primary Lock/Unlock bracket kept by surface (.657)",
+      "16bpp .706: a primary destroyed while locked closes its cursor bracket",
       "16bpp CanCreate rejects texture/overlay/z-buffer requests and leaves system-memory surfaces to the runtime",
       "16bpp CanCreate accepts flip chains when the VxD verified flipping",
       "16bpp DirectDraw fill -> VxD -> native engine",
@@ -2167,6 +2172,8 @@
       "16bpp fired timeout returns SURFACELOST without replay",
       "32bpp HAL initialization and callback pointer",
       "32bpp DirectDraw primary Lock/Unlock excludes and restores cursor",
+      "32bpp primary Lock/Unlock bracket kept by surface (.657)",
+      "32bpp .706: a primary destroyed while locked closes its cursor bracket",
       "32bpp CanCreate rejects texture/overlay/z-buffer requests and leaves system-memory surfaces to the runtime",
       "32bpp CanCreate accepts flip chains when the VxD verified flipping",
       "32bpp DirectDraw fill -> VxD -> native engine",
@@ -2238,6 +2245,13 @@
       "8bpp overlapping mirror in one surface from a staged source",
       "8bpp clipped overlapping copy in one surface from a staged source",
       "8bpp clipped copy in one surface, rectangles apart, on the engine",
+      "8bpp staged stretch (token)",
+      "8bpp staged stretch (token)",
+      "8bpp staged stretch (token)",
+      "8bpp staged stretch (token)",
+      "8bpp staged stretch (token)",
+      "8bpp staged stretch (token)",
+      "8bpp the staging block kept per process ID and token: a new token under the same ID gets its own, no token keeps none (.659)",
       "16bpp stretch 2x video to video on the CPU",
       "16bpp shrink video to video on the CPU",
       "16bpp odd-ratio stretch",
@@ -2268,6 +2282,13 @@
       "16bpp overlapping mirror in one surface from a staged source",
       "16bpp clipped overlapping copy in one surface from a staged source",
       "16bpp clipped copy in one surface, rectangles apart, on the engine",
+      "16bpp staged stretch (token)",
+      "16bpp staged stretch (token)",
+      "16bpp staged stretch (token)",
+      "16bpp staged stretch (token)",
+      "16bpp staged stretch (token)",
+      "16bpp staged stretch (token)",
+      "16bpp the staging block kept per process ID and token: a new token under the same ID gets its own, no token keeps none (.659)",
       "32bpp stretch 2x video to video on the CPU",
       "32bpp shrink video to video on the CPU",
       "32bpp odd-ratio stretch",
@@ -2298,29 +2319,38 @@
       "32bpp overlapping mirror in one surface from a staged source",
       "32bpp clipped overlapping copy in one surface from a staged source",
       "32bpp clipped copy in one surface, rectangles apart, on the engine",
+      "32bpp staged stretch (token)",
+      "32bpp staged stretch (token)",
+      "32bpp staged stretch (token)",
+      "32bpp staged stretch (token)",
+      "32bpp staged stretch (token)",
+      "32bpp staged stretch (token)",
+      "32bpp the staging block kept per process ID and token: a new token under the same ID gets its own, no token keeps none (.659)",
       "a tall clipped stretch (65535 source rows to 40000, the last ten) reads the rows a 64-bit reference gives (it wrapped at 32 bits)",
       "16bpp DriverInit registers the flip callbacks after the VxD verified display-start flipping",
       "16bpp Flip callback moves the display start to the target surface",
-      "16bpp .555: DDFLIP_NOVSYNC flips as the one-frame flip (the old front guarded until the blank)",
+      "16bpp .696: DDFLIP_NOVSYNC reaches the VxD and flips at once from the next scan line (CR32 bit 0, no blank wait)",
       "16bpp Flip refuses a target that is not a full scanout surface",
       "16bpp GetFlipStatus reports a finished flip",
       "16bpp .576: a DONOTWAIT flip with the flip before pending answers still drawing and moves nothing",
       "16bpp v10.479: with a flip pending and the VxD not answering, GetFlipStatus and a write Lock answer SURFACELOST instead of going on",
       "16bpp WaitForVerticalBlank begin, end and test requests",
       "16bpp unknown vertical-blank request is left to the runtime",
+      "16bpp .705: a vertical-blank wait the VxD timed out or failed answers DDERR_GENERIC (was DD_OK)",
       "16bpp leaving exclusive mode puts the desktop back",
       "16bpp entering and leaving exclusive mode sends the async gate codes to the VxD (on, then off)",
       "16bpp process exit puts the desktop back",
       "16bpp no blank signal: WaitForVerticalBlank left to the runtime",
       "32bpp DriverInit registers the flip callbacks after the VxD verified display-start flipping",
       "32bpp Flip callback moves the display start to the target surface",
-      "32bpp .555: DDFLIP_NOVSYNC flips as the one-frame flip (the old front guarded until the blank)",
+      "32bpp .696: DDFLIP_NOVSYNC reaches the VxD and flips at once from the next scan line (CR32 bit 0, no blank wait)",
       "32bpp Flip refuses a target that is not a full scanout surface",
       "32bpp GetFlipStatus reports a finished flip",
       "32bpp .576: a DONOTWAIT flip with the flip before pending answers still drawing and moves nothing",
       "32bpp v10.479: with a flip pending and the VxD not answering, GetFlipStatus and a write Lock answer SURFACELOST instead of going on",
       "32bpp WaitForVerticalBlank begin, end and test requests",
       "32bpp unknown vertical-blank request is left to the runtime",
+      "32bpp .705: a vertical-blank wait the VxD timed out or failed answers DDERR_GENERIC (was DD_OK)",
       "32bpp leaving exclusive mode puts the desktop back",
       "32bpp entering and leaving exclusive mode sends the async gate codes to the VxD (on, then off)",
       "32bpp process exit puts the desktop back",
@@ -2860,6 +2890,19 @@
       "32bpp: sync, mode generation change, draw, sync: pictures identical, the registers back to the foreign values, sequencer locked"
     ]
   },
+  "v682": {
+    "passed": 8,
+    "cases": [
+      "16 bpp: a good engine passes its proof after a 3D reset and GDI goes on drawing on it",
+      "16 bpp: a wrong copy fails the proof; the 2D engine is off (GDI in software) for the rest of the mode",
+      "16 bpp: the next mode set proves the engine again and GDI draws on it",
+      "16 bpp: VX2D_proof: made now (passed), and the next one failed on purpose (VXREG GDITEST OFF) turns the engine off",
+      "32 bpp: a good engine passes its proof after a 3D reset and GDI goes on drawing on it",
+      "32 bpp: a wrong copy fails the proof; the 2D engine is off (GDI in software) for the rest of the mode",
+      "32 bpp: the next mode set proves the engine again and GDI draws on it",
+      "32 bpp: VX2D_proof: made now (passed), and the next one failed on purpose (VXREG GDITEST OFF) turns the engine off"
+    ]
+  },
   "preservation": {
     "baseline": "Uploaded VX855_v10_148_source.zip",
     "baseline_zip_sha256": "98d5a9fa6280beeb58c68051e20226aa1eb20aba440a7b7cbf6d5fb4dadc0313",
@@ -2962,7 +3005,7 @@
     "modified_files": {
       "build.py": {
         "baseline_sha256": "f4fb90bde751305c785a88533cd712e3aba8686b1a4a5853d7046bfd4cec6b5a",
-        "current_sha256": "a3e3928cfa7b981fe656b3ddd9abee38ff4f9b099c6191f88fa78ff61c1bafad"
+        "current_sha256": "ef7a3720df33a092e8aa99844a1cc8a781b62177f32ead169e1a12abcf083157"
       },
       "src/dddrv.c": {
         "baseline_sha256": "6d5a2456a4643b9ba6db2e4c34eed33057ea93f0bb8514a2e320fb2fc92cce4c",
@@ -2970,7 +3013,7 @@
       },
       "src/vx855_2d.c": {
         "baseline_sha256": "c1f1f0dc5eb4f3a6b19ccafc077387adbed7e86391adda2e9d43bf48c29575d3",
-        "current_sha256": "a66fec29824e97f84c64aad6a8d4ca478464a7085029744d65a5f71044ef2ceb"
+        "current_sha256": "fedc6989b27d16d399c5afa45f84f858cc3533783ce50e872e6511d6a84fd09d"
       },
       "src/vx855_2d.h": {
         "baseline_sha256": "a5e8f866b5cb9cb029c2a36af5fe7aae74d981324287dc53873b6187ce1907d8",
@@ -2982,19 +3025,19 @@
       },
       "src/vx855_flip.c": {
         "baseline_sha256": "f91b1a022c0aa6309828e7b6c948f5164c7ecd9f43648f3b19dde28b56705422",
-        "current_sha256": "a70d44f78a759be861a924ca3beb1f9b10cc04ff3f70b554515a705458b028b0"
+        "current_sha256": "9b058aa086e936d62355a10ebfb80018af13c86beb00db26bf2190ea3e19d218"
       },
       "src/vx_ddraw.c": {
         "baseline_sha256": "6f615cca66ae742b28cc412f9ab42c04ed11642390576cd7362fe5669dc28d29",
-        "current_sha256": "d41bb6f1d9e47d00f38375abaadd7e1adac119a9acbd125086b0ba5fafa400cb"
+        "current_sha256": "f480d833b910c8cc163f6e66fce35576a3708e843a0a4128bfd2cfc01c4afe5e"
       },
       "src/vxd_main.c": {
         "baseline_sha256": "c457b4c71299c0d10ba748d7bf994f2045c69b032869d3d41db779c71e228aa7",
-        "current_sha256": "220125357eeee2a494eb88dac011040b2113ef45581b7f78ed39cbb02f3309f1"
+        "current_sha256": "f5663ca1e840bc8f652af0980c681c8e860f98e89e441b622cae7c7754fe1487"
       },
       "src/vxd_vesa.c": {
         "baseline_sha256": "09a6ba3f12c8499c1daa252d0cfcaff7a86c111e70d176ef8c24c4c4a27b02c1",
-        "current_sha256": "98daefcd82ce85e75b70ca0a3047e76fd67a56b4112bd4ceb5f29c581636dbd7"
+        "current_sha256": "f7d2f8ad070d6b90417e01014394961e9aee5401e389cb664a7c6724659bb56d"
       },
       "src/ddhal32/vmdahal32.h": {
         "baseline_sha256": "35cceccf472ba9c4b07498d18aa41ff41fe98f136f105b0b340b8e4d8d29cbdd",
@@ -3042,7 +3085,7 @@
       },
       "src/dibcall.c": {
         "baseline_sha256": "f85d338747e5748a74112745fdc1f2b036bf2883281d2911e1134ce9f2a19305",
-        "current_sha256": "fec685d6986117558923d1d581037f49655193a056b1fe4889c8dcdae8261c96"
+        "current_sha256": "0ccfcbf27391e239331a3790f7b4d4598a76f953d518c58a3ea38bfe7fe05a24"
       },
       "src/vxd_mouse_conv.h": {
         "baseline_sha256": "a4ea6bbf93f289d8f0d77e82238b58371a59138310d9cb411185d2ff967dd200",
@@ -3102,7 +3145,7 @@
       },
       "src/vx855_flip.h": {
         "baseline_sha256": "5b7dd63bc3d8183e19db3f396c9dafa377f53d0da8dfe9bfdb84b583b8da8e10",
-        "current_sha256": "380f514492673e577977005415c4f8836ee3c94ebe4e7a3617a237c5cef5e88d"
+        "current_sha256": "2b11b3f1dab62ff32e5f1682f6df4fa1ad3ce71ae94490774977996e36f77ae2"
       },
       "src/pm16_calls.h": {
         "baseline_sha256": "1ae743c115ce423d2fe6c46e2ef972ddfab91bc615b141e019ee8e901a784e6a",
@@ -3122,7 +3165,7 @@
       },
       "src/vxd_vdd.c": {
         "baseline_sha256": "c6863276d96c966d4e45d164af2503a91e39a3760dae90ee8965d7eb6813c080",
-        "current_sha256": "9a48be3efe0a13d30c9eda83b33f43ab39212f0aa961122429c38f318fcbb19f"
+        "current_sha256": "3c853375eca1f29cb2aa2c977d284f7451f3176121d6183471cd7aae8f202f51"
       },
       "src/io.h": {
         "baseline_sha256": "63d0d71cc888c4e44615faf703ba9720056edae302b9d6a7ead3e16fe3e06e68",
@@ -3231,5 +3274,5 @@
     },
     "removed_files": {}
   },
-  "passed_compiled_code_checks": 2245
+  "passed_compiled_code_checks": 2283
 }

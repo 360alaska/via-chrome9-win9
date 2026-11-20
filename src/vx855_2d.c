@@ -87,6 +87,7 @@ static int m2d_state,running;
 static uint32_t fail_gen,lost_gen,recoveries,retries; /* v10.75: mode-set generation at which the engine went off (state 2) or lost (state 3) */
 static int lost_fenced,hold_by_us;
 static int native_fault; /* A lost Direct3D submission cannot use 2D-only recovery. */
+uint32_t vx2d_verify_pending,vx2d_verify_fail_once,vx2d_verify[6]; /* .682: the engine's proof after a 3D reset (selftest, below) */
 static uint32_t vx2d_3d_resets; /* v10.281: engine resets by the 3D side (VX2D_3d_reset) */
 static uint32_t gdi_off_seen; /* v10.73: GDI requests that reached the VxD while the DRV's enabled flag read 0 */
 static volatile uint16_t *gdi_flags,*gdi_enabled;
@@ -127,7 +128,7 @@ int VX2D_native_fault(void) {return native_fault;}
 /* v10.281: the 3D side reset the engine (a hung draw): the 2D side initialises it again (e_first: its own reset and the clock check)
  * before its next operation, as after a mode set, instead of going on as if the engine still held what it set up (board: after VXDX7's
  * hang test the desktop showed wrong blocks where Explorer redrew under the pointer). Only state 1 (working) goes back to 0. */
-void VX2D_3d_reset(void) {if(m2d_state==1) m2d_state=0; vx2d_3d_resets++;}
+void VX2D_3d_reset(void) {if(m2d_state==1) m2d_state=0; vx2d_3d_resets++; vx2d_verify_pending=1; vx2d_verify[4]++;} /* .683: the engine proved before GDI uses it again */
 /* v10.282: the 3D side's clears (vx_native3d_vxd.c): a fill of an offscreen surface submitted with VX2D_ASYNC while vx2d_own3d is set is
  * left running as a DirectDraw blit in exclusive mode is (v10.95): its completion is the next call that touches the engine, the frame
  * buffer or the display (complete_pending: every 2D call, VX2D_access for a Lock, VX2D_busy at every 3D submit, flips, mode sets).
@@ -324,6 +325,39 @@ static int reset(void) {
  stats.resets++; return idle();
 }
 static void note_lost(void);
+/* .683 (T681: after a 3D hang in VXNOSYNC the 3D side's resets all reported the engine idle, the 2D side set it up again and went on, and
+ * every window drag drew garbage until a restart: "2D lost 0, native fault 0", the desktop unusable). After the 3D side resets the engine
+ * (VX2D_3d_reset) the 2D side now proves the engine before GDI uses it again: in the staging block (or the colour block), off the screen,
+ * the CPU writes a pattern, the engine copies it (ROP CC) and fills a second rectangle (ROP F0), the CPU reads both back. A failure, or a
+ * wait that runs out, turns the 2D engine off (state 2, as a failed set-up: every request declined, so GDI draws in software, slower but
+ * right) and the proof is made again at the next mode set, until it passes. vx2d_verify: [0] proofs, [1] passed, [2] failed, [3] the last
+ * failure (1 engine not idle before, 2 the copy did not finish, 3 the fill did not finish, 4 the copy wrong, 5 the fill wrong), [4] resets
+ * that asked for one, [5] proofs failed on purpose (TEXDBG BC 44D: VXREG GDITEST OFF) */
+extern volatile unsigned long vx2d_stage_off;
+static int selftest(void) {
+ const uint32_t base=vx2d_stage_off?vx2d_stage_off:vx2d_brush_off,bpp=vx_status.bpp,P=256,W=32,H=4;
+ uint32_t by,A,B,C,x,y,k,sv[19],col,mask,code=0;volatile uint8_t *v;
+ if(!base||!hda||!hda->vram_pm32||(bpp!=8&&bpp!=16&&bpp!=32)) return 1; /* nowhere to prove it: as before */
+ vx2d_verify[0]++;by=bpp/8;A=base;B=base+P*H;C=base+2*P*H;v=(volatile uint8_t *)hda->vram_pm32;
+ mask=bpp==8?0xFFUL:bpp==16?0xFFFFUL:0xFFFFFFFFUL;col=0x5AC3A55CUL&mask;
+ for(y=0;y<H;y++)for(x=0;x<W*by;x++){v[A+y*P+x]=(uint8_t)(x*7+y*13+0x35);v[B+y*P+x]=0;v[C+y*P+x]=0;}
+ (void)*(volatile uint32_t *)(v+C+(H-1)*P); /* the writes drained before the engine reads */
+ if(!idle()) {code=1;goto out;}
+ for(k=0;k<19;k++) sv[k]=rd(saved_regs[k]);
+ flush(); wr(4,bpp==8?0x000:bpp==16?0x100:0x300); wr(8,((P>>3)<<16)|(P>>3)); wr(0x14,B>>3); wr(0x1C,A>>3);
+ wr(0x30,0); wr(0x48,0); wr(0x58,0); wr(0x5C,0); wr(0x20,0); wr(0x18,0); wr(12,((H-1)<<16)|(W-1)); wr(16,0);
+ (void)rd(0x400); wr(0,(0xCCUL<<24)|1);
+ if(!idle()) code=2;
+ else {flush(); wr(8,(P>>3)<<16); wr(0x14,C>>3); wr(0x1C,0); wr(0x4C,col); wr(0x58,col); wr(12,((H-1)<<16)|(W-1)); wr(16,0);
+  (void)rd(0x400); wr(0,(0xF0UL<<24)|1|0x2000); if(!idle()) code=3;}
+ for(k=0;k<19;k++) wr(saved_regs[k],sv[k]);
+ if(!code) for(y=0;y<H&&!code;y++)for(x=0;x<W*by;x++)if(v[B+y*P+x]!=v[A+y*P+x]){code=4;break;}
+ if(!code) for(y=0;y<H&&!code;y++)for(x=0;x<W*by;x++)if(v[C+y*P+x]!=(uint8_t)(col>>((x%by)*8))){code=5;break;}
+ if(!code&&vx2d_verify_fail_once){vx2d_verify_fail_once=0;vx2d_verify[5]++;code=6;}
+out:
+ if(code){vx2d_verify[2]++;vx2d_verify[3]=code;return 0;}
+ vx2d_verify[1]++;return 1;
+}
 static int e_first(void) {
  uint32_t base=vx_status.bar1&0xFFFFFFF0UL,n,start; unsigned long f; unsigned char old,v;
  if((vx_status.bar1&15)||base<0x100000UL||base>0xFFC00000UL) return 0;
@@ -338,7 +372,9 @@ static int e_first(void) {
   if((uint32_t)(Get_System_Time()-start)>=50) {e_end(); return 0;}
  }
  if(n==2000000UL) {e_end(); return 0;}
- n=reset(); if(!n) note_lost(); e_end(); return (int)n;
+ n=reset(); if(!n) note_lost();
+ else if(vx2d_verify_pending) {if(selftest()) vx2d_verify_pending=0; else n=0;} /* .683: proved after a 3D reset (the caller turns the engine off on 0) */
+ e_end(); return (int)n;
 }
 /* v10.58z: g=0 for DirectDraw requests. GDI's wEnabled flag read 0 whenever a DirectDraw request arrived
  * (diag code 0x204), so every DirectDraw operation was skipped. DirectDraw has its own lost-surface protocol. */
@@ -461,6 +497,9 @@ static void fence(void) {
  lost_fenced=1;
 }
 static void note_off(void) {m2d_state=2; fail_gen=vx_status.set_successes;}
+/* .689: the 3D side gave the engine up after hangs it would not reset again (vx_native3d_vxd.c rec_fail) but a last reset left it idle: GDI
+ * draws by the CPU until the next mode set, with the display running (VX2D_device_lost holds the display: T689 board A, the screen froze) */
+void VX2D_accel_off(void) {note_off();}
 static void note_lost(void) {m2d_state=3; lost_gen=vx_status.set_successes;}
 static void unfence(void) {
  if(lost_fenced) {
@@ -537,6 +576,23 @@ int VX3DN_poll(void);
  * into the ring (vx855_flip.c) runs after the ring's draws by itself; VX2D_sync's retire waited for the frame and the blank of the flip
  * before (board, GTA3 v10.418: 2542 retires, 17.4 s in 96 s, Flip 9.0 ms a frame) */
 void VX2D_sync_2d(void) {vx_lock(); complete_pending(); k_release(); vx_unlock();}
+/* .683: TEXDBG BC 44C (VXREG GDITEST): the proof made now (mode 0), or the next proof failed on purpose (mode 1: GDI then draws in software
+ * until the next mode set, the same as after a real failure). o: [0] 1 passed, 0 failed, 2 not made (engine off, lost or busy), [1] the
+ * 2D state, [2-7] vx2d_verify */
+void VX2D_proof(uint32_t mode,uint32_t *o) {
+ int i,r=2;unsigned long f;
+ vx_lock();f=VX_irq_save();if(running){VX_irq_restore(f);vx_unlock();o[0]=2;o[1]=(uint32_t)m2d_state;for(i=0;i<6;i++)o[2+i]=vx2d_verify[i];return;}
+ running=1;VX_irq_restore(f);complete_pending();k_release();
+ if(mode==1){vx2d_verify_fail_once=1;vx2d_verify_pending=1;if(m2d_state==1)m2d_state=0;}
+ else if((m2d_state==0||m2d_state==1)&&!native_fault&&m2d_linear&&!(vx3dn_rt_why=2,VX3D_busy())&&e_begin()){
+  r=idle()?selftest():0;e_end();
+  if(!r){vx2d_verify_pending=1;m2d_state=0;note_off();}}
+ running=0;
+ o[0]=(uint32_t)r;o[1]=(uint32_t)m2d_state;for(i=0;i<6;i++)o[2+i]=vx2d_verify[i];
+ vx_unlock();
+}
+/* .683: the engine failed its proof after a 3D reset and is off: the 3D side reports not ready (no Direct3D drawing over the desktop) */
+int VX2D_unproved(void) {return vx2d_verify_pending&&m2d_state==2;}
 void VX2D_sync(void) {vx_lock(); vx2d_present_arm=0; /* v10.424 */ vx3dn_rt_why=5;(void)VX3DN_busy(); /* v10.231: retires a 3D draw in flight */ complete_pending(); k_release(); vx_unlock();} /* v10.144: also hands a kept context back (mode sets, DOS boxes, flips, exit) */
 int VX2D_submit(const vx2d_request *request) {
  vx2d_request r; uint32_t saved[19],cmd,i,dx,dy,sx,sy,mask;
@@ -1017,6 +1073,8 @@ static void xf_mask_out(void) {volatile uint16_t *m=xf_mask_p16?gdi_at(xf_mask_p
 static int xf_kmode; /* v10.144: this transfer runs in the kept context */
 static int xf_open(void) {
  int i;
+ if(m2d_state==2&&fail_gen==vx_status.set_successes) return VX2D_SKIP; /* .683: the engine off (a failed set-up or proof): nothing of ours on it */
+ if(m2d_state==2) m2d_state=0; /* a new mode: set up (and proved) again */
  if(!m2d_state||generation!=vx_status.set_successes) {
   if(!e_first()) {if(m2d_state==3) {lost_gen=vx_status.set_successes; return VX2D_LOST;} note_off(); return VX2D_SKIP;}
   m2d_state=1; generation=vx_status.set_successes;
@@ -1309,9 +1367,14 @@ static void hcw(uint32_t r,uint32_t v) {wr(r,v);}
 static const uint32_t hc_inv=0x00FFFFFFUL; /* the inverse colour register (0x120C, 0x274): white */
 static uint32_t hc_shows,hc_hides,hc_moves,hc_declined,hc_sets,hc_ctrl;
 static int hc_on,hc_ready,hc_off_pending,hc_two; /* .598: hc_two = the second display unit's icon is driven as well */ static int32_t hc_lx,hc_ly; /* v10.142 (review O02): position last written while shown */
-static int hc_map(void) {
+static int hc_map_x(int off);
+static int hc_map(void) {return hc_map_x(0);}
+/* .690 (T689 board A: after the device was given up, the hourglass stayed over Windows' text-mode error screen): switching the icon unit
+ * off is a display register write, not engine work, so the hides get past the lost-device fence (hc_map_off); shows and moves do not */
+static int hc_map_off(void) {return hc_map_x(1);}
+static int hc_map_x(int off) {
  uint32_t base=vx_status.bar1&0xFFFFFFF0UL;
- if(native_fault) return 0; /* A lost native owner also fences cursor/video writes. */
+ if(native_fault&&!off) return 0; /* A lost native owner also fences cursor/video writes (.690: not the cursor's switch-off). */
  if((vx_status.bar1&15)||base<0x100000UL||base>0xFFC00000UL) return 0;
  if(!m2d_linear) {
   m2d_linear=_MapPhysToLinear(base,0x400000UL,0);
@@ -1334,7 +1397,7 @@ void VX2D_hwcur_hide(void) {
  hc_pos_ok=0;
  if(!hc_on&&!hc_off_pending) return;
  if(hc_on) {hc_on=0; hc_hides++;}
- if(vx2d_hwcur&&hc_ready&&hc_map()) {hc_ctrl&=~1UL; hc_ctl(hc_ctrl); hc_off_pending=0;}
+ if(vx2d_hwcur&&hc_ready&&hc_map_off()) {hc_ctrl&=~1UL; hc_ctl(hc_ctrl); hc_off_pending=0;}
  else hc_off_pending=(vx2d_hwcur&&hc_ready)?1:0;
 }
 /* v10.258: brightness (0..255*1000) for the mono cursor's two colours; a 24-bit colour as the mono cursor's colour registers take it
@@ -1394,7 +1457,7 @@ int VX2D_hwcur_active(void) {return hc_on;}
 /* v10.252 (review): after an engine reset the cursor unit's registers may be gone while hc_on / hc_ready still say shown: forget them,
  * so the next set programs the unit and the image again and the next move enables it */
 void VX2D_hwcur_invalidate(void) {
- if(vx2d_hwcur&&hc_map()) {hc_ctl(hc_ctrl&~1UL); hc_off_pending=0;} /* off whatever the reset left: shown again only if it should be */
+ if(vx2d_hwcur&&hc_map_off()) {hc_ctl(hc_ctrl&~1UL); hc_off_pending=0;} /* off whatever the reset left: shown again only if it should be */
  hc_on=0;hc_ready=0;hc_pos_ok=0;
 }
 /* v10.106: video overlay on the VX855 V1 video engine, programmed as OpenChrome's via_xv_overlay.c does it for YUY2 without the HQV unit (V1 control 0x230, QWORDs per line 0x234,
@@ -2117,9 +2180,19 @@ void VX2D_stats(vx2d_stats *out) {
 /* v10.229: why CPU access was refused: [0] m2d_state, [1] native_fault, [2] answers VX2D_LOST, [3] generation at the loss, [4] mode generation,
  * [5] lost_recover attempts that failed (TEXDBG 0xA5) */
 void VX2D_loss_info(uint32_t *o) {o[0]=(uint32_t)m2d_state;o[1]=(uint32_t)native_fault;o[2]=access_lost;o[3]=lost_gen;o[4]=vx_status.set_successes;o[5]=recover_failed;}
+/* .657 (board, .654-.656: after VXTLP the pointer's image stayed where it was and the real pointer moved unseen): a Lock or a CPU blit of the
+ * primary brackets the cursor with action 1 and action 2, and each of the two was skipped on its own whenever the engine was busy (3D in
+ * flight, a 2D op running, a display hold): a begin done and its end skipped left the frame-buffer access count above 0 for good (the
+ * cursor never shown again, a new shape never programmed), an end done for a begin skipped closed somebody else's bracket. Now the begin
+ * answers VX2D_DONE only when it was done, the HAL ends only those, and an end is done whatever the engine's state (it only lets the
+ * cursor be drawn again; a 3D draw on the screen keeps its own bracket). acc_open: begins of this kind not yet ended; vx2d_acc_stat:
+ * [0] begins done, [1] begins skipped, [2] ends done, [3] ends with none open (ignored) */
+static uint32_t acc_open; uint32_t vx2d_acc_stat[4];
+uint32_t VX2D_acc_open(void) {return acc_open;}
 int VX2D_access(uint32_t action) {
  int rc=VX2D_DONE;
  VX3DN_ev(15,action);
+ if(action==2) {vx_lock(); if(acc_open) {acc_open--; vx2d_acc_stat[2]++; FBHDA_access_end(0);} else {vx2d_acc_stat[3]++; rc=VX2D_SKIP;} vx_unlock(); return rc;}
  vx_lock(); gdi_map(); /* v10.273 */
  /* v10.231: CPU access (Lock, Unlock, software blits) waits for a 3D draw in flight, whatever the mode. v10.285 (review): the status
   * query (action 3, GetBltStatus) does not: a draw still running answers BUSY at once (VX3DN_poll: one status read, the retire only
@@ -2138,9 +2211,8 @@ int VX2D_access(uint32_t action) {
  /* .575 (peer review of .572, finding 10): a status query that finished no blit touched no register: the 3D state cache is kept (VX3D_busy
   * started it over every time: the next draw sent all its state again after a GetBltStatus or GetFlipStatus). VX3DN_poll above retired
   * whatever was in flight. A query that completed a pending blit, and every other action, as before. */
- else if(!desktop_cpu()||running||((action==3&&!pend_was)?(VX3D_lab_busy()||VX3DN_stopped()):(vx3dn_rt_why=2,VX3D_busy()))||vx_native_display_hold) rc=VX2D_SKIP;
- else if(action==1) FBHDA_access_begin(0);
- else if(action==2) FBHDA_access_end(0);
+ else if(!desktop_cpu()||running||((action==3&&!pend_was)?(VX3D_lab_busy()||VX3DN_stopped()):(vx3dn_rt_why=2,VX3D_busy()))||vx_native_display_hold) {rc=VX2D_SKIP; if(action==1) vx2d_acc_stat[1]++;}
+ else if(action==1) {FBHDA_access_begin(0); acc_open++; vx2d_acc_stat[0]++;}
  else if(action!=0&&action!=3) rc=VX2D_SKIP;
  }
  vx_unlock(); return rc;

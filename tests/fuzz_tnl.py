@@ -41,11 +41,25 @@ for it in range(N):
   tt=t.context.state.tss[k];tt[1]=R.choice((1,2,3,4));tt[11]=R.choice((0,1,0x10000,0x20000,0x30000,0x20001));tt[24]=R.choice((0,1,2,3,4,0x102,0x103,0x104,0x1FF,5));tt[0]=R.choice((0,7))
  nd=R.randint(1,4)
  for d in range(nd):
-  op=R.choice((26,26,18,19,21,20,22,3))
+  op=R.choice((26,26,18,19,21,20,22,3,1,2,15,16,17,27)) # .640: points and lines
   if op==26:
    tris=[(R.randrange(nv),R.randrange(nv),R.randrange(nv)) for _ in range(R.randint(1,300))];c+=t._itl(tris)
   elif op==3:
    tris=[(R.randrange(nv),R.randrange(nv),R.randrange(nv)) for _ in range(R.randint(1,50))];c+=cmd(3,len(tris),b''.join(struct.pack('<4H',*x,0) for x in tris))
+  elif op==1:
+   runs=[];
+   for _ in range(R.randint(1,4)):s0=R.randrange(nv);runs.append((R.randint(1,nv-s0),s0))
+   c+=cmd(1,len(runs),b''.join(struct.pack('<2H',*x) for x in runs))
+  elif op==2:
+   k=R.randint(1,60);c+=cmd(2,k,b''.join(struct.pack('<2H',R.randrange(nv),R.randrange(nv)) for _ in range(k)))
+  elif op==15:
+   k=R.randint(1,nv//2);c+=cmd(15,k,struct.pack('<H',0))
+  elif op==16:
+   k=R.randint(1,nv-1);c+=cmd(16,k,struct.pack('<H',0))
+  elif op==17:
+   k=R.randint(1,60);c+=cmd(17,k,struct.pack('<H',0)+b''.join(struct.pack('<H',R.randrange(nv)) for _ in range(k+1)))
+  elif op==27:
+   k=R.randint(1,60);c+=cmd(27,k,struct.pack('<H',0)+b''.join(struct.pack('<2H',R.randrange(nv),R.randrange(nv)) for _ in range(k)))
   elif op in (18,19,21):
    k=R.randint(1,max(1,nv//3-1));c+=cmd(op,k,struct.pack('<H',0))
   else:

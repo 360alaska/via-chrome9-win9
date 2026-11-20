@@ -11,6 +11,8 @@ static uint32_t u32(const uint8_t *p){return (uint32_t)p[0]|(uint32_t)p[1]<<8|(u
 extern uint32_t vxs_check_asm(const vxs_frame *f) __asm__("_vxs_check");
 extern void vxs_conv_asm(const vxs_frame *f) __asm__("_vxs_conv");
 extern uint32_t vxs_max16_asm(const uint8_t *p,uint32_t n) __asm__("_vxs_max16");
+extern void vxs_cmm16_asm(const uint8_t *p,uint16_t *dst,uint32_t n,uint32_t *mm) __asm__("_vxs_cmm16"); /* .645 */
+static uint16_t da[1800+16],db[1800+16];
 static uint8_t ib[1800*2+32];
 static uint32_t seed=545;
 static uint32_t rnd(void){seed=seed*1664525u+1013904223u;return seed>>3;}
@@ -54,7 +56,12 @@ __attribute__((force_align_arg_pointer)) void _start(void){
  }
  for(t=0;t<20000;t++){uint32_t n=rnd()%1800,o=rnd()&1,i,lim=(rnd()&1)?0x10000:(1+rnd()%4000),ra,rb; /* vxs_max16: odd addresses, every length */
   for(i=0;i<n;i++){uint32_t a=rnd()%lim;if((rnd()%97)==0)a=0xFFFF-(rnd()&3);ib[o+i*2]=(uint8_t)a;ib[o+i*2+1]=(uint8_t)(a>>8);}
-  ra=vxs_max16_c(ib+o,n);rb=vxs_max16_asm(ib+o,n);cases++;if(ra!=rb){out("max16 differs, case ");outn(t);out("\n");bad++;}}
+  ra=vxs_max16_c(ib+o,n);rb=vxs_max16_asm(ib+o,n);cases++;if(ra!=rb){out("max16 differs, case ");outn(t);out("\n");bad++;}
+  {uint32_t ma[2],mb[2],q,o2=rnd()&7; /* .645: vxs_cmm16: the copy, the smallest and the largest, and nothing written past the count */
+   for(q=0;q<1800+16;q++)da[q]=db[q]=0x5AA5;
+   vxs_cmm16_c(ib+o,da+o2,n,ma);vxs_cmm16_asm(ib+o,db+o2,n,mb);cases++;
+   if(ma[0]!=mb[0]||ma[1]!=mb[1]){out("cmm16 range differs, case ");outn(t);out("\n");bad++;}
+   else for(q=0;q<1800+16;q++)if(da[q]!=db[q]){out("cmm16 copy differs, case ");outn(t);out("\n");bad++;break;}}}
  out("hal span kernels against the C: ");outn(cases);out(" cases, ");outn(bad);out(" differ (");outn(passed);out(" vertices passed the check)\n");
  sys_exit(bad?1:0);
 }

@@ -235,8 +235,14 @@ static DWORD vx_brush_color(DWORD c) {
  return (c&0xFF00UL)|((c&255UL)<<16)|((c>>16)&255UL);
 }
 /* v10.84: which operands a ROP3 byte uses (ROP bit index = P<<2|S<<1|D) */
-static int vx_rop_s(BYTE r) {int i; for(i=0;i<8;i++) if(((r>>i)&1)!=((r>>(i^2))&1)) return 1; return 0;}
-static int vx_rop_p(BYTE r) {int i; for(i=0;i<8;i++) if(((r>>i)&1)!=((r>>(i^4))&1)) return 1; return 0;}
+static int vx_rop_s(BYTE r) {return ((r^(r>>2))&0x33)!=0;}
+static int vx_rop_p(BYTE r) {return ((r^(r>>4))&0x0F)!=0;}
+/* Duplicate each pair of truth-table bits across the two source values. */
+static BYTE vx_rop2_as_rop3(int rop2) {
+ BYTE r=(BYTE)(rop2-1);
+ r=(BYTE)((r&3)|((r&12)<<2));
+ return (BYTE)(r|(r<<2));
+}
 /* v10.84: the colour of a solid brush, for the fixed pattern colour of a copy ROP. 0 = not a plain solid brush. */
 static DWORD vx_pc; /* DS is not SS in this driver: a near pointer must not point at a stack variable, so the colour goes through a static */
 static int vx_solid(LPBRUSH brush) {
@@ -367,11 +373,11 @@ static WORD vx_try_memblit(LPDIBENGINE dst,WORD dx,WORD dy,LPPDEVICE src,WORD sx
  * ROP2. Only ROPs that read the screen go to the engine (DIBENG writes a plain fill as fast as the CPU can); one VxD call for the whole line. */
 /* 1 drawn, 2 fired and failed (not replayed), 0 nothing drawn */
 static int vx_spans(LPDIBENGINE dev,WORD wCount,LPPOINT lpPoints,LPPBRUSH lpPBrush,LPDRAWMODE dm,LPRECT clip) {
- PTTYPE __far *pt=(PTTYPE __far *)lpPoints; int rop2,i,y,cl=0,ct=0,cr=(int)wScreenX,cb=(int)wScreenY,a,b; WORD n=0,rr; BYTE r3=0;
+ PTTYPE __far *pt=(PTTYPE __far *)lpPoints; int rop2,i,y,cl=0,ct=0,cr=(int)wScreenX,cb=(int)wScreenY,a,b; WORD n=0,rr; BYTE r3;
  if(!(vx_host_mask&16)||!wEnabled||dev!=lpDriverPDevice||!(dev->deFlags&VRAM)||(dev->deFlags&BUSY)||(wBpp!=8&&wBpp!=16&&wBpp!=32)) return 0;
  if(wCount<2||wCount-1>VX2D_XF_SPANS_MAX||!pt||!lpPBrush||!dm) return 0;
  rop2=dm->Rop2; if(rop2<1||rop2>16) return 0;
- for(i=0;i<8;i++) {int P=(i>>2)&1,D=i&1; if(((rop2-1)>>(P*2+D))&1) r3|=(BYTE)(1<<i);} /* ROP2 (P, D) as a ROP3 (P, S, D) that ignores S */
+ r3=vx_rop2_as_rop3(rop2);
  if(!vx_rop_d(r3)||r3==0xAA) return 0;
  if(clip) {if(clip->left>cl) cl=clip->left; if(clip->top>ct) ct=clip->top; if(clip->right<cr) cr=clip->right; if(clip->bottom<cb) cb=clip->bottom;}
  y=pt[0].ycoord; if(y<ct||y>=cb||cr<=cl) return 0;
@@ -391,11 +397,11 @@ static int vx_spans(LPDIBENGINE dev,WORD wCount,LPPOINT lpPoints,LPPBRUSH lpPBru
 /* v10.118: Output OS_POLYSCANLINE (VX2GDI v1.1: filled shapes and wide pens arrive this way, between OS_BEGINNSCAN and OS_ENDNSCAN). lpPoints is a list of wCount GDI region scans:
  * WORD count, top, bottom (exclusive), count x values (pairs: first pixel, one past the last), count again. Each pair is a rectangle; the brush and the draw mode's ROP2 fill it. ROPs that read the screen only. */
 static int vx_polyscan(LPDIBENGINE dev,WORD wCount,LPPOINT lpPoints,LPPBRUSH lpPBrush,LPDRAWMODE dm,LPRECT clip) {
- WORD __far *p=(WORD __far *)lpPoints; int rop2,i,cl=0,ct=0,cr=(int)wScreenX,cb=(int)wScreenY; WORD n=0,rr,s,k; BYTE r3=0;
+ WORD __far *p=(WORD __far *)lpPoints; int rop2,cl=0,ct=0,cr=(int)wScreenX,cb=(int)wScreenY; WORD n=0,rr,s,k; BYTE r3;
  if(!(vx_host_mask&16)) return 0;
  if(!wEnabled||dev!=lpDriverPDevice||!(dev->deFlags&VRAM)||(dev->deFlags&BUSY)||(wBpp!=8&&wBpp!=16&&wBpp!=32)||!wCount||!p||!lpPBrush||!dm) return 0;
  rop2=dm->Rop2; if(rop2<1||rop2>16) return 0;
- for(i=0;i<8;i++) {int P=(i>>2)&1,D=i&1; if(((rop2-1)>>(P*2+D))&1) r3|=(BYTE)(1<<i);}
+ r3=vx_rop2_as_rop3(rop2);
  if(!vx_rop_d(r3)&&!(vx_host_mask&32)) return 0; /* v10.130: write-only ROP2s (COPYPEN, NOTCOPYPEN, BLACK, WHITE) only with ACCEL_HOST bit 32 */
  if(r3==0xAA) return 1;
  if(clip) {if(clip->left>cl) cl=clip->left; if(clip->top>ct) ct=clip->top; if(clip->right<cr) cr=clip->right; if(clip->bottom<cb) cb=clip->bottom;}
@@ -752,7 +758,8 @@ DWORD WINAPI __loadds ExtTextOut( LPDIBENGINE lpDestDev, WORD wDestXOrg, WORD wD
 	/* v10.83: the opaque rectangle (ETO_OPAQUE: filled with the draw mode's background colour before the text is drawn) is a plain fill; large ones go to the engine, then the
 	 * text is drawn by DIBENG without the opaque flag. A rectangle the engine declines (small, engine off, ...) stays with DIBENG as before. */
 	/* v10.84: VX2AUTO v2.0's diagnostic showed GDI hands the driver the opaque rectangle with options 0x100 (not ETO_OPAQUE 0x0002) for ETO_OPAQUE calls, so both bits count and both are cleared. */
-	if((wOptions&0x102)&&lpOpaqueRect&&lpDrawMode&&wEnabled&&lpDestDev==(LPDIBENGINE)lpDriverPDevice&&(lpDestDev->deFlags&VRAM)&&!(lpDestDev->deFlags&BUSY)&&(wBpp==8||wBpp==16||wBpp==32))
+	/* A negative count is an extent query. Zero may still request an opaque fill. */
+	if(wCount>=0&&(wOptions&0x102)&&lpOpaqueRect&&lpDrawMode&&wEnabled&&lpDestDev==(LPDIBENGINE)lpDriverPDevice&&(lpDestDev->deFlags&VRAM)&&!(lpDestDev->deFlags&BUSY)&&(wBpp==8||wBpp==16||wBpp==32))
 	{
 		int l=lpOpaqueRect->left,t=lpOpaqueRect->top,r=lpOpaqueRect->right,b=lpOpaqueRect->bottom;
 		if(lpClipRect)
@@ -1223,7 +1230,7 @@ static int vx_cpu_lines(LPDIBENGINE dev,WORD wCount,PTTYPE __far *pt,LPPPEN lpPP
  DIB_Pen __far *pen=(DIB_Pen __far *)lpPPen;
  DWORD mask=(wBpp==8)?0xFFUL:(wBpp==16)?0xFFFFUL:0xFFFFFFFFUL,col,base;
  long pitch,bpb=wBpp>>3;
- int cl=0,ct=0,cr=(int)wScreenX,cb=(int)wScreenY,i,l,t,r,b,fast,kind=(wBpp==8)?0:(wBpp==16)?1:2,inside;
+ int cl=0,ct=0,cr=(int)wScreenX,cb=(int)wScreenY,i,l,t,r,b,fast,kind=(wBpp==8)?0:(wBpp==16)?1:2,inside,lost=0;
  WORD feat,fx_,fy_; long lmx,lmy;
  if(!hda) return 0;
  feat=VX_GDI_FEAT();
@@ -1254,6 +1261,8 @@ static int vx_cpu_lines(LPDIBENGINE dev,WORD wCount,PTTYPE __far *pt,LPPPEN lpPP
  }
  inside=l>=cl&&t>=ct&&r<cr&&b<cb; /* .510: no segment leaves the clip rectangle: vx_poly_run */
  if(l<cl) l=cl; if(t<ct) t=ct; if(r>=cr) r=cr-1; if(b>=cb) b=cb-1;
+ if(l>r||t>b) {vxgt_cnt[0]++; return 1;} /* .705 (a review of .703): every point valid and the whole polyline outside the clip: nothing to draw, so no
+  * framebuffer access or cursor exclusion (two cursor calls a polyline) and no segment walked */
  VX_SETTLE();
  fast=VX_fast_begin();
  if(!fast) {FBHDA_access_rect((DWORD)l,(DWORD)t,(DWORD)r+1,(DWORD)b+1); vxgt_cnt[4]++;}
@@ -1272,11 +1281,12 @@ static int vx_cpu_lines(LPDIBENGINE dev,WORD wCount,PTTYPE __far *pt,LPPPEN lpPP
   int ddx=x1-x0,ddy=y1-y0,adx=ddx<0?-ddx:ddx,ady=ddy<0?-ddy:ddy,ym=ady>adx;
   long n=ym?ady:adx,m=ym?adx:ady,e=2*m-n-(ddy>0?1:0),ilt=2*m,ige=2*(m-n),xs=ddx<0?-bpb:bpb,ys=ddy<0?-pitch:pitch;
   int fx=x0,fy=y0; long cnt=n;
-  if(kind<3&&n>=(ym?lmy:lmx)) { /* v10.508/v10.509: long pen-copy segments to the engine */
+  if(kind<3&&!lost&&n>=(ym?lmy:lmx)) { /* v10.508/v10.509: long pen-copy segments to the engine (.705: not after it was lost) */
    WORD rr=vx_line_engine(x0,y0,x1,y1,(int)n,col,clip,cl,ct,cr,cb);
    if(rr==VX2D_DONE) {vxgt_cnt[12]++; continue;}
-   if(rr==VX2D_LOST) {dev->deFlags|=BUSY; wEnabled=0; break;}
-   /* SKIP or FAILED (fired, timed out): the CPU draws it (a pen copy: drawing a pixel twice is harmless) */
+   if(rr==VX2D_LOST) {dev->deFlags|=BUSY; wEnabled=0; lost=1;} /* .705 (a review of .703): the engine lost mid-polyline: this segment and the rest
+    * drawn by the CPU (we hold the framebuffer), so the call that answers success has drawn it all (it broke off and answered success) */
+   /* SKIP, FAILED (fired, timed out) or LOST: the CPU draws it (a pen copy: drawing a pixel twice is harmless) */
   }
   if((x0<cl||x0>=cr||x1<cl||x1>=cr||y0<ct||y0>=cb||y1<ct||y1>=cb)) { /* leaves the clip rectangle: its visible run worked out, not walked (.510) */
    /* Pixel k (0..n-1) is k major steps from (x0,y0) and j(k) minor ones. With A = e0 - 2m + 2n (0 <= A < 2n) the error before pixel k stays in [2m-2n, 2m), so

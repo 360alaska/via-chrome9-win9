@@ -230,7 +230,7 @@ str_dup(const char *str)
 static unsigned long knownID;
 static GLboolean firstCall = GL_TRUE;
 #endif
-/* VX855 v10.500 (ACCEL_OPENGL_GLAPIONE; Fable's list: the dispatch through the globals, not TlsGetValue): once a second thread has made a
+/* VX855 v10.500 (ACCEL_OPENGL_GLAPIONE; the review list: the dispatch through the globals, not TlsGetValue): once a second thread has made a
  * context current, Mesa 7.0.3 keeps the per-thread dispatch and context (a TlsGetValue in every GL call's dispatch and in every
  * GET_CURRENT_CONTEXT) for the life of the process, even when that thread (a loader, a splash screen) let its context go long ago.
  * opengl32 sends an ICD's GL calls only from a thread that has one of its contexts current, so while at most one thread does (the ICD

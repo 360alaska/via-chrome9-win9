@@ -81,7 +81,8 @@ static int aa_alpha_carried(const vxgl_ctx *c) {
 /* v10.330 (review #19): the mark stays when the wait did not reach the engine: tried again at the next state change */
 static void rtt_done(vxgl_ctx *c) {if(c->rtt_drawn){vxgl_hw_flush(c);vxgl_batch_flush();if(vxgl_engine_wait())c->rtt_drawn=0;}}
 static void translate(vxgl_ctx *c);
-void vxgl_translate_state(vxgl_ctx *c) {VXGL_PROF_BEGIN;translate(c);VXGL_PROF_END(0);} /* v10.271: timed for VXGL.LOG */
+unsigned long vxgl_xlate_gen; /* .672: every translation counted (the lock stage, vxgl_tris.c: the store's layout may have changed) */
+void vxgl_translate_state(vxgl_ctx *c) {VXGL_PROF_BEGIN;vxgl_xlate_gen++;translate(c);VXGL_PROF_END(0);} /* v10.271: timed for VXGL.LOG */
 static void translate(vxgl_ctx *c) {
  GLcontext *ctx=&c->gl;GLframebuffer *fb=ctx->DrawBuffer;vx_d3d_state old=c->core.state;uint32_t *rs=c->core.state.rs;GLuint fall=0,s,d;int32_t tw,th;
  c->new_state=0;

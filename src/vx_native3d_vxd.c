@@ -37,6 +37,26 @@ static uint32_t busy_why;
  * 250 ms to read idle (0x400 & 1FF7 = 0). Idle: the draw is dropped (never replayed) and VX3DN_RECOVERED returned; the device stays
  * usable. Not idle: the old fence. vx3dn_rec[]: recoveries, failures, status before, status after, last step (1 SR4E, 2 SR4E + SR1A). */
 volatile unsigned long vx3dn_recover=1;
+/* .689 (T688 board A: after a ring hang the engine was reset and drawing went on through one-shot fetches, which hung again and again: 41
+ * hangs and 41 resets of up to 250 ms each in one VXNOSYNC run, the machine stalled for seconds, and each reset's SR1A pulse is the one
+ * suspected of breaking the cursor): the engine is reset once a session. A second hang loses the device (fault, VX2D_device_lost: no 3D,
+ * the 2D side by the CPU) instead of another reset. VXREG's capture tests (rh_capture) keep their own reset. vx3dn_rec[0] stays the
+ * recoveries (at most 1 now), vx3dn_rec[1] the hangs that lost the device. */
+static uint32_t rec_tries,rec_good,rec_good_at,rec_hung_resets;uint32_t vx3dn_rec_run,vx3dn_rec_runmax,vx3dn_rec_limit=8,vx3dn_rec_off,vx3dn_gave_up,vx3dn_xr_late,vx3dn_fr_late;static int rec_ring_hung,rec_refused;
+/* .689: resets in a row with no group finished between them (rec_good unchanged) are counted; past vx3dn_rec_limit (8; the emulator's
+ * no-vertex-area check needs 4) the device is lost instead, and after a ring hang (rec_ring_hung, fx_ring_hang) past 1: T688 had 41 in a
+ * row after one, each up to 250 ms, then the cursor fault and a crash at the restart.
+ * .695 (review of .694): after a ring hang the limit is a total, not a run: one reset (the hang's own) in the session, rec_hung_resets.
+ * A run would start over at every group that finished between two hangs, so T688's 41 hangs could come back with good groups between
+ * them. Before any ring hang the run limit (8) stays: one-shot hangs with work done between them are recovered as before. */
+static int recover_once(void) {
+ if(!vx3dn_recover)return 0;
+ if(rec_tries&&rec_good==rec_good_at)vx3dn_rec_run++;else vx3dn_rec_run=1;
+ if(vx3dn_rec_run>vx3dn_rec_runmax)vx3dn_rec_runmax=vx3dn_rec_run;
+ if(rec_ring_hung?rec_hung_resets>=1:vx3dn_rec_run>vx3dn_rec_limit){rec_refused=1;return 0;}
+ if(rec_ring_hung)rec_hung_resets++;
+ rec_tries++;rec_good_at=rec_good;return 1;
+}
 uint32_t vx3dn_rec[5];
 static void publish(void) {
  /* Drain CPU/WC framebuffer stores before GPU use and after CPU clears,
@@ -154,6 +174,22 @@ uint32_t vx3dn_xr_prof[12];
 static int fx_in_ring(uint32_t a) {return xr_lin&&a>=XR_GPU&&a<XR_GPU+XR_BYTES;}
 static uint32_t fx_rd(uint32_t a) {return fx_in_ring(a)?*(volatile uint32_t*)(xr_lin+a-XR_GPU):*(volatile uint32_t*)(vx_status.fb_linear+a);}
 #define RESET_IDLE_MASK 0x101FF7UL /* v10.391 (review): the reset's idle check also waits for bit 20, which fetch_idle and XP's wait (0x101FF3) test */
+/* .688 (T686 board A: after the reset below that follows a ring hang, the screen from the pointer's row down repeats one line wherever the
+ * hardware cursor is shown, and is right with the pointer off the screen; the registers read the same before and after (.619, VX900: the
+ * pointer then followed y only)): the display's request and FIFO registers (SR16-18, SR21-22, SR1C-1D) and the icon unit's FIFO word
+ * (MMIO 2E8) are read before the pulses and written again after them, so the display side takes its settings again. vx3dn_dq_stat:
+ * [0] restores, [1] registers that read different after the pulses (before the write) */
+#define DQ_N 7
+static const unsigned char dq_reg[DQ_N]={0x16,0x17,0x18,0x21,0x22,0x1C,0x1D};
+static unsigned char dq_save[DQ_N];static uint32_t dq_hi;uint32_t vx3dn_dq_stat[2]; /* .694 (review of .693): CR60-61 taken out again: they are IGA2's scan status, a live line counter (VXDOS logs show CR60 moving), read-only; T688's 'AF -> 11' was the scan moving on */
+static void dq_restore(void) {
+ unsigned long f;unsigned char o,u;uint32_t k;
+ f=VX_irq_save();o=inp(0x3C4);u=sr(0x10);sw(0x10,(unsigned char)(u|1));
+ for(k=0;k<DQ_N;k++){if(sr(dq_reg[k])!=dq_save[k])vx3dn_dq_stat[1]++;sw(dq_reg[k],dq_save[k]);}
+ sw(0x10,u);outp(0x3C4,o);VX_irq_restore(f);
+ if(dq_hi!=0xFFFFFFFFUL)write_mmio(0,0x2E8,dq_hi);
+ vx3dn_dq_stat[0]++;
+}
 static int engine_reset(void) {
  uint32_t st,s;
  fx_pend=0xFFFFFFFFUL;fx_park_forget();
@@ -163,14 +199,25 @@ static int engine_reset(void) {
  /* v10.292 (board, VXDX7 v2.74 at 16 and 32 bpp): SR4E bit 4 alone brought the engine back to idle, but the next textured draw hung
   * again, every time (6 of 6, with bits 5:4 or bit 4 twice too); SR4E bit 4 then SR1A bit 6 drew it right (2 of 2). The engine left
   * like that also hung VXTEX's first 12 groups after VXDX7 ran. Both now, always (.530: the TEXDBG F0-F2 forms removed) */
+ {unsigned long f;unsigned char o,u;uint32_t k;f=VX_irq_save();o=inp(0x3C4);u=sr(0x10);sw(0x10,(unsigned char)(u|1));for(k=0;k<DQ_N;k++)dq_save[k]=sr(dq_reg[k]);sw(0x10,u);outp(0x3C4,o);VX_irq_restore(f);dq_hi=read_mmio(0,0x2E8);}
  pulse(0x4E,0x10,0x30);
  pulse(0x1A,0x40,0);vx3dn_rec[4]=2;
+ dq_restore();
  s=Get_System_Time();
  do st=read_mmio(0,0x400); while((st&RESET_IDLE_MASK)&&st!=0xFFFFFFFFUL&&(uint32_t)(Get_System_Time()-s)<250);
  vx3dn_rec[3]=st;
  vx2d_reset_epoch++; /* v10.326 (review): again after the pulses, so the cursor is programmed after the last of them */
  VX2D_3d_reset(); /* v10.281: the 2D side sets the engine up again before its next operation */
  return !(st&RESET_IDLE_MASK)&&st!=0xFFFFFFFFUL;
+}
+/* .689: a recovery refused by recover_once's limit: one last reset only to leave the engine idle, then 3D off for the session and GDI by
+ * the CPU with the display running (VX2D_accel_off); a reset that fails (or a refusal for another reason) loses the device as before */
+static void rec_fail(void) {
+ extern void VX2D_accel_off(void);unsigned long f;unsigned char old,unlock;int idle=0;
+ if(rec_refused){f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));outp(0x3C4,old);VX_irq_restore(f);
+  idle=engine_reset();f=VX_irq_save();old=inp(0x3C4);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);}
+ rec_refused=0;fault=1;
+ if(idle){vx3dn_rec_off++;vx3dn_gave_up=1;VX2D_accel_off();}else VX2D_device_lost();
 }
 uint32_t vx_stretch3d; /* .628: ACCEL_STRETCH3D (vxd_main.c reads it, the HAL asks for it) */
 
@@ -185,11 +232,11 @@ void VX3DN_info(vx3dn_info *i) {
  if(limit>VX_FB_LIMIT)limit=VX_FB_LIMIT;
  if(hda->overlays_size<=limit) i->fb_bytes=limit-hda->overlays_size;
  {extern int VX_chip_accel(void);if(!VX_chip_accel())return;} /* .579: VX900: no 3D yet (ready 0: Direct3D is not offered, OpenGL draws in software) */
- i->ready=!fault&&!VX2D_lost()&&vx_status.stage==6&&!vx_status.failure&&!vx_status.vga_mode&&!vx_native_display_hold&&
+ {extern int VX2D_unproved(void);i->ready=!fault&&!VX2D_lost()&&!VX2D_unproved()&&vx_status.stage==6&&!vx_status.failure&&!vx_status.vga_mode&&!vx_native_display_hold&&
   !hda->surface&&!hda->system_surface&&hda->vram_pm32&&
   (uint32_t)hda->vram_pm32==vx_status.fb_linear&&hda->pitch==vx_status.video_pitch&&
   hda->width==vx_status.width&&hda->height==vx_status.height&&hda->bpp==vx_status.bpp&&
-  (i->bpp==16||i->bpp==32)&&i->fb_bytes>=i->primary_bytes;
+  (i->bpp==16||i->bpp==32)&&i->fb_bytes>=i->primary_bytes;} /* .683: VX2D_unproved */
 }
 /* v10.177: Direct3D clears go to the 2D engine as solid fills (XP's driver clears with 2D command F0002001 too). The engine works at the
  * desktop depth only, so a surface of the other depth is filled as that depth when its value allows: a 16-bit surface on the 32-bit
@@ -489,6 +536,7 @@ volatile uint32_t vx3dn_ring_fence=1;
 uint32_t vx3dn_rf_stat[6]; /* v10.387: [4] kicks written again, [5] of them the fence then came */ /* fences put; retires with the engine idle before the fence came (then waited for); hangs in the ring; ring turned off after a hang */
 static int fx_ring_dead,fx_rfenced;uint32_t fx_seq; /* .532: public (the emulator's B1 test reads it) */static uint32_t fx_rkicks,fx_rreason,fx_2d[14],fx_trace[64][10],fx_tn,fx_gtgt,fx_gdep;
 static const uint32_t fx_2d_reg[14]={0x04,0x08,0x14,0x1C,0x30,0x48,0x58,0x5C,0x20,0x4C,0x0C,0x10,0x40,0x18}; /* v10.453: + 18, the source position of the ring's copies (ACCEL_D3D_RINGBLT) */
+extern volatile uint32_t vx3dn_flip_ring;extern uint32_t vx3dn_fr_stat[8];extern int vx3dn_fr_pend;uint32_t vx3dn_rhang_disp[18];
 uint32_t vx3dn_rhang[2][6],vx3dn_rhang_trace[64][10],vx3dn_rhang_words[1024],vx3dn_rhang_wn[4],vx3dn_rhang_ok; /* v10.386: [0-511] the group after the fence, [512-1023] the fence's group; wn: their words and starts */
 static uint32_t fx_fence_read(void) {uint32_t a=vx_status.fb_linear+FX_FENCE_OFF;return hda&&hda->bpp==16?*(volatile uint16_t*)a:(*(volatile uint32_t*)a&0xFFFFUL);}
 static void fx_2d_back(void) {uint32_t k;if(!fx_rfenced)return;for(k=0;k<14;k++)write_mmio(0,fx_2d_reg[k],fx_2d[k]);fx_rfenced=0;}
@@ -531,10 +579,22 @@ uint32_t VX3DN_tape(uint32_t op,const void *in,uint32_t in_bytes,void *out,uint3
 }
 static void fx_ring_hang(uint32_t st) {
  uint32_t k,f=fx_rfenced?fx_fence_read():0xFFFFFFFFUL;
+ rec_ring_hung=1; /* .689: recover_once */
  vx3dn_rf_stat[2]++;
  if(!vx3dn_rhang_ok){uint32_t n=fx_tn<64?fx_tn:64,first=fx_tn-n,start=0xFFFFFFFFUL;
   vx3dn_rhang_ok=1;
   vx3dn_rhang[0][0]=st;vx3dn_rhang[0][1]=read_mmio(0,0x440);vx3dn_rhang[0][2]=f;vx3dn_rhang[0][3]=fx_seq&0xFFFFUL;vx3dn_rhang[0][4]=Get_System_Time()-fx_t0;vx3dn_rhang[0][5]=fx_rkicks;
+  {extern uint32_t VX2D_mmio_read(uint32_t);unsigned long fl=VX_irq_save();unsigned char o4=inp(0x3D4);uint32_t t0,l0;outp(0x3D4,0x32);vx3dn_rhang_disp[0]=inp(0x3D5);outp(0x3D4,o4);VX_irq_restore(fl); /* .686: the display at the first hang: CR32, IGA1's line twice 2 ms apart, the ring-flip arm */
+   l0=(uint32_t)VX2D_mmio_read(0x1290UL);t0=Get_System_Time();{uint32_t i;for(i=0;i<20000UL&&(uint32_t)(Get_System_Time()-t0)<2UL;i++)(void)inp(0x3DA);}
+   vx3dn_rhang_disp[1]=l0;vx3dn_rhang_disp[2]=(uint32_t)VX2D_mmio_read(0x1290UL);vx3dn_rhang_disp[3]=vx3dn_flip_ring;vx3dn_rhang_disp[4]=vx3dn_fr_stat[0];vx3dn_rhang_disp[5]=vx3dn_fr_pend;
+   /* .686 (second opinion: which of the flip's two blank waits holds the regulator; are the blank pulses still coming): over up to 100 ms,
+    * before the retire: IGA1's blank (3DA bit 3) changes counted, the address-flip status (MMIO 204h) and the fence before and after;
+    * and the flip side's CR32 counters (set, cleared, CPU flips after ring flips). The loop is also bounded by its count of port reads. */
+   {extern uint32_t vx_flip_ring_stat[4];uint32_t n,tog=0,lb=inp(0x3DA)&8,t1=Get_System_Time();
+    vx3dn_rhang_disp[8]=(uint32_t)VX2D_mmio_read(0x204UL);vx3dn_rhang_disp[10]=fx_rfenced?fx_fence_read():0xFFFFFFFFUL;
+    for(n=0;n<400000UL&&(uint32_t)(Get_System_Time()-t1)<100UL;n++){uint32_t b=inp(0x3DA)&8;if(b!=lb){tog++;lb=b;}}
+    vx3dn_rhang_disp[6]=tog;vx3dn_rhang_disp[7]=Get_System_Time()-t1;vx3dn_rhang_disp[9]=(uint32_t)VX2D_mmio_read(0x204UL);
+    vx3dn_rhang_disp[11]=fx_rfenced?fx_fence_read():0xFFFFFFFFUL;vx3dn_rhang_disp[12]=vx_flip_ring_stat[0];vx3dn_rhang_disp[13]=vx_flip_ring_stat[1];vx3dn_rhang_disp[14]=vx_flip_ring_stat[2];vx3dn_rhang_disp[15]=read_mmio(0,0x400);}}
   vx3dn_rhang[1][0]=vx3dn_ring_stat[0];vx3dn_rhang[1][1]=vx3dn_ring_stat[2];vx3dn_rhang[1][2]=Get_System_Time();vx3dn_rhang[1][3]=fx_rreason;vx3dn_rhang[1][4]=vx3dn_rf_stat[1];vx3dn_rhang[1][5]=fx_tn;
   memset(vx3dn_rhang_trace,0,sizeof(vx3dn_rhang_trace));memset(vx3dn_rhang_words,0,sizeof(vx3dn_rhang_words));memset(vx3dn_rhang_wn,0,sizeof(vx3dn_rhang_wn));
   {uint32_t hw=0,ps=0xFFFFFFFFUL,pw=0;
@@ -737,9 +797,9 @@ static void xr_stop(void) {
 static void xr_reset_engine(void) {
  unsigned long f;unsigned char old,unlock;int ok;
  f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));outp(0x3C4,old);VX_irq_restore(f);
- ok=vx3dn_recover&&engine_reset();
+ ok=recover_once()&&engine_reset();
  f=VX_irq_save();old=inp(0x3C4);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);
- if(ok){vx3dn_rec[0]++;vx3dn_forget();}else{vx3dn_rec[1]++;fault=1;VX2D_device_lost();}
+ if(ok){vx3dn_rec[0]++;vx3dn_forget();}else{vx3dn_rec[1]++;rec_fail();}
 }
 static void fr_gone(void); /* .532 (B1, below) */
 static int xr_start(void) { /* s3ginv 0xBB370 */
@@ -804,10 +864,18 @@ static int xr_retire(int reset,int stop) {
  t=PT();idle=xr_wait(&st);LAT(&vx3dn_lat[2],PT()-t);XP_ADD(6,t);vx3dn_xr_prof[11]++;
  if(!idle){
   vx3dn_fetch_stat[3]++;last_status=st;hang_note(st,fx_fly,fx_nfly);vx3dn_xr_stat[13]++;vx3dn_xr_stat[14]=xr_rp();vx3dn_xr_stat[15]=read_mmio(0,0x444);vx3dn_xr_stat[27]=read_mmio(0,0x440);vx3dn_xr_stat[28]=read_mmio(0,0x45C);vx3dn_xr_stat[29]=xr_pend;
+  {int was=rec_ring_hung; /* .695: a late finish puts back the mark as it was (an earlier real hang keeps it) */
   fx_ring_hang(st);
+  if(fx_rfenced&&fx_fence_read()==(fx_seq&0xFFFFUL)&&read_mmio(0,0x400)!=0xFFFFFFFFUL){ /* .694 (review of .693): the work finished while the hang record sampled (up to
+   * about 200 ms): a slow group, not a hang. The ring stays on; the record stays for VXD3DMON (vx3dn_xr_late counts these) */
+   fx_ring_dead=0;rec_ring_hung=was;vx3dn_xr_late++;
+   if(fx_rfenced){fx_2d_restore();vx3dn_xr_prof[9]++;}
+   if(stop)xr_stop();
+   last_status=st;rec_good++;return 1;}}
   write_mmio(0,0x41C,0x00100000UL);write_mmio(0,0x420,0x680A0000UL);xr_state=1;fx_ring=0;
   if(reset){xr_reset_engine();if(!fault)fx_2d_back();}
   fx_rfenced=0;fx_2d_dirty=0;return 0;}
+ rec_good++; /* .694: a group in flight finished (recover_once) */
  if(fx_rfenced){t=PT();fx_2d_restore();XP_ADD(7,t);vx3dn_xr_prof[9]++;}
  if(stop)xr_stop();
  last_status=st;return 1;
@@ -815,7 +883,9 @@ static int xr_retire(int reset,int stop) {
 static int fx_retire_x(int reset,int stop);
 static int fx_retire(int reset) {return fx_retire_x(reset,0);}
 static int fx_retire_stop(int reset) {return fx_retire_x(reset,1);}
-static int fx_retire_x(int reset,int stop) { /* XP's ring: xr_retire; a one-shot group: idle, then the stop */
+static int fx_retire_xb(int reset,int stop);
+static int fx_retire_x(int reset,int stop) {return fx_retire_xb(reset,stop);} /* .694: the good retires are counted where the work is seen done (xr_retire, fx_retire_xb, a synchronous one-shot start) */
+static int fx_retire_xb(int reset,int stop) { /* XP's ring: xr_retire; a one-shot group: idle, then the stop */
  uint32_t st=0,t;int idle;
  if(xr_state==2)return xr_retire(reset,stop); /* v10.402 */
  if(!fx_inflight)return 1;
@@ -827,13 +897,13 @@ static int fx_retire_x(int reset,int stop) { /* XP's ring: xr_retire; a one-shot
   if(reset) {
    unsigned long f;unsigned char old,unlock;int ok;
    f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));outp(0x3C4,old);VX_irq_restore(f);
-   ok=vx3dn_recover&&engine_reset();
+   ok=recover_once()&&engine_reset();
    f=VX_irq_save();old=inp(0x3C4);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);
-   if(ok){vx3dn_rec[0]++;vx3dn_forget();}else{vx3dn_rec[1]++;fault=1;VX2D_device_lost();}
+   if(ok){vx3dn_rec[0]++;vx3dn_forget();}else{vx3dn_rec[1]++;rec_fail();}
   }
   return 0;
  }
- last_status=st;return 1;
+ last_status=st;rec_good++;return 1; /* .694: rec_good */
 }
 /* v10.232: and the state cache starts over: whoever asks may change memory the engine reads (a texture by Lock or Blt; the texture
  * cache is only known to be refreshed when the sampler state is written again) */
@@ -849,10 +919,10 @@ uint32_t vx3dn_rt_stat[4]; /* v10.418: retires of work in flight: [0] for a CPU 
 volatile uint32_t vx3dn_rt_why;uint32_t vx3dn_rt_cause[8][2];
 static void rt_note(uint32_t t) {uint32_t w=vx3dn_rt_why<8?vx3dn_rt_why:0;vx3dn_rt_stat[0]++;vx3dn_rt_stat[1]+=(PT()-t+128)>>8;vx3dn_rt_cause[w][0]++;vx3dn_rt_cause[w][1]+=(PT()-t+128)>>8;}
 int VX3DN_retire_inflight(void) {if(fx_inflight){uint32_t t=PT();VX3DN_ev(5,0);(void)fx_retire(1);rt_note(t);}vx3dn_rt_why=0;return running||fault;}
-int VX3DN_busy(void) {if(fx_inflight){uint32_t t=PT();VX3DN_ev(5,0);(void)fx_retire(1);rt_note(t);}vx3dn_rt_why=0;vx3dn_forget();return running||fault;}
+int VX3DN_busy(void) {if(fx_inflight){uint32_t t=PT();VX3DN_ev(5,0);(void)fx_retire(1);rt_note(t);}vx3dn_rt_why=0;vx3dn_forget();return running||(fault&&!vx3dn_gave_up);} /* .694 (review of .693): an engine given up idle (rec_fail) is not busy: mode sets and the flip reset go on */
 /* .575 (peer review of .572, finding 10): what VX3DN_busy answers when nothing is in flight, without its retire and without starting the
  * state cache over (VX2D_access's status query after VX3DN_poll: it touched no register) */
-int VX3DN_stopped(void) {return running||fault;}
+int VX3DN_stopped(void) {return running||(fault&&!vx3dn_gave_up);} /* .694: as VX3DN_busy */
 void VX3DN_ring_stop(void) {cs_enter();(void)fx_retire_stop(1);cs_leave();} /* v10.391: before a mode set */
 /* v10.285: the status query's look at a draw in flight: 1 while the engine still works on it (and for less than 100 ms since its start),
  * else it is retired as VX3DN_busy would (a hung one reset after its 100 ms) and 0; the state cache is left alone when nothing changed */
@@ -1071,8 +1141,8 @@ static uint32_t submit_impl(const vx3dn_packet *p) {
   /* Never replay a partially submitted primitive or race a hung engine
    * with DIBENG, cursor pixels, mode changes or a CPU fallback. */
   if(fault) ; /* v10.281: fx_start's reset already failed and lost the device */
-  else if(vx3dn_recover&&engine_reset()){vx3dn_rec[0]++;vx3dn_forget();rc=VX3DN_RECOVERED;submitted++;}
-  else{vx3dn_rec[1]++;fault=1;VX2D_device_lost();}
+  else if(recover_once()&&engine_reset()){vx3dn_rec[0]++;vx3dn_forget();rc=VX3DN_RECOVERED;submitted++;}
+  else{vx3dn_rec[1]++;rec_fail();}
  } else if(rc==VX3DN_RECOVERED) submitted++; /* v10.465: the ring's retire reset the engine already */
  else if(!rc) {publish();submitted++;if(p->op==VX3DN_DRAW)triangles+=packet_triangles(p);else clears++;}
  sub_t[3]=PT();
@@ -1084,7 +1154,7 @@ finish:
   if(!fault){sw(0x1E,b);sw(0x1A,a);}
   sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);
  }
- if(excluded&&!fault){if(fx_inflight)(void)fx_retire(1);if(!fault)FBHDA_access_end(0);} /* v10.466: nothing of ours still drawing under the cursor */
+ if(excluded){if(!fault&&fx_inflight)(void)fx_retire(1);if(fault)rc=VX3DN_LOST;FBHDA_access_end(0);} /* .678: the bracket is always closed (a fault left fb_lock_cnt raised for good: no pointer, no async blits; cursor_show draws nothing while lost) */ /* v10.466: nothing of ours still drawing under the cursor */
 done:
  if(rc==VX3DN_BAD_PACKET){bad_note(1,0,1,p,0);bad_vline=0;} /* .527 */
  {extern uint32_t vx3dn_stage;last_result=rc==VX3DN_LOST?rc|(vx3dn_stage&255)<<8:rc==VX3DN_BUSY?rc|busy_why:rc;busy_why=0;} /* v10.192: + which wait timed out; v10.218: + why busy */
@@ -1459,16 +1529,17 @@ static uint32_t fx_wipe_gap(uint32_t s) { /* v10.383: 0 nothing to write over, 1
  publish();fx_wc_flush(p);return 1;
 }
 /* v10.383: the fence: a 1x1 2D solid fill at FX_FENCE_OFF in the colour seq (as VXRING's fill packet) */
-static void fx_fence_put(uint32_t seq) {
+static void fx_fill_put(uint32_t seq,uint32_t at) {
  uint32_t depth=hda->bpp==16?0x100UL:0x300UL,k;
  static const uint32_t reg[13]={0x04,0x08,0x14,0x1C,0x30,0x48,0x58,0x5C,0x20,0x4C,0x0C,0x10,0x00};uint32_t val[13];
- val[0]=depth;val[1]=(256UL>>3)<<16;val[2]=FX_FENCE_OFF>>3;val[3]=0;val[4]=0;val[5]=0;val[6]=seq&0xFFFFUL;val[7]=0;val[8]=0;
+ val[0]=depth;val[1]=(256UL>>3)<<16;val[2]=at>>3;val[3]=0;val[4]=0;val[5]=0;val[6]=seq&0xFFFFUL;val[7]=0;val[8]=0;
  val[9]=seq&0xFFFFUL;val[10]=0;val[11]=0;val[12]=0xF0002001UL;
  while(ring_wordp&3)ring_put(0xCC000000UL);
  ring_put(0xFE000000UL);ring_put(13);ring_put(0);ring_put(0xCC000000UL);
  for(k=0;k<13;k++){ring_put(reg[k]);ring_put(val[k]);}
- vx3dn_rf_stat[0]++;
 }
+static void fx_fence_put(uint32_t seq) {fx_fill_put(seq,FX_FENCE_OFF);vx3dn_rf_stat[0]++;}
+
 static uint32_t xr_tick;
 
 static uint32_t xr_kick(int async,uint32_t *last) { /* s3ginv 0xBC60A-0xBC74F */
@@ -1525,8 +1596,8 @@ static uint32_t fx_start_b(int async,uint32_t *last) {
   * fails loses the device here (fault: the caller does not reset again). */
  if(!fx_retire_stop(0)) {
   vx3dn_forget();
-  if(vx3dn_recover&&engine_reset()){vx3dn_rec[0]++;vx3dn_forget();return FX_REBUILD;}
-  vx3dn_rec[1]++;fault=1;VX2D_device_lost();return VX3DN_LOST;
+  if(recover_once()&&engine_reset()){vx3dn_rec[0]++;vx3dn_forget();return FX_REBUILD;}
+  vx3dn_rec[1]++;rec_fail();return VX3DN_LOST;
  }
  vx3dn_cache_stat[2]+=(PT()-t1+128)>>8;
  fx_wipe_gap(start); /* v10.382 */
@@ -1540,7 +1611,7 @@ static uint32_t fx_start_b(int async,uint32_t *last) {
  fx_pend=pause+4;
  if(async){uint32_t k,j;fx_inflight=1;va_started=va_gid&0x7FFFFFFFUL;fx_t0=xr_now();rc=VX3DN_OK;vx3dn_fetch_stat[5]++;fx_nfly=fx_nsum;for(k=0;k<fx_nsum;k++)for(j=0;j<6;j++)fx_fly[k][j]=fx_sum[k][j];}
  else {uint32_t t2=PT();
-  rc=fetch_idle(last)?VX3DN_OK:VX3DN_LOST;vx3dn_bat_prof[2]+=(PT()-t2+128)>>8;
+  rc=fetch_idle(last)?VX3DN_OK:VX3DN_LOST;if(rc==VX3DN_OK)rec_good++; /* .694: a synchronous one-shot group finished (recover_once) */vx3dn_bat_prof[2]+=(PT()-t2+128)>>8;
   write_mmio(0,0x41C,0x00100000UL);write_mmio(0,0x420,0x680A0000UL);
   if(rc){vx3dn_fetch_stat[3]++;hang_note(*last,fx_sum,fx_nsum);}}
  vx3dn_bat_prof[3]++; vx3dn_fetch_stat[0]+=fx_gpackets;vx3dn_fetch_stat[1]+=ring_wordp;if(ring_wordp>vx3dn_fetch_stat[4])vx3dn_fetch_stat[4]=ring_wordp;
@@ -1565,24 +1636,24 @@ static uint32_t fx_ix_again(const vx3dn_packet *p,uint32_t *last) {
   * a one-shot start makes anyway. */
  if(vx3dn_chip900){uint32_t kb=vx3dn_fetch_kb;
   if(fx_gring!=2&&!fx_retire(0))return VX3DN_LOST;
-  vx3dn_fetch_kb=80UL;fx_open_group();vx3dn_fetch_kb=kb;
+  vx3dn_fetch_kb=80UL;fx_open_group();vx3dn_fetch_kb=kb;if(fault)return VX3DN_LOST; /* .694: the ring's start gave the engine up (rec_fail) */
   vx3dn_ix_wait[0]++;rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
   return rc;}
  if(!fx_retire(0))return VX3DN_LOST;
- vx3dn_ix_wait[0]++;fx_open_group();rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
+ vx3dn_ix_wait[0]++;fx_open_group();if(fault)return VX3DN_LOST;rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
  return rc;
 }
 static uint32_t fetch_draw(const vx3dn_packet *p,uint32_t *last,int async) {
  uint32_t rc,t0=PT();
  if(!fx_inflight&&!fetch_idle(last))return VX3DN_LOST; /* what the register path's first wait does (with a draw in flight: before the start) */
- fx_open_group();
+ fx_open_group();if(fault)return VX3DN_LOST; /* .694 (review of .693): a ring start that hit the reset limit set fault; no one-shot group after it */
  rc=fx_build(p,last);
  if(rc==FETCH_DECLINED&&p->pre.on==2&&(fx_inflight||vx3dn_chip900))rc=fx_ix_again(p,last); /* .564; .611: the VX900 */
  if(rc==FETCH_DECLINED){vx3dn_fetch_stat[2]++;return rc;}
  if(rc)return rc; /* the emitter's own refusals (its waits read idle here) */
  rc=fx_start(async,last);
  if(rc==FX_REBUILD) { /* v10.281: the draw before hung; the engine was reset: this draw again, whole, on the reset engine */
-  fx_open_group();rc=fx_build(p,last);
+  fx_open_group();if(fault)return VX3DN_LOST;rc=fx_build(p,last);
   if(rc==FETCH_DECLINED){vx3dn_fetch_stat[2]++;return rc;}
   if(rc)return rc;
   rc=fx_start(async,last);if(rc==FX_REBUILD)rc=VX3DN_LOST; /* nothing is in flight now */
@@ -1638,7 +1709,7 @@ again:
   const vx3dn_packet *p=(const vx3dn_packet*)((const char*)ps+k*sizeof(vx3dn_packet));
   if(p->cb!=sizeof(*p)||p->op!=VX3DN_DRAW){rc=VX3DN_BAD_PACKET;bad_vline=__LINE__;bad_src=p;break;} /* .527: bad_src, the caller's packet (not copied) */
   {uint32_t t0=PT(),t1;int geo;SMP_PH(VX_SMP_PH_COPY);cp_defer=1;copy_packet_d(&request_copy,p,k&&cp_k==k-1);cp_defer=0;t1=PT();vx3dn_bat_prof[0]+=(t1-t0+128)>>8;
-   SMP_PH(VX_SMP_PH_VALID);cp_k=0xFFFFFFFFUL;if(request_copy.cb!=sizeof(request_copy)||request_copy.op!=VX3DN_DRAW){rc=VX3DN_BAD_PACKET;bad_vline=__LINE__;SMP_PH(VX_SMP_PH_B_LOOP);break;} /* .524: cb and op checked again on the copy (the check above reads the caller's memory: a packet changed meanwhile could bring a V1 or clear packet into the batch path) */ /* .524: the state deltas (copy_packet_d); every range kept and the header unchanged: the state's checks not again */
+   SMP_PH(VX_SMP_PH_VALID);cp_k=0xFFFFFFFFUL;if(request_copy.cb!=sizeof(request_copy)||request_copy.op!=VX3DN_DRAW||(request_copy.clear_flags&VX3DN_DRAW_CLEAR)){rc=VX3DN_BAD_PACKET; /* .706 (a review of .703): a draw with a clear is not a batch's (batch_entry sends those alone, reading the caller's packet; the copy is checked again) */ bad_vline=__LINE__;SMP_PH(VX_SMP_PH_B_LOOP);break;} /* .524: cb and op checked again on the copy (the check above reads the caller's memory: a packet changed meanwhile could bring a V1 or clear packet into the batch path) */ /* .524: the state deltas (copy_packet_d); every range kept and the header unchanged: the state's checks not again */
    geo=cp_same==VX3DN_SAME_MASK&&!vx_cmpsd(&request_copy,fx_vhdr,sizeof(fx_vhdr)>>2);if(geo)vx3dn_delta_stat[3]++;
    rc=geo?vx3dn_validate_geo(&request_copy,&i):vx3dn_validate(&request_copy,&i);if(!rc){cp_k=k;if(!geo)copy_words(fx_vhdr,&request_copy,sizeof(fx_vhdr));}SMP_PH(VX_SMP_PH_B_LOOP);{uint32_t t2=PT();vx3dn_bat_prof[1]+=(t2-t1+128)>>8;
    if(request_copy.pre.on==2){vx3dn_ixp[0]++;vx3dn_ixp[1]+=(t1-t0+128)>>8;vx3dn_ixp[2]+=(t2-t1+128)>>8;}}}if(rc)break; /* v10.473 */
@@ -1647,17 +1718,24 @@ again:
    * the first such packet to the end of the batch, and the batch's last group is then started synchronously (as a single draw there:
    * the cursor is drawn again only once the engine is done). It was refused (BAD_PACKET; the HAL sent the primary's packets alone). */
   if(!excluded&&VESA_draw_needs_exclusion(request_copy.target.offset,request_copy.target.pitch*request_copy.target.height)){FBHDA_access_begin(0);excluded=1;} /* v10.371: only when the cursor may be on it (was: offset 0) */
-  if(!grp){fx_open_group();grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}
+  if(!grp){fx_open_group();if(fault){rc=VX3DN_LOST;break;} /* .694: no one-shot group after a ring start gave the engine up */grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}
   else if(fx_gpackets&&ring_wordp+FX_PACKET_WORDS+request_copy.runs.n*FX_RUN_WORDS>cap_max){vx3dn_batch_stat[2]++;rc=fx_start(1,&last_status);grp=0;
    if(rc==FX_REBUILD){k=gfirst;*done=gdone;submitted=gsub;triangles=gtri;rc=VX3DN_OK;goto again;}
-   if(rc)break;fx_open_group();grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}
+   if(rc)break;fx_open_group();if(fault){rc=VX3DN_LOST;break;}grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}
   rc=fx_build(&request_copy,&last_status);
   if(rc==FETCH_DECLINED&&fx_gpackets){vx3dn_batch_stat[2]++;rc=fx_start(1,&last_status);grp=0;
    if(rc==FX_REBUILD){k=gfirst;*done=gdone;submitted=gsub;triangles=gtri;rc=VX3DN_OK;goto again;}
-   if(rc)break;fx_open_group();grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;rc=fx_build(&request_copy,&last_status);}
+   if(rc)break;fx_open_group();if(fault){rc=VX3DN_LOST;break;}grp=1;gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;rc=fx_build(&request_copy,&last_status);}
   if(rc==FETCH_DECLINED&&request_copy.pre.on==2&&(fx_inflight||vx3dn_chip900)){rc=fx_ix_again(&request_copy,&last_status);grp=rc==VX3DN_OK;if(grp){gfirst=k;gdone=*done;gsub=submitted;gtri=triangles;}} /* .564: by index once the slots are free (fx_ix_again) */
   if(rc==FETCH_DECLINED) { /* too many words for a fetch even alone (the group is empty): through the registers, as a single draw */
    vx3dn_fetch_stat[2]++;grp=0;
+   /* .704 (review by another model of .703): a prepacked packet whose words were left in the caller's memory (ONECOPY: the emitter
+    * copies and checks them into the fetch block) is checked by the emitter as it writes them; on the registers that is a vertex at a
+    * time after the burst's head, so a failing vertex left a burst short of its words and the engine waiting for them. Here they are
+    * copied into the packet first and checked whole, before any register is written. */
+   if(vx3dn_vsrc_pkt==&request_copy){uint32_t nv=request_copy.vertex_count<=VX3DN_MAX_VERTICES?request_copy.vertex_count:VX3DN_MAX_VERTICES;
+    copy_words(request_copy.pre.w,vx3dn_vsrc,nv*40);vx3dn_vsrc_pkt=0;vx3dn_vsrc=0;
+    if(vx3dn_validate(&request_copy,&i)){rc=VX3DN_BAD_PACKET;bad_vline=__LINE__;break;}}
    if(!fx_retire_stop(0))rc=VX3DN_LOST;else{vx3dn_reg_draws++;vx3dn_forget();rc=vx3dn_execute(&request_copy,&io,&last_status);}
   }
   if(rc)break;
@@ -1672,8 +1750,8 @@ lost:
  if(rc==VX3DN_LOST) {
   /* as a single draw: never replay, never race a hung engine */
   if(fault) ; /* v10.281: fx_start's reset already failed and lost the device */
-  else if(vx3dn_recover&&engine_reset()){vx3dn_rec[0]++;vx3dn_forget();rc=VX3DN_RECOVERED;}
-  else{vx3dn_rec[1]++;fault=1;VX2D_device_lost();}
+  else if(recover_once()&&engine_reset()){vx3dn_rec[0]++;vx3dn_forget();rc=VX3DN_RECOVERED;}
+  else{vx3dn_rec[1]++;rec_fail();}
  } else publish();
  sub_t[3]=PT();
 finish:
@@ -1682,7 +1760,7 @@ finish:
   if(!fault){if(!(b&1))sw(0x1E,b);if(!(a&8))sw(0x1A,a);}
   if(!(unlock&1))sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);
  } else if(opened)vx3dn_seq_stat[2]++;
- if(excluded&&!fault){if(fx_inflight)(void)fx_retire(1);if(!fault)FBHDA_access_end(0);} /* v10.368: as a single draw on the primary. v10.466 (review): a group started
+ if(excluded){if(!fault&&fx_inflight)(void)fx_retire(1);if(fault)rc=VX3DN_LOST;FBHDA_access_end(0);} /* .678: the bracket is always closed (a fault left fb_lock_cnt raised for good: no pointer, no async blits; cursor_show draws nothing while lost) */ /* v10.368: as a single draw on the primary. v10.466 (review): a group started
   * asynchronously within the batch (a group split) is finished before the cursor is drawn again: a batch that ended early (a bad
   * packet after a split) left one running */
 done:
@@ -1888,7 +1966,7 @@ uint32_t VX3DN_probe_reset(void) { /* 1: reset and back to idle; 2: busy or not 
  if(VX3D_busy()||VX2D_busy()||fault||!ring_map()){cs_leave();return 2;}
  (void)fx_retire_stop(1);
  rst_snap(vx3dn_rst_snap[0]);
- xr_reset_engine();
+ {uint32_t keep=rec_tries,kr=vx3dn_rec_run,kg=rec_good_at,kh=rec_hung_resets;rec_tries=0;rec_hung_resets=0;xr_reset_engine();rec_tries=keep;vx3dn_rec_run=kr;rec_good_at=kg;rec_hung_resets=kh;} /* .694 (review): the run and its mark too */ /* .689: VXREG RESET is not one of the session's recoveries */
  rst_snap(vx3dn_rst_snap[1]);
  rc=fault?3UL:1UL;
  cs_leave();return rc;
@@ -2014,7 +2092,7 @@ out:
  * ACCEL_FLIP_RING (default 1); 0 = the CPU writes the CRTC as before. vx3dn_fr_stat: [0] ring flips, [1] declined, [2] CPU waits for
  * a ring flip, [3] their time (TSC / 256), [4] waits that ran out (100 ms), [5] the last reason declined, [6] draws on the old front
  * sent without a wait, [7] the longest wait (TSC / 256). */
-volatile uint32_t vx3dn_flip_ring=1;uint32_t vx3dn_fr_stat[8];int vx3dn_fr_pend;
+volatile uint32_t vx3dn_flip_ring=1;uint32_t vx3dn_fr_stat[8],vx3dn_fr_two,vx3dn_fr_tear;int vx3dn_fr_pend; /* .695: vx3dn_fr_two, ring flips that moved IGA2 too */
 uint32_t fr_seq; /* .532: public (the emulator's B1 test) */static int fr_dead,fr_lost;
 /* .532 (review of .530, B1): a ring flip whose fence never came before the ring stopped (a hang's retire, a reset, a fresh start) did not
  * set the scanout address: VX3DN_ring_flip_done answered "done" for a stopped ring, so the flip code let writers into the old front while
@@ -2044,7 +2122,8 @@ static int vbw_queue(void) {
  if(why){vx3dn_vbw[2]++;vx3dn_vbw[3]=why;}
  cs_leave();return !why;
 }
-int VX3DN_ring_flip(uint32_t off) { /* 1: queued in the ring (the caller has CR32 bit 0 set); 0: not (the CPU flips) */
+int VX3DN_ring_flip(uint32_t off,int two,int tear) { /* 1: queued in the ring (the caller has CR32 bit 0 set); 0: not (the CPU flips). two: IGA2
+ * shows this frame buffer too (vx855_flip.c fl_iga2, a mirrored second monitor) */
  unsigned long f;unsigned char old,unlock,a,b;uint32_t last,why=0;int ok=0;
  cs_enter();
  if(!VX3DN_ring_flip_ok())why=1;
@@ -2053,11 +2132,21 @@ int VX3DN_ring_flip(uint32_t off) { /* 1: queued in the ring (the caller has CR3
   if(!(a&8)||!(b&1))why=3; /* the engine's clocks are not left on: no asynchronous group */
   else if(!xr_open())why=4;}
  if(!why){
-  ring_put(0xFE000000UL);ring_put(1);ring_put(0);ring_put(0xCC000000UL);ring_put(0x6C);ring_put(1);
+  /* .692 (T686-T691, board A: with 12 = 08 the regulator passed the 6C = 1 wait and stopped on the swap words, always early after a
+   * fetcher start; probe fills after each part showed it; IGA2's blank, CR32, 200h, XP's 6C = 00C00000 idle wait before it, an empty block
+   * and the flip address all ruled out): the swap is sent with 12's bit 2 set (0C: its own wait for the blank skipped). The 6C = 1 wait just
+   * before it keeps the swap at the blank: two VXNOSYNC runs, 2,370 ring flips, no hang, every pass right and the picture clean. */
+  /* .696: a no-vsync flip (tear, vx855_flip.c) leaves the 6C = 1 wait out: with CR32 bit 0 (real-time flipping) the swap is taken from
+   * the next scan line, so the engine goes on at once instead of idling to the blank (3DMark2000 locked to 30, 15, 7.5 fps) */
+  if(!tear){ring_put(0xFE000000UL);ring_put(1);ring_put(0);ring_put(0xCC000000UL);ring_put(0x6C);ring_put(1);}
   while(ring_wordp&3)ring_put(0xCC000000UL);
   ring_put(0xFE020420UL);ring_put(0x41C);ring_put(0x00110000UL);ring_put(0xCC000000UL);
-  ring_put(0x10000000UL|(off&0xFFFFF8UL));ring_put(0x11000000UL|(off>>24));ring_put(0x12000008UL);ring_put(0xCC000099UL);
-  if(xr_kick(1,&last)==VX3DN_OK){fr_seq=fx_seq;vx3dn_fr_pend=1;ok=1;vx3dn_fr_stat[0]++;VX3DN_ev(20,off>>12);}else why=5;
+  ring_put(0x10000000UL|(off&0xFFFFF8UL));ring_put(0x11000000UL|(off>>24));ring_put(0x1200000CUL);
+  /* .695 (review of .694: .694 sent every flip by the CPU while IGA2 mirrored the desktop): IGA2's swap, the manual's 18h-1Ah (the same
+   * fields as 10h-12h), with its blank wait skipped as IGA1's: both units take the address at IGA1's blank, as crtc_set writes both */
+  if(two){ring_put(0x18000000UL|(off&0xFFFFF8UL));ring_put(0x19000000UL|(off>>24));ring_put(0x1A00000CUL);ring_put(0xCC000000UL);} /* 10 11 12 18 | 19 1A CC CC000099: the run stays whole quads */
+  ring_put(0xCC000099UL);
+  if(xr_kick(1,&last)==VX3DN_OK){fr_seq=fx_seq;vx3dn_fr_pend=1;ok=1;vx3dn_fr_stat[0]++;if(two)vx3dn_fr_two++;if(tear)vx3dn_fr_tear++;VX3DN_ev(20,off>>12);}else why=5;
  }
  if(!ok){vx3dn_fr_stat[1]++;vx3dn_fr_stat[5]=why;}
  cs_leave();return ok;
@@ -2068,13 +2157,28 @@ int VX3DN_ring_flip_done(void) { /* the last ring flip has run (its fence came),
  if(((fx_fence_read()-fr_seq)&0x8000UL)==0){vx3dn_fr_pend=0;return 1;}
  return 0;
 }
+/* .667 (board, .666: one 3DMark 2001 frame queued more than 100 ms of drawing before its flip ran; this wait took the flip for lost, and
+ * ring flips were off for the rest of the boot: HarborBench after it flipped by the CPU, each flip waiting for the engine and each
+ * frame's clear for the blank, 11-20% slower in Direct3D): the rule of the ring's own waits (v10.465, xr_wait_b) here too. The flip is
+ * given up only after 100 ms with neither the fetcher's position (43C) nor the fence moving, or after 2 s in all. vx3dn_fr_stat[1]
+ * stays the declined count; the waits that went past 100 ms on progress are counted in vx3dn_fr_prog. */
+uint32_t vx3dn_fr_prog;
+int VX3DN_ring_flip_given_up(void) {return fr_dead;}
 void VX3DN_ring_flip_wait(void) {
- uint32_t t=VX_tsc(),t0=Get_System_Time(),n,d;
- int w;
+ uint32_t t=VX_tsc(),t0=Get_System_Time(),tp=t0,n,d,lrp,lfe;
+ int w,ext=0;
  if(VX3DN_ring_flip_done())return;
  vx3dn_fr_stat[2]++;w=VX_smp_wait_begin(); /* v10.437: a wait for the sampler; v10.439: this thread's entry */
+ lrp=xr_rp();lfe=fx_rfenced?fx_fence_read():0;
  for(n=0;!VX3DN_ring_flip_done();n++){
-  if(!(n&63)&&(uint32_t)(Get_System_Time()-t0)>=100UL){vx3dn_fr_stat[4]++;fr_dead=1;fr_lost=1;cs_enter();(void)fx_retire(1);cs_leave();vx3dn_fr_pend=0;break;}} /* .532 (B1): lost (fr_lost) */ /* a flip that never ran: the ring's hang handling, and no more ring flips this session */
+  if(!(n&63)){uint32_t now=Get_System_Time();
+   if((uint32_t)(now-tp)>=100UL){uint32_t rp=xr_rp(),fe=fx_rfenced?fx_fence_read():0;
+    if((uint32_t)(now-t0)<2000UL&&(rp!=lrp||fe!=lfe)){if(!ext){ext=1;vx3dn_fr_prog++;}lrp=rp;lfe=fe;tp=now;}
+    else{int rc,ran;vx3dn_fr_stat[4]++;cs_enter();rc=fx_retire(1);ran=hda&&!((fx_fence_read()-fr_seq)&0x8000UL);
+     /* .695 (review of .694): decided after the retire. A flip whose group finished while the hang record sampled (xr_retire's late
+      * finish) ran: ring flips stay on and nothing is lost. A real hang (rc 0) ends ring flips for the session; a flip not run is lost */
+     if(rc&&ran)vx3dn_fr_late++;else{fr_dead=1;if(!ran)fr_lost=1;}
+     cs_leave();vx3dn_fr_pend=0;break;}}}} /* .532 (B1): lost (fr_lost) */ /* a flip that never ran: the ring's hang handling, and no more ring flips this session */
  VX_smp_wait_end(w);
  d=(VX_tsc()-t)>>8;vx3dn_fr_stat[3]+=d;if(d>vx3dn_fr_stat[7])vx3dn_fr_stat[7]=d;
 }

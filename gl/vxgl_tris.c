@@ -9,6 +9,7 @@
 #include "enums.h"
 #include "swrast/swrast.h"
 #include "swrast_setup/swrast_setup.h"
+#include "tnl/tnl.h"
 #include "tnl/t_context.h"
 #include "tnl/t_pipeline.h"
 #include "tnl/t_vertex.h"
@@ -1038,14 +1039,74 @@ static void render_start(GLcontext *ctx) {
  * this draw (vx_d3d_gl_presnap, as the SSE pass's: used by vertex number below the draw's count, so not for the clipper's new vertices); taken
  * back at the render's end. Not when the snap is off or something else's words are given. vxgl_storesnap_stat: [0] draws, [1] vertices */
 int vxgl_gl_storesnap=1;uint32_t vxgl_storesnap_stat[2];static int ss_set;
+/* .672: the lock stage's record (below) */
+typedef struct {int valid,pend,creating;const GLcontext *ctx;unsigned long lockgen,xg;GLuint count,vs,fvf;const GLubyte *verts;GLfloat vp[16];
+ const void *data[VERT_ATTRIB_GENERIC0];GLuint stride[VERT_ATTRIB_GENERIC0],size[VERT_ATTRIB_GENERIC0];GLfloat cur[VERT_ATTRIB_GENERIC0][4];const void *ub; /* (the generic attributes: vertex programs only, which take no hit) */
+ struct vertex_buffer vb;GLuint *w,wn,wm;const GLubyte *wverts;} vxgl_lw;
+static vxgl_lw lw,lw_new;
 extern GLuint *vxgl_ssepass_snapstore(const GLubyte *verts,GLuint vs,GLuint n,int up);
 static void build_vertices(GLcontext *ctx,GLuint start,GLuint end,GLuint newinputs) {
  vxgl_ctx *c=VXGL_CTX(ctx);extern uint32_t vx_d3d_gl_snap;
  {VXT_BEGIN;_tnl_build_vertices(ctx,start,end,newinputs);VXT_END(4);} /* .506 */
  if(vxgl_gl_storesnap&&!start&&end&&vx_d3d_gl_snap&&!c->fallback){uint32_t pn,pm;const uint8_t *pb;
   if(!vx_d3d_gl_presnap_get(&pn,&pm,&pb)){GLuint *w=vxgl_ssepass_snapstore(c->verts,c->vertex_size,end,vx_d3d_gl_snap==2);
-   if(w){vx_d3d_gl_presnap(w,end,vx_d3d_gl_snap,c->verts);ss_set=1;vxgl_storesnap_stat[0]++;vxgl_storesnap_stat[1]+=end;}}}
+   if(w){vx_d3d_gl_presnap(w,end,vx_d3d_gl_snap,c->verts);ss_set=1;vxgl_storesnap_stat[0]++;vxgl_storesnap_stat[1]+=end;
+    if(lw.creating&&lw.valid){lw.w=w;lw.wn=end;lw.wm=vx_d3d_gl_snap;lw.wverts=c->verts;}}}}
+ lw.creating=0; /* .672: the lock stage's grid words are this build's only */
 }
+/* .672 (ACCEL_OPENGL_LOCKDRAW until .674, now always on; with t_draw.c): a lock-wide draw (_tnl_vx855_lw_draw: the whole locked range bound) whose inputs are the
+ * last lock-wide run's (the same context, lock, vertex count, every input array's pointer, stride and size, the constant inputs' values,
+ * the colour bytes), with no state validated and no state translated since and the store, its layout and the viewport the same, takes
+ * that run's results: its vertex buffer's pointers (clip and window coordinates, clip masks, lit colours, fog and texture coordinates,
+ * all in the stages' stores, which only a pipeline run writes) and the vertices it built in the store (and their grid words); only the
+ * render stage runs, with this draw's indices and primitives. Not in software, feedback or selection, with flat shading (the clipper and
+ * the flat paths write the provoking vertex's colour into the store), two-sided lighting, polygon modes other than fill, a vertex program,
+ * a fragment program's fog option or GL_FRONT_AND_BACK. Every run that is not a hit forgets it; vxgl_lockdraw_stat: [0] hits, [1] runs kept */
+int vxgl_gl_lockdraw=1;uint32_t vxgl_lockdraw_stat[2];
+static int lw_ok(GLcontext *ctx,const vxgl_ctx *c) {
+ extern int _tnl_vx855_lw_draw;
+ return vxgl_gl_lockdraw&&_tnl_vx855_lw_draw&&!c->fallback&&ctx->RenderMode==GL_RENDER&&ctx->Light.ShadeModel==GL_SMOOTH&&!(ctx->Light.Enabled&&ctx->Light.Model.TwoSide)&&
+  ctx->Polygon.FrontMode==GL_FILL&&ctx->Polygon.BackMode==GL_FILL&&!ctx->VertexProgram._Enabled&&!c->both&&!ctx->FragmentProgram._Current;
+}
+static void lw_key(GLcontext *ctx,const vxgl_ctx *c,vxgl_lw *k) {
+ TNLcontext *tnl=TNL_CONTEXT(ctx);struct vertex_buffer *VB=&tnl->vb;GLuint i;extern unsigned long _mesa_vx855_lockgen,vxgl_xlate_gen;
+ k->ctx=ctx;k->lockgen=_mesa_vx855_lockgen;k->xg=vxgl_xlate_gen;k->count=VB->Count;k->vs=c->vertex_size;k->fvf=c->fvf;k->verts=c->verts;memcpy(k->vp,c->ViewportMatrix.m,sizeof(k->vp));
+ for(i=0;i<VERT_ATTRIB_GENERIC0;i++){const GLvector4f *v=VB->AttribPtr[i];
+  k->data[i]=v?(const void*)v->data:0;k->stride[i]=v?v->stride:0;k->size[i]=v?v->size:0;
+  if(v&&!v->stride&&v->data){const GLfloat *f=(const GLfloat*)v->data;GLuint j;for(j=0;j<4;j++)k->cur[i][j]=j<v->size?f[j]:0.0F;}else memset(k->cur[i],0,sizeof(k->cur[i]));}
+ k->ub=tnl->vx855_ub_active?(const void*)tnl->vx855_ub_ptr:0;
+}
+static int lw_same(const vxgl_lw *a,const vxgl_lw *b) {
+ return a->ctx==b->ctx&&a->lockgen==b->lockgen&&a->xg==b->xg&&a->count==b->count&&a->vs==b->vs&&a->fvf==b->fvf&&a->verts==b->verts&&!memcmp(a->vp,b->vp,sizeof(a->vp))&&
+  !memcmp(a->data,b->data,sizeof(a->data))&&!memcmp(a->stride,b->stride,sizeof(a->stride))&&!memcmp(a->size,b->size,sizeof(a->size))&&!memcmp(a->cur,b->cur,sizeof(a->cur))&&a->ub==b->ub;
+}
+static void lw_nobuild(GLcontext *ctx,GLuint start,GLuint end,GLuint newinputs) {(void)ctx;(void)start;(void)end;(void)newinputs;}
+static GLboolean lw_run(GLcontext *ctx,struct tnl_pipeline_stage *st) { /* first in the pipeline */
+ vxgl_ctx *c=VXGL_CTX(ctx);TNLcontext *tnl=TNL_CONTEXT(ctx);struct vertex_buffer *VB=&tnl->vb;
+ (void)st;lw_new.pend=0;
+ if(!lw_ok(ctx,c)){lw.valid=0;return GL_TRUE;}
+ lw_key(ctx,c,&lw_new);
+ if(lw.valid&&lw_same(&lw,&lw_new)){GLuint *e=VB->Elts;const struct _mesa_prim *pr=VB->Primitive;GLuint pc=VB->PrimitiveCount;tnl_setup_func build=tnl->Driver.Render.BuildVertices;
+  *VB=lw.vb;VB->Elts=e;VB->Primitive=pr;VB->PrimitiveCount=pc;
+  vxgl_lockdraw_stat[0]++;
+  tnl->Driver.Render.BuildVertices=lw_nobuild;
+  if(lw.w&&lw.wverts==c->verts&&vxgl_gl_storesnap){uint32_t pn,pm;const uint8_t *pb;if(!vx_d3d_gl_presnap_get(&pn,&pm,&pb)){vx_d3d_gl_presnap(lw.w,lw.wn,lw.wm,c->verts);ss_set=1;}}
+  _tnl_render_stage.run(ctx,(struct tnl_pipeline_stage*)&_tnl_render_stage);
+  tnl->Driver.Render.BuildVertices=build;
+  return GL_FALSE;}
+ lw.valid=0;lw_new.pend=1;
+ return GL_TRUE;
+}
+static void lw_validate(GLcontext *ctx,struct tnl_pipeline_stage *st) {(void)ctx;(void)st;lw.valid=0;}
+static GLboolean lw_mark(GLcontext *ctx,struct tnl_pipeline_stage *st) { /* just before the render stage: this run's results are kept */
+ vxgl_ctx *c=VXGL_CTX(ctx);(void)st;
+ if(lw_new.pend&&lw_ok(ctx,c)){lw=lw_new;lw.vb=TNL_CONTEXT(ctx)->vb;lw.w=0;lw.creating=1;lw.valid=1;vxgl_lockdraw_stat[1]++;}
+ lw_new.pend=0;
+ return GL_TRUE;
+}
+static const struct tnl_pipeline_stage vxgl_lw_stage={"vxgl lock-wide draws",NULL,NULL,NULL,lw_validate,lw_run};
+static const struct tnl_pipeline_stage vxgl_lwmark_stage={"vxgl lock-wide draws kept",NULL,NULL,NULL,NULL,lw_mark};
+
 static void render_finish(GLcontext *ctx) {(void)ctx;if(ss_set){vx_d3d_gl_presnap(0,0,0,0);ss_set=0;}} /* the batch stays open (vxgl_hw_flush); v10.500: the store's grid words taken back */
 static void render_primitive(GLcontext *ctx,GLenum prim) {vxgl_raster_primitive(ctx,prim,hwPrim[prim]);}
 static void reset_line_stipple(GLcontext *ctx) {VXGL_CTX(ctx)->stip_count=0;} /* v10.300: swrast's _swrast_ResetLineStipple */
@@ -1104,7 +1165,7 @@ static void run_pipeline_t(GLcontext *ctx) {
  if(c->new_state)vxgl_translate_state(c);
  /* v10.317: the engine draws into the front surface (vxgl_state.c): filled from the window again after a swap; a surface made again or gone
   * since the state was translated is looked at again (the core's target is its offset) */
- if(c->front_hw&&c->fb){if(!(c->fb->fstate&1)){vxgl_hw_flush(c);vxgl_front_load(c->fb);}
+ if(c->front_hw&&c->fb){if(!(c->fb->fstate&1)){vxgl_hw_flush(c);if(!vxgl_front_load(c->fb)){c->new_state|=VXGL_STATE_MASK;vxgl_translate_state(c);}} /* .705 (a review of .703): a front not loaded (its copy and fill failed) is not drawn by the engine: the state again, whose test loads it or takes the engine off the front */
   if(!c->fb->front||c->fb->fsoft||!c->fb->sfront.format||memcmp(&c->core.target,&c->fb->sfront,sizeof(vx3dn_surface))){c->new_state|=VXGL_STATE_MASK;vxgl_translate_state(c);}}
  if(c->fb&&c->fb->zdirty&&vxgl_z_written(c->fb))c->fb->zdirty=0; /* v10.301 (review): a notice that failed goes before the next engine draw */
  /* v10.342 (review): when it failed again the engine's Coarse Z records may still be the old depth: a draw that tests depth on the engine
@@ -1222,11 +1283,11 @@ static GLboolean xf_run(GLcontext *ctx,struct tnl_pipeline_stage *st) {
  return GL_TRUE;
 }
 static const struct tnl_pipeline_stage vxgl_texxf_stage={"vxgl padded texture coordinates",NULL,NULL,NULL,NULL,xf_run};
-static const struct tnl_pipeline_stage *vxgl_pipeline[]={&vxgl_ssepass_stage, /* v10.487: a display list's draw in one SSE pass (vxgl_ssepass.c); GL_TRUE when it does not apply */
+static const struct tnl_pipeline_stage *vxgl_pipeline[]={&vxgl_lw_stage, /* .672: a lock-wide draw from the last one's results (GL_TRUE when it does not apply) */&vxgl_ssepass_stage, /* v10.487: a display list's draw in one SSE pass (vxgl_ssepass.c); GL_TRUE when it does not apply */
  &_tnl_vertex_transform_stage,&_tnl_normal_transform_stage,&_tnl_lighting_stage,
  &_tnl_fog_coordinate_stage,&_tnl_texgen_stage,&_tnl_texture_transform_stage,&_tnl_point_attenuation_stage,&_tnl_vertex_program_stage,
- &vxgl_texxf_stage,&vxgl_proj_stage,&_tnl_render_stage,NULL};
-void vxgl_init_pipeline(GLcontext *ctx) {_tnl_destroy_pipeline(ctx);_tnl_install_pipeline(ctx,vxgl_pipeline);}
+ &vxgl_texxf_stage,&vxgl_proj_stage,&vxgl_lwmark_stage,&_tnl_render_stage,NULL};
+GLboolean vxgl_create_tnl(GLcontext *ctx) {return _tnl_CreateContextWithPipeline(ctx,vxgl_pipeline);}
 void vxgl_init_tri_funcs(GLcontext *ctx) {
  vxgl_ctx *c=VXGL_CTX(ctx);TNLcontext *tnl=TNL_CONTEXT(ctx);static int first=1;
  if(first){init_rast_tab();strips_install();first=0;}
@@ -1237,6 +1298,7 @@ void vxgl_init_tri_funcs(GLcontext *ctx) {
  tnl->Driver.Render.CopyPV=_tnl_copy_pv;tnl->Driver.Render.Interp=_tnl_interp;
  _tnl_init_vertices(ctx,ctx->Const.MaxArrayLockSize+12,(6+2*ctx->Const.MaxTextureUnits)*sizeof(GLfloat));
  c->verts=(GLubyte*)tnl->clipspace.vertex_buf;
+ if(!c->verts)return;
  c->render_index=~0U;
  c->attr_count=0;
  EMIT_ATTR(_TNL_ATTRIB_POS,EMIT_4F_VIEWPORT);EMIT_ATTR(_TNL_ATTRIB_COLOR0,EMIT_4UB_4F_BGRA);

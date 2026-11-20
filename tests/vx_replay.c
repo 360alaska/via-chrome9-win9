@@ -25,6 +25,7 @@ static uint32_t cur; /* the next record a service answer is looked for at */
 #define CALL_FIXED (56+2*sizeof(vx3dn_surface)+sizeof(vx_d3d_state)) /* a call record before its commands */
 static uint32_t bad_blob;
 static uint32_t miss[16],misses;
+static uint32_t zinf_new;
 static vx3dn_info info;static uint32_t fails,first_fail[4],overridden;
 static uint32_t u32(const uint8_t *p){uint32_t v;memcpy(&v,p,4);return v;}
 static double now_us(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec*1e6+t.tv_nsec/1e3;}
@@ -183,6 +184,7 @@ int main(int argc,char **argv) {
   if(!strcmp(argv[a],"-r")&&a+1<argc)rep=(uint32_t)atoi(argv[++a]);
   else if(!strcmp(argv[a],"-q"))quiet=1;
   else if(!strcmp(argv[a],"-n"))emit=0;
+  else if(!strcmp(argv[a],"-z")&&a+1<argc)zinf_new=(uint32_t)atoi(argv[++a]); /* .642: this many service answers the recording does not hold are expected: primitives with a z of infinity, left out when it was made (.641 and before) and drawn now */
   else if(!strcmp(argv[a],"-t"))fake_tex=1; /* .536 */
   else if(!strcmp(argv[a],"-c")&&a+1<argc)force_cull=(uint32_t)atoi(argv[++a]); /* .567: every call drawn with this cull mode (2 clockwise, 3 counter-clockwise), to test the culled paths on a recording made with none */
   else if(!strcmp(argv[a],"-s")&&a+1<argc){char *e=strchr(argv[++a],'=');int hit=0;if(e){*e=0;for(k=0;k<sizeof(sws)/sizeof(sws[0]);k++)if(!strcmp(sws[k].name,argv[a])){*sws[k].v=(uint32_t)strtoul(e+1,0,0);hit=1;}}
@@ -243,6 +245,8 @@ int main(int argc,char **argv) {
  if(bad_blob)printf("vertex buffers the recording did not have (or too short): %u\n",bad_blob);
  if(fails)printf("DrawPrimitives2 calls that failed: %u, the first: frame %u, call %u, result %08X, error offset %u\n",fails,first_fail[0],first_fail[1],first_fail[2],first_fail[3]);
  /* .518 (audit): a strict replay (the recorded switches) fails when it diverged; with -s the service sequence may differ by design */
+ {extern uint32_t vx_d3d_zinf_prims;printf("primitives with an infinite z drawn (.642): %u\n",vx_d3d_zinf_prims);
+  if(zinf_new&&misses==zinf_new&&miss[1]==misses&&vx_d3d_zinf_prims&&!bad_blob&&!fails&&!bad){printf("the %u answers not in the recording are those draws' texture look-ups (-z %u): as expected\n",misses,zinf_new);misses=0;}}
  if(misses||bad_blob||fails||bad){printf("%s\n",overridden?"diverged (switches changed with -s: may be expected)":"DIVERGED from the recording");return overridden?0:1;}
  return 0;
 }

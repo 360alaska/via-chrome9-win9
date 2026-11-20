@@ -287,7 +287,9 @@ class Contract(unittest.TestCase):
    for h,x in zip((0x91,0x92,0x93),hdr):self.assertIn((h<<24)|x,w,n)
    nu=hdr[0].bit_length()
    for u in range(nu):self.assertIn(0x301001B0+u*0x01011001,w,n)
-   if nu>1:self.assertEqual((p.stages.units,list(p.stages.set[:nu])),(nu,[0]+[0 if stages[u][6]==0 else 1 for u in range(1,nu)]),n)
+   # .651 (board, VXTLP 6f on .650): in the plain two-unit layout unit 1 reads slot 1 (words 8-9 hold its coordinates, a copy of unit 0's
+   # when the stages share a set); the engine read (0, 0) for unit 1 on slot 0 with the 10-word layout. XP (T121) sends set 0 there.
+   if nu>1:self.assertEqual((p.stages.units,list(p.stages.set[:nu])),(nu,[0,1] if nu==2 and not p.stages.layout and not p.stages.s3 else [0]+[0 if stages[u][6]==0 else 1 for u in range(1,nu)]),n)
    r28=[x for x in w if x>>24==0x28][-1];self.assertEqual(r28,0x28FFCCC0 if nu==3 else 0x28FFCC00 if nu>1 and any(p.stages.set[:nu]) else 0x28FFC000,n) # v10.209: 04/28 set 1 S,T (T24); v10.310: three units, TextureC S,T
    if nu==3: # v10.310: the vertex's third set (TextureC) is the set unit 2 reads; 12 attributes; FE/01 byte 2 names TextureC
     self.assertIn(0x00A8000C,w,n);self.assertIn(0x0411100D,w,n);fe=0x01212121|(p.stages.set[1]<<10)|(p.stages.set[2]<<18);self.assertIn(fe,w,n) # v10.313: byte 2 names unit 2's set (21 / 25)
@@ -364,6 +366,58 @@ class Contract(unittest.TestCase):
    self.assertIn(0x28FFCC00,self._trace(p),name+' set 0')
    self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0,name)
    w=self._trace(p);self.assertIn(0x2203002C,w);self.assertIn(0x30380000 if op==22 else 0x30390000,w)
+  self._reset_stages()
+ def test_bump3_as_xp(self):
+  # .662: CLXP3D v2.7 T153 (ADD), T154 (MODULATE), T156 (BUMPENVMAPLUMINANCE, ADD): stage 0 MODULATE base, stage 1 the bump, stage 2 the
+  # environment map; XP's words, schedule, TAU words and constants c12 / c36, on the board's captures (XP, VX855)
+  T,D,CUR=2,0,1
+  i0=[0x0140B6D0,0x50040055,0x00700005,0x00001420];co=[0x02C20530,0x0008C092,0x00300100,0x00000C20,0x020C06C0,0x9008C2ED,0x00F00124,0x00000460]
+  col=[0x00C20530,0x0008C092,0x00300100,0x00000C20,0x00A4B4D0,0x500A4B45,0x004001B5,0x00001460,0x020C06C0,0x9008C2ED,0x00F00124,0x000004A0,0x0140B6D0,0x502C1495,0x00700105,0x00000060]
+  add=[0x02C00550,0x50140924,0x00720105,0x00000820];mod=[0x0140B6D0,0x502C0055,0x00720105,0x00000820];al=[0x01C00530,0xB01C0053,0x008200B6,0x040D0820]
+  for name,op,h,op2,want,hdr,tau in (('T153',22,11,7,i0+co+add+al,(0x18005,3,6,4),[0x301001B0,0x211111B1,0x321111B2]),
+                                     ('T154',22,11,4,i0+co+mod+al,(0x18005,3,6,4),[0x301001B0,0x211111B1,0x321111B2]),
+                                     ('T156',23,12,7,i0+col+add+al,(0x18003,7,6,8),[0x301001B0,0x311111B1,0x321121B2])):
+   self._stages([(5,4,T,D,2,T,D,0),(h,op,T,CUR,3,T,CUR,0),(7,op2,T,CUR,3,T,CUR,1)])
+   t=self.context.state.tss[1];t[7]=bits(.5);t[8]=0;t[9]=0;t[10]=bits(.5);t[22]=bits(1.);t[23]=bits(.25)
+   self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0),name);p=self.calls[0]
+   self.assertEqual(['%08X'%w for w in p.shader.words[:p.shader.count*4]],['%08X'%w for w in want],name)
+   self.assertEqual((p.stages.ps,p.stages.h90,p.stages.h91,p.stages.h93,p.stages.h95,list(p.stages.tau[:p.stages.ntau]),p.stages.units),(1,)+hdr+(tau,3),name)
+   kc={p.stages.kc_reg[k]:list(p.stages.kc[k]) for k in range(p.stages.nkc)}
+   self.assertEqual(kc[12],[bits(.5),0,0,bits(.5)],name)
+   if op==23:self.assertEqual(kc[36],[bits(1.),bits(.25),0,0],name)
+   self.assertEqual(list(p.stages.set[:3]),[0,0,1],name)
+   self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0,name)
+   w=self._trace(p);self.assertIn(0x22030030,w,name);self.assertIn(0x92030000|p.shader.count,w,name)
+   i=len(w)-1-w[::-1].index(0x21030000);self.assertEqual(w[i+1:i+4],tau,name)
+   self.assertIn(0x28FFCCC0,w,name+': 04/28 with TextureC (.664: XP\'s FFCCC0)')
+  # .666: T155, SELECTARG1 the environment map: XP's own program and schedule
+  self._stages([(5,4,T,D,2,T,D,0),(11,22,T,CUR,3,T,CUR,0),(7,2,T,CUR,3,T,CUR,1)])
+  t=self.context.state.tss[1];t[7]=bits(.5);t[8]=0;t[9]=0;t[10]=bits(.5)
+  self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0),'T155');p=self.calls[0]
+  self.assertEqual(['%08X'%w for w in p.shader.words[:p.shader.count*4]],['%08X'%w for w in [0x02C20530,0x0008C092,0x00300100,0x00000C20,0x020C06C0,0x9008C2ED,0x00F00124,0x00000420,0x0140B6D0,0x40200923,0x00F20105,0x00000820]],'T155')
+  self.assertEqual((p.stages.h90,p.stages.h91,p.stages.h93,p.stages.h95,list(p.stages.tau[:3])),(0x18004,3,6,2,[0x201001B0,0x311111B1,0x321101B2]),'T155')
+  self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0,'T155');self.assertIn(0x28FFCCC0,self._trace(p),'T155')
+  # .665: CLXP3D v2.8 T157-T160, 3DMark 2001's layout (the bump and the environment map on set 1, alpha MODULATE): XP's words
+  M,SA2,MOD=4,3,4
+  i1=[0x01C00530,0xB01C0053,0x008000B6,0x040D0420];coB=[0x02C20530,0x0008C092,0x00300100,0x00000C20,0x020C06C0,0x9008C2ED,0x00F20124,0x00000460]
+  coBl=[0x00C20530,0x0008C092,0x00300100,0x00000C20,0x00A4B4D0,0x500A4B45,0x004001B5,0x00001460,0x020C06C0,0x9008C2ED,0x00F20124,0x000004A0,0x0140B6D0,0x502C1495,0x00700005,0x00000020]
+  fin=[0x0140B6D0,0x302C0053,0x00F20005,0x00000820]
+  add8=[0x02C00550,0x50140924,0x00700105,0x00000820];al8=[0x0140B6D0,0xB0200B6B,0x008201B6,0x04000820]
+  for name,op,h,op2,aop,want,hdr,tau in (('T157',22,11,4,MOD,i0+i1+coB+fin,(0x18005,3,6,8),[0x301001B0,0x211111B1,0x321011B2]),
+      ('T158',22,11,7,MOD,i0+co+add8+al8,(0x18005,3,6,4),[0x301001B0,0x211111B1,0x321111B2]),
+      ('T159',23,12,4,MOD,i0+i1+coBl+fin,(0x18003,7,6,0x10),[0x301001B0,0x311111B1,0x321021B2]),
+      ('T160',22,11,4,SA2,i0+co+mod+al,(0x18005,3,6,4),[0x301001B0,0x211111B1,0x321111B2])):
+   self._stages([(5,4,T,D,2,T,D,0),(h,op,T,CUR,aop,T,CUR,1),(7,op2,T,CUR,aop,T,CUR,1)])
+   t=self.context.state.tss[1];t[7]=bits(.5);t[8]=0;t[9]=0;t[10]=bits(.5);t[22]=bits(1.);t[23]=bits(.25)
+   self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0),name);p=self.calls[0]
+   self.assertEqual(['%08X'%w for w in p.shader.words[:p.shader.count*4]],['%08X'%w for w in want],name)
+   self.assertEqual((p.stages.ps,p.stages.h90,p.stages.h91,p.stages.h93,p.stages.h95,list(p.stages.tau[:p.stages.ntau]),p.stages.units),(1,)+hdr+(tau,3),name)
+   self.assertEqual(list(p.stages.set[:3]),[0,1,1],name)
+   self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0,name)
+   w=self._trace(p);self.assertIn(0x28FFCCC0,w,name)
+  # outside the captured layouts the primitive is left out as before: the environment map on the base's set, a stage 2 not reading CURRENT
+  for st in ([(5,4,T,D,2,T,D,0),(11,22,T,CUR,3,T,CUR,0),(7,7,T,CUR,3,T,CUR,0)],[(5,4,T,D,2,T,D,0),(12,23,T,CUR,3,T,CUR,0),(7,2,T,CUR,3,T,CUR,1)]): # .666: SELECTARG1 the environment map after the luminance bump (T155's form is the plain bump's only)
+   self._stages(st);self.calls.clear();self.run_dp2(self.tri());self.assertEqual(len(self.calls),0)
   self._reset_stages()
  def test_feature_switches(self):
   # v10.212: ACCEL_D3D_STAGES / NEWOPS / BUMP / PROJECTED / DITHER (bits of vx_d3d_feat); all on by default
@@ -1077,7 +1131,7 @@ class Contract(unittest.TestCase):
   # v10.367 (GTA3: one bad vertex failed the whole DrawPrimitives2 call): a primitive using a vertex that is not finite or has rhw <= 0 is
   # left out and counted (drop reason 2000); the call succeeds and its other primitives are drawn; nothing bad reaches a packet
   bad=U.in_dll(lib,'vx_d3d_bad_vertex_prims')
-  for at,value in [(0,0x7fc00000),(4,0x7f800000),(8,0xff800000),(12,0),(12,0xbf800000)]:
+  for at,value in [(0,0x7fc00000),(4,0x7f800000),(8,0xffc00000),(12,0),(12,0xbf800000)]: # .642: z a NaN (an infinite z is drawn, held to the range: tests/tnl_dense_cases.py)
    v=bytearray(vertices());v[at:at+4]=pack(value);b0=bad.value;d0=dropped().value;self.calls.clear()
    self.assertEqual(self.run_dp2(self.tri(),v),(0,0));self.assertFalse(self.calls);self.assertEqual(bad.value,b0+1);self.assertEqual(dropped().value,d0+1)
    # the same bad vertex 0 in a line list, a point, a fan and an indexed list, then a good triangle (vertices 2, 3, 4) in the same call
@@ -1263,7 +1317,7 @@ class Contract(unittest.TestCase):
  def test_bad_vertex_reasons(self):
   # v10.431: the bad-vertex checks counted by reason: [0] x, y or z not finite, [1] rhw not finite, [2] rhw 0 (either sign), [3] rhw < 0
   why=(U*4).in_dll(lib,'vx_d3d_bad_why')
-  for at,value,slot in [(0,0x7fc00000,0),(4,0x7f800000,0),(8,0xff800000,0),(12,0x7f800000,1),(12,0x7fc00000,1),(12,0,2),(12,0x80000000,2),(12,0xbf800000,3)]:
+  for at,value,slot in [(0,0x7fc00000,0),(4,0x7f800000,0),(8,0xffc00000,0),(12,0x7f800000,1),(12,0x7fc00000,1),(12,0,2),(12,0x80000000,2),(12,0xbf800000,3)]:
    v=bytearray(vertices());v[at:at+4]=pack(value);w0=list(why);self.calls.clear()
    self.assertEqual(self.run_dp2(self.tri(),v),(0,0));self.assertFalse(self.calls)
    d=[a-b for a,b in zip(why,w0)];self.assertTrue(d[slot]>0 and sum(d)==d[slot],(at,hex(value),d))
@@ -1624,6 +1678,22 @@ class Contract(unittest.TestCase):
    elif bank==0x10000 and v>>24==1:enabled=bool(v&0x400)
    elif bank==0x20030000:self.assertFalse(enabled);loaded=True
   self.assertTrue(loaded);self.assertTrue(enabled)
+
+ def test_guard_band_below_an_offset_clip(self):
+   """.704 (a review of .703): with the guard band (ext.dither's VX3DN_EXT_GUARD) a vertex between 0 and a clip edge that is not 0 is
+   taken (it was refused while a negative one passed); without the band it is refused as before; past +4095 always refused"""
+   self.calls.clear();self.run_dp2(cmd(1,1,struct.pack('<HH',1,0)),vertices([(30,30)]));p=self.calls[0];self.assertEqual(p.ext.prim,0)
+   gb=U.in_dll(lib,'vx3dn_gband');old=gb.value;fb=lambda f:struct.unpack('<I',struct.pack('<f',f))[0]
+   def put(x,y):
+    if p.pre_on:p.pre_w[0]=fb(x);p.pre_w[1]=fb(y)
+    else:p.vertices[0].x=fb(x);p.vertices[0].y=fb(y)
+   try:
+    gb.value=1;p.clip.left=16;p.clip.top=16;p.clip.right=60;p.clip.bottom=60
+    for flag,x,y,ok in [(1,8.0,8.0,1),(1,0.0,20.0,1),(1,-5.0,20.0,1),(1,4095.0,20.0,1),(1,4096.0,20.0,0),(1,20.0,-4096.0,1),(0,8.0,20.0,0),(0,20.0,8.0,0),(0,-5.0,20.0,0)]:
+     p.ext.dither=(p.ext.dither&~0x100)|(0x100 if flag else 0);put(x,y)
+     self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info))==0,bool(ok),(flag,x,y))
+    gb.value=0;p.ext.dither|=0x100;put(20.0,20.0);self.assertNotEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0) # the flag refused where the band is off
+   finally:gb.value=old
 
 if __name__=='__main__':
  suite=unittest.defaultTestLoader.loadTestsFromTestCase(Contract);result=unittest.TextTestRunner(verbosity=1).run(suite)

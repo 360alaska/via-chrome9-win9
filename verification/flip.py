@@ -29,7 +29,12 @@ def checks():
   assert g.crt_start()==0 and not g.bios_log;case(f'{bpp}bpp calibration takes the known unit and makes no BIOS call')
   v=g.vbn;r=ctl(g,F,stride);assert r[0]==OK and r[4]==stride and g.crt_start()==stride>>1 and g.vbn>v;case(f'{bpp}bpp flip programs CR0C/0D/34 and waits for the blank')
   assert not g.bios_log;case(f'{bpp}bpp direct flips make no BIOS call')
-  v=g.vbn;r=ctl(g,F,0,8);assert r[0]==OK and g.crt_start()==0 and g.vbn>v;case(f'{bpp}bpp .555: a NOVSYNC flip is the one-frame flip (the chip takes the address at the blank: the old front is guarded until then)')
+  g.u.mem_write(g.addr('vx_flip_tear'),pack([0]))
+  v=g.vbn;r=ctl(g,F,0,8);assert r[0]==OK and g.crt_start()==0 and g.vbn>v;case(f'{bpp}bpp .555 (ACCEL_FLIP_TEAR 0): a NOVSYNC flip is the one-frame flip (the chip takes the address at the blank: the old front is guarded until then)')
+  g.u.mem_write(g.addr('vx_flip_tear'),pack([1]))
+  v=g.vbn;r=ctl(g,F,stride,8);assert r[0]==OK and g.crt_start()==stride>>1 and g.crt.get(0x32,0)&1 and g.vbn==v,(r[:5],g.vbn-v,hex(g.crt.get(0x32,0)))
+  v=g.vbn;r=ctl(g,F,0);assert r[0]==OK and g.crt_start()==0 and not g.crt.get(0x32,0)&1 and g.vbn>v
+  case(f'{bpp}bpp .696: a NOVSYNC flip (ACCEL_FLIP_TEAR 1) is written at once with CR32 bit 0 (real-time flipping), no blank wait; a vsync flip after it clears the bit and waits')
   r=ctl(g,F,stride+4,0);assert r[0]==OK and g.crt_start()==(stride+4)>>1;case(f'{bpp}bpp dword aligned offsets are accepted')
   for bad in (stride+1,0x1000000,0xffffff00):
    before=g.crt_start();r=ctl(g,F,bad);assert r[0]==UNS and g.crt_start()==before,bad

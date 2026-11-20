@@ -3,6 +3,7 @@
 .globl _vxs_check
 .globl _vxs_conv
 .globl _vxs_max16
+.globl _vxs_cmm16
 
 _vxs_check:
  push ebx
@@ -246,5 +247,74 @@ _vxs_max16:
  dec ecx
  jmp 3b
 9:
+ pop esi
+ ret
+
+_vxs_cmm16:
+ push esi
+ push edi
+ push ebx
+ mov esi,[esp+16]
+ mov edi,[esp+20]
+ mov ecx,[esp+24]
+ pcmpeqw xmm1,xmm1
+ psllw xmm1,15
+ movdqa xmm0,xmm1
+ pcmpeqw xmm3,xmm3
+ pxor xmm3,xmm1
+1:
+ cmp ecx,8
+ jb 2f
+ movdqu xmm2,[esi]
+ movdqu [edi],xmm2
+ pxor xmm2,xmm1
+ pmaxsw xmm0,xmm2
+ pminsw xmm3,xmm2
+ add esi,16
+ add edi,16
+ sub ecx,8
+ jmp 1b
+2:
+ pshufd xmm2,xmm0,0x4E
+ pmaxsw xmm0,xmm2
+ pshufd xmm2,xmm0,0xB1
+ pmaxsw xmm0,xmm2
+ pshuflw xmm2,xmm0,0xB1
+ pmaxsw xmm0,xmm2
+ pxor xmm0,xmm1
+ movd eax,xmm0
+ and eax,0xFFFF
+ pshufd xmm2,xmm3,0x4E
+ pminsw xmm3,xmm2
+ pshufd xmm2,xmm3,0xB1
+ pminsw xmm3,xmm2
+ pshuflw xmm2,xmm3,0xB1
+ pminsw xmm3,xmm2
+ pxor xmm3,xmm1
+ movd ebx,xmm3
+ and ebx,0xFFFF
+3:
+ test ecx,ecx
+ jz 9f
+ movzx edx,word ptr [esi]
+ mov [edi],dx
+ cmp edx,eax
+ jbe 4f
+ mov eax,edx
+4:
+ cmp edx,ebx
+ jae 5f
+ mov ebx,edx
+5:
+ add esi,2
+ add edi,2
+ dec ecx
+ jmp 3b
+9:
+ mov edx,[esp+28]
+ mov [edx],ebx
+ mov [edx+4],eax
+ pop ebx
+ pop edi
  pop esi
  ret

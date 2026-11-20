@@ -58,7 +58,7 @@ struct vertex_stage_data {
    } cva;
 };
 
-/* VX855 v10.500 (ACCEL_OPENGL_CVACACHE; Fable's list, Quake 3's batches: glLockArraysEXT, then the same range drawn again for each pass of
+/* VX855 v10.500 (ACCEL_OPENGL_CVACACHE; the review list, Quake 3's batches: glLockArraysEXT, then the same range drawn again for each pass of
  * the shader with only the colours and texture coordinates changed): inside one lock (_mesa_vx855_lockgen unchanged), a draw from client
  * arrays (_vbo_vx855_arraydraw) whose positions are the same array (pointer, stride, size, count) under the same modelview-projection
  * matrix (bit for bit) as the last run's takes that run's clip coordinates, projected coordinates and clip masks as they are (they are

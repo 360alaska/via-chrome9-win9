@@ -42,6 +42,8 @@ static const uint8_t *legacy_range(const uint8_t *base,uint32_t at,uint32_t byte
 static void services(context_slot *c,vx_d3d_services *sv) {
  memset(sv,0,sizeof(*sv)); /* v10.214: colorkey, mips and faces were left uninitialised on this path */
  sv->context=c;sv->submit=native_submit;sv->resolve=resolve;sv->unknown=unknown;sv->bind_vertices=0;
+ sv->submit_n=native_submit_n; /* .663 (audit 01): without it the core's call start (cq_take) cleared the held draws of a DrawPrimitives2 call
+  * unsent; with it these calls queue and hold as DrawPrimitives2 does (hold_pid, hold_tid below) */
 }
 static HRESULT legacy_token(context_slot *c,uint8_t op,uint32_t count,
  const uint8_t *payload,uint32_t bytes,const uint8_t *vertices,uint32_t vertex_bytes) {
@@ -54,7 +56,8 @@ static HRESULT legacy_token(context_slot *c,uint8_t op,uint32_t count,
  memset(&in,0,sizeof(in));in.commands=commands;in.command_bytes=bytes+4;
  in.vertices=vertices;in.vertex_bytes=vertex_bytes;in.vertex_count=vertex_bytes/32;
  in.vertex_stride=32;in.fvf=0x1C4;services(c,&sv);
- hr=vx_d3d_dp2(&c->core,&in,&sv,&error);GlobalFree((HGLOBAL)commands);
+ hold_tid=GetCurrentThreadId();hr=vx_d3d_dp2(&c->core,&in,&sv,&error);hold_tid=0;if(vx_d3d_held())hold_pid=GetCurrentProcessId(); /* .663 */
+ GlobalFree((HGLOBAL)commands);
  return (HRESULT)hr;
 }
 DWORD WINAPI VX_D3D_RenderState(vx_ddi_renderstate *p) {
@@ -143,6 +146,8 @@ DWORD WINAPI VX_D3D_Clear(vx_ddi_clear *p) {
   }
   q.clear_color=color;p->ddrval=DD_OK;
   if(!q.clear_flags)goto done_clear;
+  /* .663 (audit 04): the held draws first (the clear went ahead of them); a failure to send them is this call's answer */
+  if(vx_d3d_held()){uint32_t hr=hold_send_here();if(hr){p->ddrval=(HRESULT)hr;goto done_clear;}}
   n=p->dwNumRects?p->dwNumRects:1;
   for(j=0;j<n;j++) {
    if(p->dwNumRects)memcpy(&q.clip,p->lpRects+j,16);else q.clip=c->core.state.viewport;

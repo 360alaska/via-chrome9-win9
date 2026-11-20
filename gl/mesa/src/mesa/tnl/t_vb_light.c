@@ -470,7 +470,9 @@ static GLboolean init_lighting( GLcontext *ctx,
    store->LitIndex[1].size = 1;
    store->LitIndex[1].stride = sizeof(GLfloat);
 
-   return GL_TRUE;
+   return store->Input.data && store->LitColor[0].data && store->LitColor[1].data &&
+          store->LitSecondary[0].data && store->LitSecondary[1].data &&
+          store->LitIndex[0].data && store->LitIndex[1].data;
 }
 
 

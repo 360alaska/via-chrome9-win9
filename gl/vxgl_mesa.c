@@ -377,7 +377,7 @@ static void clear_(GLcontext *ctx,GLbitfield mask) {
  /* v10.249: the engine clears the surface it draws (the back); a double-buffered front by swrast. v10.317: or the front, when the engine
   * draws into it (vxgl_state.c: filled from the window first) */
  /* (review) the same test as run_pipeline's: a front released after a failed lock (fsoft) is not cleared by the engine */
- if(c->front_hw&&c->fb){if(!(c->fb->fstate&1)){vxgl_hw_flush(c);vxgl_front_load(c->fb);}
+ if(c->front_hw&&c->fb){if(!(c->fb->fstate&1)){vxgl_hw_flush(c);if(!vxgl_front_load(c->fb)){c->new_state|=VXGL_STATE_MASK;vxgl_translate_state(c);}} /* .705 (a review of .703): a front not loaded (its copy and fill failed) is not drawn by the engine: the state again, whose test loads it or takes the engine off the front */
   if(!c->fb->front||c->fb->fsoft||!c->fb->sfront.format||memcmp(&c->core.target,&c->fb->sfront,sizeof(vx3dn_surface))){c->new_state|=VXGL_STATE_MASK;vxgl_translate_state(c);}}
  if(c->rtt&&c->fb&&fb!=&c->fb->Base)hw=fb->_ColorDrawBufferMask[0]; /* v10.321: a framebuffer object the engine draws into (its one colour attachment) */
  if(c->fb&&(fb==&c->fb->Base||c->rtt)&&!(c->fallback&(VXGL_FB_NOHW|VXGL_FB_REGISTRY))) {
@@ -436,25 +436,40 @@ vxgl_ctx *vxgl_create_context(int pf,HDC hdc,vxgl_ctx *share) {
  if(vxgl_gl_s3tc){c->gl.Extensions.EXT_texture_compression_s3tc=GL_TRUE;c->gl.Extensions.S3_s3tc=GL_TRUE;} /* v10.307: the built-in DXT codec (vxgl_dxtn.h), DXT copies on the engine */
  if(vxgl_gl_fxt1)c->gl.Extensions.TDFX_texture_compression_FXT1=GL_TRUE; /* v10.317: GL_3DFX_texture_compression_FXT1 (Mesa's codec; decoded copies on the engine) */
  /* v10.330 (review #21): the Mesa parts made before one that failed are torn down (in reverse order) before the context's data goes */
- {int st=0;
-  if(_swrast_CreateContext(&c->gl)){st=1;if(_vbo_CreateContext(&c->gl)){st=2;if(_tnl_CreateContext(&c->gl)){st=3;if(_swsetup_CreateContext(&c->gl))st=4;}}}
-  if(st<4){if(st>=3)_tnl_DestroyContext(&c->gl);if(st>=2)_vbo_DestroyContext(&c->gl);if(st>=1)_swrast_DestroyContext(&c->gl);
-   _mesa_free_context_data(&c->gl);_mesa_free(c);return 0;}}
+ if(!_swrast_CreateContext(&c->gl))goto fail_mesa;
+ if(!_vbo_CreateContext(&c->gl))goto fail_swrast;
+ if(!vxgl_create_tnl(&c->gl))goto fail_vbo;
+ if(!_swsetup_CreateContext(&c->gl))goto fail_tnl;
  {struct swrast_device_driver *sw=_swrast_GetDeviceDriverReference(&c->gl);sw->SpanRenderStart=vxgl_span_start;sw->SpanRenderFinish=vxgl_span_finish;}
- vxgl_init_pipeline(&c->gl); /* v10.295: Mesa's stages plus the projective coordinates (vxgl_tris.c) */
  tnl=TNL_CONTEXT(&c->gl);tnl->_DoVertexFog=GL_TRUE; /* fog factors per vertex, the engine's vertex fog (specular alpha) */
  c->pf=pf;
  _math_matrix_ctr(&c->ViewportMatrix);
+ if(!c->ViewportMatrix.m)goto fail_swsetup;
  {vx3dn_surface none;memset(&none,0,sizeof(none));vx_d3d_init(&c->core,&none,&none,0);} /* the window's buffers come at MakeCurrent (core_targets) */
  c->sv.context=c;c->sv.submit=vxgl_submit;c->sv.resolve=vxgl_tex_resolve;c->sv.mips=vxgl_tex_mips;c->sv.faces=vxgl_tex_faces; /* v10.268: textures; v10.295: cube maps */
  c->sv.volume=vxgl_tex_volume; /* v10.317: 3D textures */
  memcpy(c->tss_default,c->core.state.tss,sizeof(c->tss_default));
  c->depth_scale=zb==16?1.0f/65535.0f:(zb?1.0f/16777215.0f:1.0f/65535.0f);
  vxgl_init_tri_funcs(&c->gl);
+ if(!c->verts)goto fail_matrix;
  if(!vxgl_hw_enabled)vxgl_fallback(c,VXGL_FB_REGISTRY,GL_TRUE);
  c->new_state=~0U;
  c->magic=VXGL_MAGIC;
  return c;
+fail_matrix:
+ _math_matrix_dtr(&c->ViewportMatrix);
+fail_swsetup:
+ _swsetup_DestroyContext(&c->gl);
+fail_tnl:
+ _tnl_DestroyContext(&c->gl);
+fail_vbo:
+ _vbo_DestroyContext(&c->gl);
+fail_swrast:
+ _swrast_DestroyContext(&c->gl);
+fail_mesa:
+ _mesa_free_context_data(&c->gl);
+ _mesa_free(c);
+ return 0;
 }
 /* v10.500: the contexts current in some thread (each thread holds one at most: the threads holding one), kept under the engine lock */
 int vxgl_gl_glapione=1;static int vxgl_owned;static unsigned long glapi_seen;
@@ -488,7 +503,7 @@ int vxgl_destroy_context(vxgl_ctx *c) {
  if(c->stats[3]){static const char *const bn[17]={"texture","engine state","logic op","colour mask","blend","stipple","draw buffer","render mode","no video memory buffers","programs",
    "ACCEL_OPENGL_HW 0","textured lines or points or q","occlusion query","polygon stipple with lines or points","points or lines condition","depth notice","depth bounds"};
   static const char *const wn[11]={"polygon stipple off","smooth points","smooth lines","smooth polygons","alpha test with smoothing","line stipple","attenuated points or sprites","wide line","point size","texture state","coverage alpha"};
-  char l[900];int k,n=0;l[0]=0; /* v10.500 (every software draw a bug to find): the context's draws in software by fallback bit and by the state behind it */
+  char l[900];int k,n=0;l[0]=0; /* v10.500 (the review list: every software draw a bug to find): the context's draws in software by fallback bit and by the state behind it */
   for(k=0;k<17;k++)if(c->fb_draws[k]&&n<(int)sizeof(l)-80)n+=_snprintf(l+n,sizeof(l)-1-n,"%s%s %lu",n?", ":"",bn[k],(unsigned long)c->fb_draws[k]);
   for(k=0;k<11;k++)if(c->fb_why_draws[k]&&n<(int)sizeof(l)-80)n+=_snprintf(l+n,sizeof(l)-1-n,"%s(%s) %lu",n?", ":"",wn[k],(unsigned long)c->fb_why_draws[k]);
   l[sizeof(l)-1]=0;vxgl_log("context %p: draws in software by reason: %s\n",(void*)c,l);}
@@ -525,6 +540,9 @@ int vxgl_destroy_context(vxgl_ctx *c) {
    {uint32_t o[9];extern uint32_t __stdcall VXGL_Stats500(uint32_t*,uint32_t);uint32_t sw=VXGL_Stats500(o,0); /* v10.500 */
     vxgl_log("v10.500 (the process so far): triangle runs in one call %lu (%lu triangles; %lu left to the template) (ACCEL_OPENGL_TRILIST %lu); locked-array transforms kept %lu, made %lu (ACCEL_OPENGL_CVACACHE %lu); the vertex copy by words (ACCEL_OPENGL_FASTVTX %lu); the store's grid words for %lu draws, %lu vertices (ACCEL_OPENGL_STORESNAP %lu); per-thread dispatch entered %lu times, left %lu (ACCEL_OPENGL_GLAPIONE %lu)\n",
      (unsigned long)o[0],(unsigned long)o[1],(unsigned long)o[2],(unsigned long)(sw&1),(unsigned long)o[3],(unsigned long)o[4],(unsigned long)((sw>>1)&1),(unsigned long)((sw>>2)&1),(unsigned long)o[5],(unsigned long)o[6],(unsigned long)((sw>>3)&1),(unsigned long)o[7],(unsigned long)o[8],(unsigned long)((sw>>4)&1));}
+   {extern int vxgl_gl_lockdraw;extern uint32_t vxgl_lockdraw_stat[2];extern unsigned long _tnl_vx855_lw_stat[4]; /* .672 */
+    vxgl_log(".672 (the process so far): lock-wide draws (%d): %lu draws given the whole locked range, %lu of them drawn from the last one's vertices, %lu runs kept for them\n",
+     vxgl_gl_lockdraw,_tnl_vx855_lw_stat[0],(unsigned long)vxgl_lockdraw_stat[0],(unsigned long)vxgl_lockdraw_stat[1]);}
    {extern int vxgl_ssepass_snap2,vxgl_ssepass_outfast,vxgl_ssepass_early;extern unsigned long vxgl_ssepass_imm_stat[3]; /* v10.497 */
     vxgl_log("v10.497: grid words from the pass (ACCEL_OPENGL_SSESNAP2 %d; %lu vertices taken by the strip path in all); the whole-outside test in the registers (ACCEL_OPENGL_SSEOUTFAST %d); %lu draws not from a list declined before the copy (ACCEL_OPENGL_SSEEARLY %d)\n",
      vxgl_ssepass_snap2,(unsigned long)vx_d3d_ps_used,vxgl_ssepass_outfast,vxgl_ssepass_imm_stat[2],vxgl_ssepass_early);}}}

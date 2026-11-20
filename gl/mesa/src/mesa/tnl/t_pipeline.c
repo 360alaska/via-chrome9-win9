@@ -36,7 +36,7 @@
 #include "t_vp_build.h"
 #include "t_vertex.h"
 
-void _tnl_install_pipeline( GLcontext *ctx,
+GLboolean _tnl_install_pipeline( GLcontext *ctx,
 			    const struct tnl_pipeline_stage **stages )
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
@@ -49,11 +49,15 @@ void _tnl_install_pipeline( GLcontext *ctx,
    for (i = 0 ; i < MAX_PIPELINE_STAGES && stages[i] ; i++) {
       struct tnl_pipeline_stage *s = &tnl->pipeline.stages[i];
       MEMCPY(s, stages[i], sizeof(*s));
-      if (s->create)
-	 s->create(ctx, s);
+      if (s->create && !s->create(ctx, s)) {
+         tnl->pipeline.nr_stages = i + 1;
+         _tnl_destroy_pipeline(ctx);
+         return GL_FALSE;
+      }
    }
 
    tnl->pipeline.nr_stages = i;
+   return GL_TRUE;
 }
 
 void _tnl_destroy_pipeline( GLcontext *ctx )

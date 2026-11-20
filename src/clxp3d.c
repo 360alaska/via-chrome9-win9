@@ -1,4 +1,9 @@
-/* CLXP3D v2.6: Windows XP Direct3D 7 case runner for the VX855 command-ring capture. MIT, 2026.
+/* CLXP3D v2.9 (driver .668: three texture-coordinate sets, T161 and T162: stage 0 MODULATE a texture on set 0, stage 1 MODULATE a
+ * second on set 1, stage 2 MODULATE a third on set 2, the three sets different (set 1 set 0's doubled, set 2 set 0 mirrored), so each unit's
+ * set shows; T161 three textures, T162 the same with stage 2's texture on set 1 again (a check of the two-set form beside it). The log's
+ * caps line gives XP's FVF caps (its count of coordinate sets); the capture gives how XP feeds unit 2 a third set, if it does.
+ * CLXP3D v2.8 (driver .664: four cases of 3DMark 2001's environment-bump layout, bump and environment map both on set 1; CLXP3D from 157
+ * runs them, T157-T160). CLXP3D v2.7 (driver .661: four cases of bump mapping on stage 1 between a base texture and an environment map; CLXP3D from 153 runs them, T153-T156). CLXP3D v2.6: Windows XP Direct3D 7 case runner for the VX855 command-ring capture. MIT, 2026.
  * Each case is one small piece of fixed-function state drawn once into a 256x192 video-memory target, flushed (the target is
  * locked and read back, which makes XP's driver submit and finish the draw), and saved as CLXP3Dnn.BIN (256x192 X8R8G8B8, rows
  * top-down). Everything is logged to CLXP3D.TXT. The baseline state is restored after every case, so a capture of one case holds
@@ -466,6 +471,73 @@ static int c_3_stages(void){
  colorop(2,D3DTOP_ADD,T,CUR);alphaop(2,D3DTOP_SELECTARG2,T,CUR);ts(2,D3DTSS_TEXCOORDINDEX,0);
  {int r=op_draw(D3DTOP_MODULATE,T,D,D3DTOP_SELECTARG1,T,D,0,1);
   ts(2,D3DTSS_COLOROP,D3DTOP_DISABLE);ts(2,D3DTSS_ALPHAOP,D3DTOP_DISABLE);IDirect3DDevice7_SetTexture(dev,2,0);IDirectDrawSurface7_Release(tex2);tex2=0;return r;}}
+/* v2.7 (driver .661): bump mapping on stage 1 between a base texture and an environment map, as 3DMark 2001's environment-bump test
+ * lays it out (the driver draws BUMPENVMAP on stage 0 only, from T146-T148): stage 0 MODULATE base x diffuse, stage 1 BUMPENVMAP (or
+ * LUMINANCE) with the du/dv texture on set 0, stage 2 the environment map on set 1 combined with CURRENT by ADD, MODULATE or
+ * SELECTARG1 (texture). The capture gives XP's program, TAU words and schedule for three units with the dependent read on unit 2. */
+static int bump3_case(DWORD op,DWORD flags,DWORD bits,DWORD op2){const DDPIXELFORMAT *f=bumpfmt(flags,bits);vtx v[6];IDirectDrawSurface7 *bt;int r;
+ if(caps.wMaxSimultaneousTextures<3)SKIP("fewer than three textures");if(!f)SKIP("bump format not offered");
+ if(!tq())SKIP("texture 0");
+ bt=texture(f,8,8,1,bumps);if(!bt||!ok("SetTexture(1)",IDirect3DDevice7_SetTexture(dev,1,bt))){if(bt)IDirectDrawSurface7_Release(bt);SKIP("bump texture");}
+ tex1=bt;
+ tex2=texture(ARGB(),8,8,1,quad_opaque);if(!tex2||!ok("SetTexture(2)",IDirect3DDevice7_SetTexture(dev,2,tex2)))SKIP("texture 2");
+ colorop(1,op,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(1,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);ts(1,D3DTSS_TEXCOORDINDEX,0);
+ ts(1,D3DTSS_BUMPENVMAT00,f2dw(.5f));ts(1,D3DTSS_BUMPENVMAT01,0);ts(1,D3DTSS_BUMPENVMAT10,0);ts(1,D3DTSS_BUMPENVMAT11,f2dw(.5f));
+ ts(1,D3DTSS_BUMPENVLSCALE,f2dw(1.f));ts(1,D3DTSS_BUMPENVLOFFSET,f2dw(.25f));
+ colorop(2,op2,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(2,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);ts(2,D3DTSS_TEXCOORDINDEX,1);
+ ts(2,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);ts(2,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);
+ colorop(0,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_DIFFUSE);alphaop(0,D3DTOP_SELECTARG1,D3DTA_TEXTURE,D3DTA_DIFFUSE);
+ corner(&v[0],32,32,.5f,1,0xFFC0C0C0UL,0,0);corner(&v[1],160,32,.5f,1,0xFFC0C0C0UL,1,0);corner(&v[2],32,160,.5f,1,0xFFC0C0C0UL,0,1);v[3]=v[1];corner(&v[4],160,160,.5f,1,0xFFC0C0C0UL,1,1);v[5]=v[2];
+ r=draw(v,6);
+ ts(2,D3DTSS_COLOROP,D3DTOP_DISABLE);ts(2,D3DTSS_ALPHAOP,D3DTOP_DISABLE);ts(2,D3DTSS_TEXCOORDINDEX,2);IDirect3DDevice7_SetTexture(dev,2,0);IDirectDrawSurface7_Release(tex2);tex2=0;return r;}
+static int c_bump3_add(void){return bump3_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_ADD);}
+static int c_bump3_mod(void){return bump3_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_MODULATE);}
+static int c_bump3_sel(void){return bump3_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_SELECTARG1);}
+static int c_bump3_ladd(void){return bump3_case(D3DTOP_BUMPENVMAPLUMINANCE,DDPF_BUMPDUDV|DDPF_BUMPLUMINANCE,16,D3DTOP_ADD);}
+/* v2.8 (driver .664): 3DMark 2001's environment-bump layout as the board's VXD3DMON logged it on .663 (2,250 primitives left out): stage 0
+ * MODULATE base x diffuse on set 0 (alpha SELECTARG1 texture), stage 1 BUMPENVMAP on set 1 with ALPHAOP MODULATE (texture, current), stage 2
+ * the environment map on set 1 too, MODULATE (texture, current), alpha MODULATE. Set 1's coordinates are set 0's doubled (each map tiles
+ * twice), so a unit on the wrong set shows. T157 as logged, T158 stage 2 ADD, T159 the luminance bump, T160 T157 with stages 1 and 2
+ * passing the alpha (SELECTARG2 current): the set layout apart from the alpha. */
+static int bump3b_case(DWORD op,DWORD flags,DWORD bits,DWORD op2,int apass){const DDPIXELFORMAT *f=bumpfmt(flags,bits);vtx v[6];IDirectDrawSurface7 *bt;int r,k;
+ if(caps.wMaxSimultaneousTextures<3)SKIP("fewer than three textures");if(!f)SKIP("bump format not offered");
+ if(!tq())SKIP("texture 0");
+ bt=texture(f,8,8,1,bumps);if(!bt||!ok("SetTexture(1)",IDirect3DDevice7_SetTexture(dev,1,bt))){if(bt)IDirectDrawSurface7_Release(bt);SKIP("bump texture");}
+ tex1=bt;
+ tex2=texture(ARGB(),8,8,1,quad_opaque);if(!tex2||!ok("SetTexture(2)",IDirect3DDevice7_SetTexture(dev,2,tex2)))SKIP("texture 2");
+ colorop(1,op,D3DTA_TEXTURE,D3DTA_CURRENT);if(apass)alphaop(1,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);else alphaop(1,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);ts(1,D3DTSS_TEXCOORDINDEX,1);
+ ts(1,D3DTSS_BUMPENVMAT00,f2dw(.5f));ts(1,D3DTSS_BUMPENVMAT01,0);ts(1,D3DTSS_BUMPENVMAT10,0);ts(1,D3DTSS_BUMPENVMAT11,f2dw(.5f));
+ ts(1,D3DTSS_BUMPENVLSCALE,f2dw(1.f));ts(1,D3DTSS_BUMPENVLOFFSET,f2dw(.25f));ts(1,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);ts(1,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);
+ colorop(2,op2,D3DTA_TEXTURE,D3DTA_CURRENT);if(apass)alphaop(2,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);else alphaop(2,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);ts(2,D3DTSS_TEXCOORDINDEX,1);
+ ts(2,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);ts(2,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);
+ colorop(0,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_DIFFUSE);alphaop(0,D3DTOP_SELECTARG1,D3DTA_TEXTURE,D3DTA_DIFFUSE);
+ corner(&v[0],32,32,.5f,1,0xFFC0C0C0UL,0,0);corner(&v[1],160,32,.5f,1,0xFFC0C0C0UL,1,0);corner(&v[2],32,160,.5f,1,0xFFC0C0C0UL,0,1);v[3]=v[1];corner(&v[4],160,160,.5f,1,0xFFC0C0C0UL,1,1);v[5]=v[2];
+ for(k=0;k<6;k++){v[k].u1=v[k].u0*2;v[k].v1=v[k].v0*2;}
+ r=draw(v,6);
+ ts(1,D3DTSS_TEXCOORDINDEX,1);ts(2,D3DTSS_COLOROP,D3DTOP_DISABLE);ts(2,D3DTSS_ALPHAOP,D3DTOP_DISABLE);ts(2,D3DTSS_TEXCOORDINDEX,2);IDirect3DDevice7_SetTexture(dev,2,0);IDirectDrawSurface7_Release(tex2);tex2=0;return r;}
+static int c_bump3b_mod(void){return bump3b_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_MODULATE,0);}
+static int c_bump3b_add(void){return bump3b_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_ADD,0);}
+static int c_bump3b_lmod(void){return bump3b_case(D3DTOP_BUMPENVMAPLUMINANCE,DDPF_BUMPDUDV|DDPF_BUMPLUMINANCE,16,D3DTOP_MODULATE,0);}
+static int c_bump3b_pass(void){return bump3b_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_MODULATE,1);}
+/* v2.9 (driver .668): three coordinate sets on three stages */
+typedef struct vtx3s {float x,y,z,rhw;DWORD diffuse,specular;float u0,v0,u1,v1,u2,v2;} vtx3s;
+#define FVF3S (D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX3)
+static int sets3_case(DWORD set2){vtx3s v[6];int r,k;static const float cx[6]={32,160,32,160,160,32},cy[6]={32,32,160,32,160,160},cu[6]={0,1,0,1,1,0},cv[6]={0,0,1,0,1,1};
+ if(caps.wMaxSimultaneousTextures<3)SKIP("fewer than three textures");
+ if((caps.dwFVFCaps&D3DFVFCAPS_TEXCOORDCOUNTMASK)<3&&set2==2)fprintf(logf,"   (the device says %lu coordinate sets; drawn anyway)\n",(unsigned long)(caps.dwFVFCaps&D3DFVFCAPS_TEXCOORDCOUNTMASK));
+ if(!tq())SKIP("texture 0");
+ tex1=texture(ARGB(),4,4,1,quad_opaque);if(!tex1||!ok("SetTexture(1)",IDirect3DDevice7_SetTexture(dev,1,tex1)))SKIP("texture 1");
+ tex2=texture(ARGB(),8,8,1,quad_opaque);if(!tex2||!ok("SetTexture(2)",IDirect3DDevice7_SetTexture(dev,2,tex2)))SKIP("texture 2");
+ colorop(0,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_DIFFUSE);alphaop(0,D3DTOP_SELECTARG1,D3DTA_TEXTURE,D3DTA_DIFFUSE);ts(0,D3DTSS_TEXCOORDINDEX,0);
+ colorop(1,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(1,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);ts(1,D3DTSS_TEXCOORDINDEX,1);
+ colorop(2,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(2,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);ts(2,D3DTSS_TEXCOORDINDEX,set2);
+ for(k=0;k<3;k++){ts(k,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);ts(k,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);}
+ for(k=0;k<6;k++){memset(&v[k],0,sizeof(v[k]));v[k].x=cx[k];v[k].y=cy[k];v[k].z=.5f;v[k].rhw=1;v[k].diffuse=0xFFFFFFFFUL;v[k].specular=0xFF000000UL;
+  v[k].u0=cu[k];v[k].v0=cv[k];v[k].u1=cu[k]*2;v[k].v1=cv[k]*2;v[k].u2=1-cu[k];v[k].v2=cv[k];}
+ r=ok("DrawPrimitive(three coordinate sets)",IDirect3DDevice7_DrawPrimitive(dev,D3DPT_TRIANGLELIST,FVF3S,v,6,0));
+ ts(2,D3DTSS_COLOROP,D3DTOP_DISABLE);ts(2,D3DTSS_ALPHAOP,D3DTOP_DISABLE);ts(2,D3DTSS_TEXCOORDINDEX,2);IDirect3DDevice7_SetTexture(dev,2,0);IDirectDrawSurface7_Release(tex2);tex2=0;return r;}
+static int c_sets3(void){return sets3_case(2);}
+static int c_sets3_two(void){return sets3_case(1);}
 typedef struct vtx3 {float x,y,z,rhw;DWORD diffuse,specular;float u,v,w;} vtx3;
 #define FVF3 (D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1|D3DFVF_TEXCOORDSIZE3(0))
 static void c3(vtx3 *p,float x,float y,float u,float v,float w){memset(p,0,sizeof(*p));p->x=x;p->y=y;p->z=.5f;p->rhw=1;p->diffuse=~0UL;p->specular=0xFF000000UL;p->u=u;p->v=v;p->w=w;}
@@ -658,6 +730,16 @@ static const tcase cases[]={
  {"cube map (+X left, -Z right)",c_cube},
  {"projected texture (COUNT3 | PROJECTED, q 1 -> 2)",c_projected},
  {"texture format YUY2",c_yuy2},
+ {"v2.7 three stages: MODULATE base, BUMPENVMAP (V8U8) on stage 1, ADD the environment map",c_bump3_add},
+ {"v2.7 three stages: MODULATE base, BUMPENVMAP (V8U8) on stage 1, MODULATE the environment map",c_bump3_mod},
+ {"v2.7 three stages: MODULATE base, BUMPENVMAP (V8U8) on stage 1, SELECTARG1 the environment map",c_bump3_sel},
+ {"v2.7 three stages: MODULATE base, BUMPENVMAPLUMINANCE (L6V5U5) on stage 1, ADD the environment map",c_bump3_ladd},
+ {"v2.8 3DMark's layout: MODULATE base (set 0), BUMPENVMAP on set 1 (alpha MODULATE), MODULATE the environment map on set 1 (alpha MODULATE)",c_bump3b_mod},
+ {"v2.8 3DMark's layout, the environment map ADD",c_bump3b_add},
+ {"v2.8 3DMark's layout, BUMPENVMAPLUMINANCE (L6V5U5)",c_bump3b_lmod},
+ {"v2.8 3DMark's layout, stages 1 and 2 passing the alpha",c_bump3b_pass},
+ {"v2.9 three stages on three coordinate sets (set 1 doubled, set 2 mirrored)",c_sets3},
+ {"v2.9 the same, stage 2 on set 1",c_sets3_two},
 };
 #define NCASES ((int)(sizeof(cases)/sizeof(cases[0])))
 
@@ -945,7 +1027,7 @@ int main(int argc,char **argv) {
  if(argc>=3){if(!strcmp(argv[2],"pause"))pause_mode=1;else if(!strcmp(argv[2],"nocapture"))nocap=1;else hook=argv[2];}
  if(only>=NCASES){printf("no case %d (CLXP3D list)\n",only);return 1;}
  logf=fopen(only>=0?"CLXP3D_1.TXT":"CLXP3D.TXT","w");if(!logf)return 1;
- fprintf(logf,"CLXP3D v2.6: XP Direct3D 7 capture cases, target %dx%d; %s\n",W,H,pause_mode?"pausing for PRE/END snapshots":hook?"running the capture hook":"built-in ring capture");
+ fprintf(logf,"CLXP3D v2.9: XP Direct3D 7 capture cases, target %dx%d; %s\n",W,H,pause_mode?"pausing for PRE/END snapshots":hook?"running the capture hook":"built-in ring capture");
  if(!nocap)capture_init();
  if(!setup()){cx_stop();fclose(logf);printf("setup failed, see the TXT\n");return 1;}
  if(capture_on){DWORD i;pre_regs[0]=0;capture_pre();Sleep(200);capture_end(999,"IDLE");(void)i;} /* 200 ms with nothing drawn: the driver's own background traffic */

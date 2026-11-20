@@ -1,4 +1,6 @@
-/* VXD3DMON v10.33 (driver .612: where the fetcher stood at the first four hangs, stall_report). VXD3DMON v10.32 (driver .580: the build number). VXD3DMON v10.31 (driver .579: the build number). VXD3DMON v10.30 (driver .578: the build number). VXD3DMON v10.29 (driver .577: the build number). VXD3DMON v10.28 (driver .576: the build number). VXD3DMON v10.27 (driver .575: the build number). VXD3DMON v10.26 (driver .574: the build number). VXD3DMON v10.25 (driver .573: the build number). VXD3DMON v10.24 (driver .572: as v10.21; v10.22-v10.23's line for .570-.571's presents in the ring is gone with them). VXD3DMON v10.21 (driver .569: the wording of the .568 line). VXD3DMON v10.20 (driver .568: culled runs with a failing vertex, QueryPhases 354-355). VXD3DMON v10.19 (driver .567: culled lists and fans passed through, QueryPhases 350-353). VXD3DMON v10.18 (driver .566: indexed packets drawn after a wait for a slot, TEXDBG BC F0). VXD3DMON v10.17 (driver .564: v10.14-v10.16's lines for the template table removed with it; an indexed packet's 512 vertices). VXD3DMON v10.13 (driver .558: the test switch is gone; its word is no longer printed). VXD3DMON v10.12 (driver .557: the runs drawn by the vertices they use, QueryPhases 346-349). VXD3DMON v10.11 (driver .556: the lists taken whole, QueryPhases 344-345). VXD3DMON v10.10 (driver .555: the strips and fans passed through, QueryPhases 336-343). VXD3DMON v10.9 (driver .552: the answers kept for a state, QueryPhases 332-335; the 95th percentile frame time). VXD3DMON v10.8 (driver .551: ACCEL_D3D_HOLD removed, the hold line says so). VXD3DMON v10.7 (driver .550: the held queue's counts, QueryPhases 316-331). VXD3DMON v10.6 (driver .549: SAMPLE turns the VxD's word profiler off too). VXD3DMON v10.5 (driver .549: the VxD's own time by function and line, from VXVXD.MAP). VXD3DMON v10.4 (driver .548: sparse-run returns, the one-test checks, the T&L index snapshot, QueryPhases 312-315). VXD3DMON v10.3 (driver .547: the spans not checked again, QueryPhases 311). VXD3DMON v10.2 (driver .546: the indexed loop's off-screen drops and stops, QueryPhases 307-308). VXD3DMON v10.1 (driver .545: the pass-through span kernels line, QueryPhases 302-306). VXD3DMON v10.0 (driver .542: the HAL's 40 hottest 64-byte lines, each by its offset in VXDDRAW.DLL and its function + offset (to read
+/* VXD3DMON v10.61 (driver .703: whole-range draws past the viewport). VXD3DMON v10.60 (driver .702: the band's draws with and without codes, mode 2). VXD3DMON v10.59 (driver .701: the T&L set-ups with and without the guard band). VXD3DMON v10.58 (driver .698: the guard band's state). VXD3DMON v10.57 (driver .695: IGA2 in the ring, late ring flips). VXD3DMON v10.56 (driver .692: the probe-fill line removed with the probes). VXD3DMON v10.55 (driver .689: where a ring flip stopped, IGA2's blank, 200h). VXD3DMON v10.54 (driver .688: the display FIFO registers written again after a reset). VXD3DMON v10.53 (driver .686: the display at the first ring hang: CR32, IGA1's line, the ring-flip arm). VXD3DMON v10.52 (driver .682: the engine cull's and the prefetch switch's lines removed). VXD3DMON v10.51 (driver .681: the T&L gather's prefetch switch shown). VXD3DMON v10.50 (driver .680: the engine's back-face cull). VXD3DMON v10.49 (driver .677: the four .676 T&L switches shown). VXD3DMON v10.48 (driver .676: culled before lighting, ACCEL_D3D_PRECULL and ACCEL_D3D_IXSKIP). VXD3DMON v10.47 (driver .675: the corners of clipped triangles lit in groups, ACCEL_D3D_PRECLIP). VXD3DMON v10.46 (driver .668: says when another program cleared the VxD's per-run counters while it watched; the third-coordinate-set draws drawn on the second set). VXD3DMON v10.45 (driver .667: the ring-flip waits that went past 100 ms on progress, and whether ring flips were given up for the boot). VXD3DMON v10.44 (driver .661: stages 1 and 2 of the last primitive left out; the HAL-by-function profile for windowed programs: the VxD ends a sampler frame at each Present to the primary when no flip came). VXD3DMON v10.43 (driver .657: the RUN program's handle closed at the end). VXD3DMON v10.42 (driver .655: RUN <command>: the program started by VXD3DMON once it has attached and cleared its counters, and
+ * watched until it ends: the order a test needs (board, .654: VXD3DMON started after VXTLP's device was drawing, one of its textures
+ * stopped resolving and VXTLP hung with the machine), and no key to press after it). VXD3DMON v10.41 (driver .652: the T&L's group kernels apart; why draws go one vertex at a time). VXD3DMON v10.40 (driver .651: the T&L by part). VXD3DMON v10.39 (driver .649: target and depth surfaces destroyed while bound, unbound not lost). VXD3DMON v10.38 (driver .647: the T&L set-ups built, made again for the world matrix, kept; groups lit by point lights). VXD3DMON v10.37 (driver .646: the state-not-done line's causes). VXD3DMON v10.36 (driver .643: the T&L's vertices finished one at a time). VXD3DMON v10.35 (driver .642: the primitives drawn with an infinite z, the T&L's draws taken in order). VXD3DMON v10.34 (driver .641: the primitives left out for a bad vertex by who made the vertices, with the last vertex of each kind). VXD3DMON v10.33 (driver .612: where the fetcher stood at the first four hangs, stall_report). VXD3DMON v10.32 (driver .580: the build number). VXD3DMON v10.31 (driver .579: the build number). VXD3DMON v10.30 (driver .578: the build number). VXD3DMON v10.29 (driver .577: the build number). VXD3DMON v10.28 (driver .576: the build number). VXD3DMON v10.27 (driver .575: the build number). VXD3DMON v10.26 (driver .574: the build number). VXD3DMON v10.25 (driver .573: the build number). VXD3DMON v10.24 (driver .572: as v10.21; v10.22-v10.23's line for .570-.571's presents in the ring is gone with them). VXD3DMON v10.21 (driver .569: the wording of the .568 line). VXD3DMON v10.20 (driver .568: culled runs with a failing vertex, QueryPhases 354-355). VXD3DMON v10.19 (driver .567: culled lists and fans passed through, QueryPhases 350-353). VXD3DMON v10.18 (driver .566: indexed packets drawn after a wait for a slot, TEXDBG BC F0). VXD3DMON v10.17 (driver .564: v10.14-v10.16's lines for the template table removed with it; an indexed packet's 512 vertices). VXD3DMON v10.13 (driver .558: the test switch is gone; its word is no longer printed). VXD3DMON v10.12 (driver .557: the runs drawn by the vertices they use, QueryPhases 346-349). VXD3DMON v10.11 (driver .556: the lists taken whole, QueryPhases 344-345). VXD3DMON v10.10 (driver .555: the strips and fans passed through, QueryPhases 336-343). VXD3DMON v10.9 (driver .552: the answers kept for a state, QueryPhases 332-335; the 95th percentile frame time). VXD3DMON v10.8 (driver .551: ACCEL_D3D_HOLD removed, the hold line says so). VXD3DMON v10.7 (driver .550: the held queue's counts, QueryPhases 316-331). VXD3DMON v10.6 (driver .549: SAMPLE turns the VxD's word profiler off too). VXD3DMON v10.5 (driver .549: the VxD's own time by function and line, from VXVXD.MAP). VXD3DMON v10.4 (driver .548: sparse-run returns, the one-test checks, the T&L index snapshot, QueryPhases 312-315). VXD3DMON v10.3 (driver .547: the spans not checked again, QueryPhases 311). VXD3DMON v10.2 (driver .546: the indexed loop's off-screen drops and stops, QueryPhases 307-308). VXD3DMON v10.1 (driver .545: the pass-through span kernels line, QueryPhases 302-306). VXD3DMON v10.0 (driver .542: the HAL's 40 hottest 64-byte lines, each by its offset in VXDDRAW.DLL and its function + offset (to read
  * against the disassembly); the line report also for a program that never flips (VXTLP GRID draws to a window: all its samples). VXD3DMON v9.9 (driver .536: the driver's T&L, ACCEL_D3D_TNL: its counts, QueryPhases 290-301). VXD3DMON v9.8 (driver .534: SAMPLE, the sampler alone (the HAL's and the VxD's own timing off, so the shares are not inflated by their
  * clock reads); the render thread's ring-3 samples by 64-byte line: the HAL's by function from VXDDRAW.MAP beside the program, D3D8.DLL's by
  * function from its entry table (vx_d3d8_fns.h, the board's 4.09.00.0904), the rest by module and offset; the game's hottest pages from the
@@ -63,6 +65,12 @@ static void ring_hang(FILE *f) {
  texdbg2(0xBC,0,o);for(k=0;k<6;k++)h0[k]=o[2+k];texdbg2(0xBC,1,o);for(k=0;k<6;k++)h1[k]=o[2+k];
  fprintf(f,"FIRST RING HANG (%.2f s after boot): status %08lX, register 440 %lu, fence %04lX, last group kicked %04lX (%s), %lu ms after the last kick, %lu groups kicked since the ring's start\n",
   h1[2]/1000.0,h0[0],h0[1],h0[2]&0xFFFF,h0[3],h0[2]==0xFFFFFFFFUL?"no fence":(h0[2]&0xFFFF)==h0[3]?"the fence reached it: the engine still busy":"groups not consumed",h0[4],h0[5]);
+ {DWORD d[8];if(texdbg2(0xBC,0x82,d)&&d[1]==0x82)fprintf(f,"   the display at the hang (.686): CR32 %02lX (bit 0: real-time flipping, set for ring flips), IGA1 line %lu then %lu 2 ms later (%s), ring-flip arm %lu (ACCEL_3D_RINGFLIP), %lu ring flips, a ring flip pending: %lu\n",d[2]&0xFF,(d[3]>>16)&0xFFFF,(d[4]>>16)&0xFFFF,((d[3]^d[4])>>16)&0xFFFF?"scanning":"NOT MOVING",d[5],d[6],d[7]);}
+ {DWORD d[8],e[8];if(texdbg2(0xBC,0x83,d)&&d[1]==0x83&&texdbg2(0xBC,0x84,e)&&e[1]==0x84){
+  fprintf(f,"   over %lu ms after the hang (before the recovery): IGA1's blank (3DA bit 3) changed %lu times (%s); MMIO 204h %08lX then %08lX; fence %04lX then %04lX (%s); 400 %08lX\n",
+   d[3],d[2],d[2]>=4?"the blank pulses still come":"NO BLANK PULSES",d[4],d[5],d[6]&0xFFFF,d[7]&0xFFFF,d[6]==d[7]?"still stuck":"MOVED ON BY ITSELF",e[5]);
+  {DWORD q[8];if(texdbg2(0xBC,0x85,q)&&q[1]==0x85)fprintf(f,"   the display's FIFO registers (SR16-18, 21-22, 1C-1D, MMIO 2E8) written again after %lu engine resets (.688, .694 without CR60-61); registers the reset had changed: %lu\n",q[2],q[3]);}
+  fprintf(f,"   CR32 bit 0 by the flip code up to the hang: set %lu, cleared %lu; CPU flips after ring flips %lu\n",e[2],e[3],e[4]);}}
  fprintf(f,"   that ring started %s; %lu ring starts and %lu wraps before it; %lu fence waits before it; %lu groups kicked since boot\n",why[h1[3]&3],h1[0],h1[1],h1[4],h1[5]);
  fprintf(f,"   the groups before it, oldest first (seq; S first after a start, Y synchronous, F fenced; packets, words, vertices, start, pause, ms, 440 at its kick):\n");
  n=h1[5]<64?h1[5]:64;
@@ -92,23 +100,30 @@ static void stall_report(FILE *f) {
 }
 static double mon_mhz(void) {LARGE_INTEGER f,a,b;unsigned long c0,c1;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);c0=mon_tsc();
  do QueryPerformanceCounter(&b);while((b.QuadPart-a.QuadPart)*1000<f.QuadPart*50);c1=mon_tsc();return (double)(c1-c0)*f.QuadPart/1e6/(double)(b.QuadPart-a.QuadPart);}
+/* v10.53 (.686): the ring-flip and ring-clear lines, also when no flips were counted (T684's log had none of them) */
+static void ring_flip_lines(FILE *f,double mhz) {
+ {DWORD a[8],b[8];if(texdbg2(0xBC,0x98,a)&&texdbg2(0xBC,0x99,b)){
+  fprintf(f,"   flips in the ring (ACCEL_FLIP_RING %lu): %lu, declined %lu (last reason %lu: 1 ring not running, 2 address or engine busy, 3 clocks off, 4 no room, 5 kick); CR32 bit 0 set %lu, cleared %lu; CPU flips after ring flips %lu\n",b[7],a[2],a[3],a[7],b[4],b[5],b[6]);
+  fprintf(f,"   CPU waits for a ring flip to run: %lu, %.2f ms in all, the longest %.2f ms, ran out (100 ms) %lu; draws on the old front sent without a wait %lu\n",a[4],a[5]*256.0/mhz/1000.0,b[3]*256.0/mhz/1000.0,a[6],b[2]);}} /* v4.1 */
+ {DWORD g[8];if(texdbg2(0xBC,0x447,g)&&(g[1]&0xFFF)==0x447)fprintf(f,"   ring-flip waits past 100 ms with the engine still moving (.667: they no longer give the ring flips up): %lu; ran out (no progress for 100 ms, or 2 s): %lu; %s\n",g[2],g[3],g[4]?"RING FLIPS GIVEN UP for the rest of this boot: every flip after it by the CPU (each waits for the engine; the next clear waits for the blank)":"ring flips still on");} /* v10.45 (.667) */
+ {DWORD c[8];if(texdbg2(0xBC,0x9A,c))fprintf(f,"   clears in the ring (ACCEL_3D_RINGCLEAR %lu): %lu, declined %lu; retires of work in flight: for a CPU access (Lock, 2D, flip) %lu, %.1f ms in all; by a clear or submit outside the ring %lu, %.1f ms in all\n",
+  (c[1]>>8)&1,c[2],c[3],c[4],c[5]*256.0/mhz/1000.0,c[6],c[7]*256.0/mhz/1000.0);} /* v4.2 */
+ {DWORD e[8];if(texdbg2(0xBC,0x85,e)&&e[1]==0x85)fprintf(f,"   IGA2 (.695): %s (CR6A %02lX); ring flips that moved IGA2 too %lu; ring-flip waits that ran out but whose flip had run %lu; ring groups that finished while the hang record sampled %lu\n",
+  (e[4]&2)?"ALONE (a panel): no flip goes in the ring":(e[4]&1)?"mirrors this frame buffer: every ring flip moves it too":"off or another picture",(e[4]>>8)&0xFF,e[5],e[6],e[7]);} /* v10.57 */
+}
 /* v1.7 (v10.384): the time between flips (frames) and what the flips waited for */
 static void frame_times(FILE *f,double mhz) {
  DWORD o[8],st[18],k,j;memset(st,0,sizeof(st));
  for(k=0;k<3;k++){if(!texdbg2(0xBE,k,o)||o[0]!=0xBE)return;for(j=0;j<6&&k*6+j<16;j++)st[k*6+j]=o[2+j];}
  texdbg2(0xBE,11,o);
- if(!st[0]){fprintf(f,"Frames: no flips counted\n");return;}
+ if(!st[0]){fprintf(f,"Frames: no flips counted\n");ring_flip_lines(f,mhz);return;}
  fprintf(f,"Frames: %lu flips (FLIP_ASYNC %s; %lu returned before the blank), %.1f ms between flips on average, the longest %lu ms\n",st[0],o[2]?"on":"off",st[14],st[0]>1?(double)st[15]/(st[0]-1):0.0,st[9]);
  fprintf(f,"   time between flips: under 20 ms %lu, 20-35 %lu, 35-50 %lu, 50-75 %lu, 75-100 %lu, 100 ms and more %lu\n",st[1],st[2],st[3],st[4],st[5],st[6]);
  fprintf(f,"   in each flip: the wait for the engine %.2f ms on average (longest %.1f), the wait for the blank or the flip before %.2f ms (longest %.1f)\n",
   st[7]*256.0/mhz/1000.0/st[0],st[10]*256.0/mhz/1000.0,st[8]*256.0/mhz/1000.0/st[0],st[11]*256.0/mhz/1000.0);
  fprintf(f,"   draws, Locks and Blts that waited for the old front: %lu, %.2f ms in all\n",st[12],st[13]*256.0/mhz/1000.0);
  {DWORD w4[8];if(texdbg2(0xBC,0x97,w4))fprintf(f,"   depth-only draws and clears on the old front that went without the wait (ACCEL_D3D_FRONTZ %lu): %lu\n",w4[2],w4[3]);} /* v4.0 */
- {DWORD a[8],b[8];if(texdbg2(0xBC,0x98,a)&&texdbg2(0xBC,0x99,b)){
-  fprintf(f,"   flips in the ring (ACCEL_FLIP_RING %lu): %lu, declined %lu (last reason %lu: 1 ring not running, 2 address or engine busy, 3 clocks off, 4 no room, 5 kick); CR32 bit 0 set %lu, cleared %lu; CPU flips after ring flips %lu\n",b[7],a[2],a[3],a[7],b[4],b[5],b[6]);
-  fprintf(f,"   CPU waits for a ring flip to run: %lu, %.2f ms in all, the longest %.2f ms, ran out (100 ms) %lu; draws on the old front sent without a wait %lu\n",a[4],a[5]*256.0/mhz/1000.0,b[3]*256.0/mhz/1000.0,a[6],b[2]);}} /* v4.1 */
- {DWORD c[8];if(texdbg2(0xBC,0x9A,c))fprintf(f,"   clears in the ring (ACCEL_3D_RINGCLEAR %lu): %lu, declined %lu; retires of work in flight: for a CPU access (Lock, 2D, flip) %lu, %.1f ms in all; by a clear or submit outside the ring %lu, %.1f ms in all\n",
-  (c[1]>>8)&1,c[2],c[3],c[4],c[5]*256.0/mhz/1000.0,c[6],c[7]*256.0/mhz/1000.0);} /* v4.2 */
+ ring_flip_lines(f,mhz);
  fprintf(f,"   the longest frames (ms between flips; the flip's engine wait, blank wait in ms):");
  for(k=0;k<8;k++){texdbg2(0xBE,3+k,o);if(o[2])fprintf(f," %lu (%.1f, %.1f)",o[2],o[3]*256.0/mhz/1000.0,o[4]*256.0/mhz/1000.0);}
  fprintf(f,"\n");
@@ -275,6 +290,7 @@ static void hal_map(HMODULE m) {
 }
 static int hsym_of(DWORD addr) {int lo=0,hi=nhsym-1,r=-1;DWORD a=addr-(DWORD)hsym_adj;while(lo<=hi){int mid=(lo+hi)/2;if(hsym[mid].a<=a){r=mid;lo=mid+1;}else hi=mid-1;}return r;}
 static int d3d8_ok;
+static HANDLE run_proc; /* v10.42: the program RUN started */
 static void d3d8_check(const char *path) {
  FILE *df=fopen(path,"rb");unsigned char h[1024];DWORD pe;d3d8_ok=0;if(!df)return;
  if(fread(h,1,sizeof(h),df)==sizeof(h)){pe=*(DWORD*)(h+0x3C);if(pe<sizeof(h)-120&&*(DWORD*)(h+pe+8)==VX_D3D8_TIME&&*(DWORD*)(h+pe+24+56)==VX_D3D8_SIZE)d3d8_ok=1;}
@@ -421,12 +437,16 @@ static void tlp_report(FILE *f) { /* v9.9 (.536): the driver's T&L (ACCEL_D3D_TN
  if(!hal_phases||hal_phases(y,302)!=302)return;
  if(!y[270]){fprintf(f,"Driver T&L (ACCEL_D3D_TNL 0): off; hardware T&L not offered\n");return;}
  fprintf(f,"Driver T&L (ACCEL_D3D_TNL 1; since the HAL was loaded, every process): hardware T&L offered and done by the driver\n");
+ {static DWORD g[454];DWORD gn=hal_phases(g,454);if(gn>=451)fprintf(f,"   guard band (.698, ACCEL_D3D_GUARDBAND as this monitor's process read it): %s; the side planes clipped at twice the viewport, the engine clipping the rest\n"
+  "   (.701) the T&L's set-ups with the band: records for indexed packets %lu, records only plain packets take (.703: a third coordinate, three sets) %lu\n",g[448]==2?"ON without the viewport codes (2)":g[448]?"ON":"off",(unsigned long)g[449],(unsigned long)g[450]);
+ if(gn>=453)fprintf(f,"   (.702) the band's draws with every vertex inside the viewport (no codes made) %lu, with one past it (codes made) %lu\n",(unsigned long)g[451],(unsigned long)g[452]);
+ if(gn>=454)fprintf(f,"   (.703) whole-range draws sent through the triangle pass (an eighth or more of their vertices past the viewport): %lu\n",(unsigned long)g[453]);}
  fprintf(f,"   DrawPrimitives2 calls with untransformed vertices %lu, their draw commands %lu (%lu primitives)\n",y[271],y[272],y[288]);
  fprintf(f,"   T&L commands: SETTRANSFORM %lu, SETLIGHT %lu (%lu with light data), CREATELIGHT %lu, SETMATERIAL %lu, SETCLIPPLANE %lu\n",y[276],y[274],y[278],y[275],y[273],y[277]);
  fprintf(f,"   the untransformed calls' vertex formats:");for(k=0;k<4;k++)if(y[280+k*2])fprintf(f," FVF %03lX %lu calls;",y[279+k*2],y[280+k*2]);if(y[287])fprintf(f," others %lu calls",y[287]);fprintf(f,"\n");
  fprintf(f,"   transformed: %lu draws, %lu triangles, %lu vertices (%lu lit, %lu fogged, %lu with a generated or transformed coordinate set)\n",y[290],y[291],y[292],y[298],y[299],y[300]);
  fprintf(f,"   clipping: %lu triangles clipped at the near or far plane (%lu vertices made), %lu dropped wholly outside; %lu scratch-buffer restarts\n",y[293],y[295],y[294],y[296]);
- fprintf(f,"   left out: %lu draws (unsupported command or FVF, an index past the vertex buffer, too many triangles); state not done: %lu (spot as point, specular lighting, a light past 15, a third stage's coordinates)\n",y[297],y[301]);
+ fprintf(f,"   left out: %lu draws (unsupported command or FVF, an index past the vertex buffer, too many triangles); state not done: %lu (.646: more than 64 lights set in one context, or a third stage asking for a third coordinate set)\n",y[297],y[301]);
 }
 static DWORD (WINAPI *hal_record)(DWORD),rec_n,rec_at=60,rec_asked,rec_hold; /* v8.4 (.517): REC=n frames recorded RECAT=s seconds after the start (C:\VXD3D.REC) */
 static void phase_report(FILE *f) {
@@ -451,6 +471,32 @@ static void phase_report(FILE *f) {
  if(w[31])fprintf(f,"   submit calls: %lu, inside the VxD %.1f ms (%.1f us each), the thread ran %lu ms of it\n",w[31],w[32]*256.0/cu/1000.0,w[32]*256.0/cu/w[31],w[33]);
  {DWORD x[148];if(hal_phases(x,148)==148)fprintf(f,"   the HAL's DLL kept in memory (ACCEL_LOCK_HAL %lu): %lu pages at %08lX, %lu handles holding it\n",x[147],x[144],x[145],x[146]);}
  fprintf(f,"   bad-vertex checks (drop reason 2000): x, y or z not finite %lu; rhw not finite %lu; rhw 0 %lu; rhw < 0 %lu\n",w[27],w[28],w[29],w[30]);
+ {static DWORD b[384];if(hal_phases(b,384)==384){DWORD *r=b+366;static const char *wh[2]={"not finite","finite"}; /* v10.34 (.641) */
+   #define FB(x) (*(float*)&(x))
+   #define FIN(x) (((x)&0x7F800000UL)!=0x7F800000UL)
+   fprintf(f,"   primitives left out for a bad vertex, by who made the vertices (.641): the application (transformed vertices) %lu; the driver's T&L %lu\n",r[0],r[1]);
+   {static DWORD e[389];if(hal_phases(e,389)==389){fprintf(f,"   primitives with a z of + or - infinity, drawn with the z held to the depth range (.642): %lu\n",e[384]);
+     fprintf(f,"   the driver's T&L, draws taken as a vertex range in order (.642): %lu (%lu vertices); of them every vertex inside (no pass over the triangles) %lu, every vertex outside one plane (dropped whole) %lu\n",e[385],e[388],e[386],e[387]);}
+    {static DWORD g2[452];DWORD gn=hal_phases(g2,452);if(gn>=390)fprintf(f,"   the driver's T&L, vertices finished one at a time, not in groups of four (.643): %lu\n",g2[389]);
+     if(gn>=394)fprintf(f,"   the driver's T&L set-up (.647): built %lu, made again for a new world matrix only %lu, kept from the draw before %lu; groups of four lit by point lights %lu\n",g2[390],g2[391],g2[392],g2[393]);
+     if(gn>=402){static const char *tp[8]={"set-up","positions and clip codes (tnk_pos)","groups of four: gather and records","the triangles and the position gather","clipping","vertices one at a time","the packets (indices, vertex words)","groups of four: the kernels (.652)"};
+      double all=0;int q,np=gn>=403?8:7;for(q=0;q<np;q++)all+=g2[395+q]*256.0/cu/1000.0;
+      fprintf(f,"   the driver's T&L by part (.651, ms in all, share):");for(q=0;q<np;q++)fprintf(f,"%s %s %.1f (%.0f%%)",q?";":"",tp[q],g2[395+q]*256.0/cu/1000.0,all>0?g2[395+q]*256.0/cu/1000.0*100.0/all:0.0);fprintf(f,"\n");}
+     if(gn>=413){static const char *wy[8]={"the fog mode","specular without normals","over 8 directional lights","a spot light","over 8 point lights","a generated or transformed coordinate set","a coordinate set the vertex lacks","the group path off"};int q;
+      fprintf(f,"   the driver's T&L, draws finished one vertex at a time (.652): %lu draws, %lu vertices; why (draws):",g2[411],g2[412]);for(q=0;q<8;q++)if(g2[403+q])fprintf(f," %s %lu;",wy[q],g2[403+q]);fprintf(f,"\n");}
+     if(gn>=424)fprintf(f,"   the last primitive left out, stages 1 and 2 (.661): stage 1 COLOROP %lu ARG1 %lu ARG2 %lu ALPHAOP %lu TEXCOORDINDEX %lX; stage 2 COLOROP %lu ARG1 %lu ARG2 %lu ALPHAOP %lu TEXCOORDINDEX %lX\n",g2[414],g2[415],g2[416],g2[417],g2[418],g2[419],g2[420],g2[421],g2[422],g2[423]);
+     if(gn>=429)fprintf(f,"   state not done, by cause (.667; counted where found, not again for later draws with the same set-up): a light with no slot (64 lit) %lu; a switched-off light's definition dropped (the park of 1,024 full) %lu; a third stage asking for a third coordinate set %lu; TEXTURETRANSFORMFLAGS not done %lu\n",g2[424],g2[425],g2[426],g2[427]);
+     if(gn>=430)fprintf(f,"   state blocks' T&L state not kept (.667: the block table or its pool of 1,024 light indices full): %lu\n",g2[429]);
+     if(gn>=440){fprintf(f,"   the corners of triangles to be clipped lit in groups of four before the clipper (.675; .676: with two lights or more or specular): %lu draws, %lu corners\n",g2[434],g2[435]);
+     if(gn>=448)fprintf(f,"   the T&L's block path into indexed packets (.680, ACCEL_D3D_TNFASTIX %lu): %lu runs, %lu triangles, %lu vertices; %lu spans left to the per-triangle loop (sparse, unfinished or off the screen)\n",g2[443],g2[444],g2[445],g2[446],g2[447]);
+      fprintf(f,"   culled before lighting (.676, ACCEL_D3D_PRECULL %lu): %lu draws, %lu triangles culled there; triangles the packets took without their back-face test (ACCEL_D3D_IXSKIP %lu): %lu; ACCEL_D3D_PCLGATE %lu, ACCEL_D3D_SPECSE %lu (.677)\n",g2[436]&1,g2[437],g2[438],(g2[436]>>1)&1,g2[439],(g2[436]>>2)&1,(g2[436]>>3)&1);}
+     if(gn>=431)fprintf(f,"   transformed vertices whose third stage asked for a third coordinate set (.668: drawn with the second set's, the device offers two; .667 left them out): %lu draws\n",g2[430]);
+     if(gn>=429)fprintf(f,"Stretched Blts with a clip list (a window's Present) drawn by the 3D engine (.667; the CPU did them before): %lu\n",g2[428]);
+     if(gn>=414)fprintf(f,"   triangles the clipper gave up on (more than two crossings of a plane, more than nine vertices), left out (.652): %lu\n",g2[413]);
+     if(gn>=395)fprintf(f,"   a context's target or depth surface destroyed while bound: unbound until the next SETRENDERTARGET, not lost (.649): %lu\n",g2[394]);}}
+   if(r[0])fprintf(f,"      the last from the application: command %lu, FVF %03lX; x %08lX (%s) y %08lX (%s) z %08lX (%s) rhw %08lX (%g)\n",r[2],r[3],r[4],wh[FIN(r[4])],r[5],wh[FIN(r[5])],r[6],wh[FIN(r[6])],r[7],FIN(r[7])?(double)FB(r[7]):-1.0);
+   if(r[1])fprintf(f,"      the last from the driver's T&L: command %lu, the application's FVF %03lX; screen x %08lX y %08lX z %08lX rhw %08lX; clip space x %08lX (%g) y %08lX (%g) z %08lX (%g) w %08lX (%g)\n",r[8],r[9],r[10],r[11],r[12],r[13],
+    r[14],FIN(r[14])?(double)FB(r[14]):-1.0,r[15],FIN(r[15])?(double)FB(r[15]):-1.0,r[16],FIN(r[16])?(double)FB(r[16]):-1.0,r[17],FIN(r[17])?(double)FB(r[17]):-1.0);}}
  {DWORD y[244];if(hal_phases(y,244)==244)fprintf(f,"   primitives whose vertices all have rhw 0, drawn with rhw 1 (v9.6, .531: no texture, no table fog, no w-buffer): %lu\n",y[242]);}
  {DWORD g[172],*x=g+148;double t;
   if(hal_phases(g,172)==172&&x[0]){t=x[0];
@@ -592,9 +638,11 @@ static void slow_report(FILE *f,double cp) {
    fprintf(f,"     %.1f ms: flags %08lX, dest caps %08lX %lux%lu, source caps %08lX %lux%lu, %s %08lX, NOTHANDLED at line %lu, CPU blits %lu\n",w[0]/cp,w[1],w[2],w[3]>>16,w[3]&0xFFFF,w[4],w[5]>>16,w[5]&0xFFFF,
     w[6]>>31?"handled":"not handled",w[6]&0x7FFFFFFFUL,w[7]>>16,w[7]&0xFFFF);}}
 }
+static DWORD clr0[2];static int clr_ok; /* v10.46 */
 static void vxd_report(FILE *f) {
  DWORD o[8],s[8],x[8],k[8],e[8];double mhz=mon_mhz();
  if(vxd==INVALID_HANDLE_VALUE){fprintf(f,"VxD counters: VX85598 not opened\n");return;}
+ {DWORD o[8];if(clr_ok&&texdbg2(0xBC,0x448,o)&&(o[1]&0xFFF)==0x448&&(o[2]!=clr0[0]||o[3]!=clr0[1]))fprintf(f,"VxD: ANOTHER PROGRAM CLEARED the per-run counters while this watched (packets %lu times, frames %lu times): the VxD lines below cover only the time since\n",o[2]-clr0[0],o[3]-clr0[1]);}
  if(texdbg(0x77,o)&&o[0]==0x77&&o[1]){
   fprintf(f,"VxD: %lu draw packets, %.1f microseconds each in VX3DN_submit (CPU %.0f MHz); %lu engine writes, %lu status reads a packet\n",
    o[1],o[2]*256.0/mhz/o[1],mhz,o[3]/o[1],o[4]/o[1]);
@@ -654,7 +702,7 @@ int main(int argc,char **argv) {
  HMODULE m;DWORD (WINAPI *stats)(vx_d3d_diag *);vx_d3d_diag a,b;DWORD dp2_0=0;FILE *f;DWORD t0,last,secs=600;uint32_t drops_total=0;
  if(argc>1&&atol(argv[1])>0)secs=(DWORD)atol(argv[1]);
  vxd=CreateFileA("\\\\.\\VX85598",0,0,0,OPEN_EXISTING,0,0);
- {DWORD o[8];texdbg(0x77,o);texdbg(0xAD,o);texdbg(0xA4,o);texdbg(0xA9,o);texdbg(0xC9,o);texdbg(0xB9,o);texdbg(0xBB,o);texdbg(0xBF,o);texdbg2(0xBC,0x94,o);} /* v3.4: and the XP ring's time counters */ /* v1.7: and 0xBF; v1.1 (v1.3: and 0xB9): cleared: what follows is the time watched */
+ {DWORD o[8];texdbg(0x77,o);texdbg(0xAD,o);texdbg(0xA4,o);texdbg(0xA9,o);texdbg(0xC9,o);texdbg(0xB9,o);texdbg(0xBB,o);texdbg(0xBF,o);texdbg2(0xBC,0x94,o);}{DWORD o[8];if(texdbg2(0xBC,0x448,o)&&(o[1]&0xFFF)==0x448){clr0[0]=o[2];clr0[1]=o[3];clr_ok=1;}} /* v10.46 (.668): the clears so far, its own included */ /* v3.4: and the XP ring's time counters */ /* v1.7: and 0xBF; v1.1 (v1.3: and 0xB9): cleared: what follows is the time watched */
  f=fopen("VXD3DMON.TXT","w");if(!f)return 1;
  /* v3.1: the HAL's counters are in the copy of VXDDRAW.DLL the game loads, the one in the system folder: loaded from there by its full
   * path (LoadLibrary by name took a copy next to VXD3DMON.EXE first, whose counters are not the game's, and kept that file in use) */
@@ -679,10 +727,14 @@ int main(int argc,char **argv) {
  memset(&a,0,sizeof(a));a.cb=sizeof(a);
  if(!stats(&a)){fprintf(f,"VX_D3D_QueryStats refused (structure size %u)\n",(unsigned)sizeof(a));fclose(f);return 1;}
  if(sample_only){DWORD o[8];texdbg(0x6D,o);texdbg2(0xBC,0xA3,o); /* v10.6 (.549 board log: wp_part 5.3% of the VxD in a SAMPLE run): the word profiler off too (0xA2 above turned it on) */if(hal_phases){DWORD o2[2];hal_phases(o2,2|0x40000000UL);}} /* v9.8: SAMPLE: the VxD's profile (vx_prof) and the HAL's phase clocks, geometry counters and fast-path samples off again */
- fprintf(f,"VXD3DMON v10.33: HAL build v10.%lu, Direct3D %s; watching for %lu s%s\n",(unsigned long)a.build,a.enabled?"on":"off",(unsigned long)secs,sample_only?"; SAMPLE: the sampler alone (the HAL's and the VxD's own timing off; their lines below are left out)":"");
+ fprintf(f,"VXD3DMON v10.61: HAL build v10.%lu, Direct3D %s; watching for %lu s%s\n",(unsigned long)a.build,a.enabled?"on":"off",(unsigned long)secs,sample_only?"; SAMPLE: the sampler alone (the HAL's and the VxD's own timing off; their lines below are left out)":"");
  fprintf(f,"at start: %lu DrawPrimitives2 calls, %lu engine packets, %lu primitives left out, %lu lost, %lu recoveries\n\n",(unsigned long)a.dp2,
   (unsigned long)a.native_packets,(unsigned long)a.dropped,(unsigned long)a.lost_count,(unsigned long)a.recovered);
  printf("VXD3DMON: start the game now; it stops when the game ends, or press any key here (results in VXD3DMON.TXT)\n");
+ {const char *cl=GetCommandLineA(),*r=strstr(cl," RUN ");static char rc[MAX_PATH];STARTUPINFOA si;PROCESS_INFORMATION pi; /* v10.42 */
+  if(r){strncpy(rc,r+5,sizeof(rc)-1);rc[sizeof(rc)-1]=0;memset(&si,0,sizeof(si));si.cb=sizeof(si);
+   if(CreateProcessA(0,rc,0,0,FALSE,0,0,0,&si,&pi)){run_proc=pi.hProcess;CloseHandle(pi.hThread);fprintf(f,"started: %s\n",rc);}
+   else fprintf(f,"RUN: could not start %s\n",rc);fflush(f);}}
  perf_ok=perf_key("PerfStats\\StartStat",0)==4;mem_note();
  smp_start(m); /* v5.0 */
  t0=last=GetTickCount();dp2_0=a.dp2;b=a;
@@ -691,6 +743,7 @@ int main(int argc,char **argv) {
   if(lastpid&&!game&&b.dp2!=dp2_0){DWORD pid=lastpid();if(pid&&pid!=GetCurrentProcessId()){game=OpenProcess(SYNCHRONIZE,FALSE,pid);if(game){gpid=pid;mod_snap(pid);}}}
   {static DWORD ls,ln;if(gpid&&ln<2){if(!ls)ls=GetTickCount();else if(GetTickCount()-ls>15000){mod_snap(gpid);ln=2;}}} /* v9.4: once more 15 s after the first, then left alone */ /* v5.0 */ /* v2.5: only a game that drew after the start (a game that ended before is not followed) */
   if(game&&WaitForSingleObject(game,0)==WAIT_OBJECT_0){why=1;break;}
+  if(run_proc&&WaitForSingleObject(run_proc,0)==WAIT_OBJECT_0){why=1;break;} /* v10.42: the program RUN started ended (whether it drew or not) */
   Sleep(250);now=GetTickCount(); /* v9.4: 250 ms (50 before) */
   memset(&b,0,sizeof(b));b.cb=sizeof(b);if(!stats(&b))continue;
   if(b.dropped!=a.dropped){char w[256];uint32_t d=b.dropped-a.dropped;drops_total+=d;why_text(b.drop_why,w,sizeof(w));
@@ -724,6 +777,7 @@ int main(int argc,char **argv) {
   if(vxd!=INVALID_HANDLE_VALUE&&DeviceIoControl(vxd,VX_IOCTL_TAPE,&op,4,&t,sizeof(t),&got,0)&&got==sizeof(t)&&t.captured==1&&(tf=fopen("RINGTAPE.BIN","wb"))!=NULL){fwrite(&t,sizeof(t),1,tf);fclose(tf);
    fprintf(f,"Ring tape (the hung ring's %lu words, %lu groups) saved as RINGTAPE.BIN: run VXRING replay\n",(unsigned long)t.words,(unsigned long)t.ngroups);}}
 fps_report(f);smp_report(f);line_report(f,m);vxd_line_report(f);hal_frame_report(f);vxs_report(f);tlp_report(f);if(!sample_only){phase_report(f);words_report(f);}perf_report(f);if(vxd!=INVALID_HANDLE_VALUE)CloseHandle(vxd);
+ if(run_proc){CloseHandle(run_proc);run_proc=0;} /* v10.43: the handle RUN kept */
  fclose(f);printf("done: %lu primitive(s) left out; see VXD3DMON.TXT\n",(unsigned long)drops_total);
  return 0;
 }

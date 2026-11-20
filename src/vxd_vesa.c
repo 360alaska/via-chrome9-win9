@@ -88,7 +88,7 @@ static DWORD vesa_caps = 0;
 static int act_mode = -1;
 static DWORD video_bpp;
 static DWORD video_pitch;
-static BOOL vga_mode = TRUE;
+BOOL vga_mode = TRUE; /* .693: public (the emulator's DOS clock check) */
 static BOOL mttr_was_set = FALSE;
 static BOOL timer_set = FALSE;
 
@@ -127,6 +127,7 @@ static DWORD cur_epoch; /* v10.252: vx2d_reset_epoch when the hardware cursor wa
  * for the next mode set, armed by VXPROBE within the last 20 s (bit 0 VX_fix_timing takes its failure path, review #107; bit 1 the set
  * with the timing block goes through vesa_bios_V86, review #172; v10.338: bit 2 a GTF 60 Hz timing block at any mode). cur_sw_shows: software cursor draws (review #80). */
 static DWORD pr_set[13], pr_arm, pr_arm_ms, cur_sw_shows;
+static DWORD cur_hw_held; /* .657: hardware cursor moves done while another access was open (FBHDA_access_end) */
 /* v10.339 (board, VXPROBE v1.4 bios: one ChangeDisplaySettings made about three mode sets; the first took the one-shot switch and the
  * later ones set the BIOS's own timing again): the switches hold for every set until VXPROBE disarms them (or 20 s pass); pr_hist keeps
  * the last 8 sets' records (pr_set[1..12]) */
@@ -1356,8 +1357,15 @@ void VX_probe(const DWORD *in, DWORD n, DWORD *o)
 		o[24] = (DWORD)act_mode; o[25] = vga_mode; o[26] = cur_sw_shows; o[27] = vx_cursor_gen; o[28] = vx2d_hwcur;
 		o[29] = hda ? hda->width : 0; o[30] = hda ? hda->height : 0; o[31] = hda ? hda->bpp : 0;
 		o[32] = vx_edid_ok; o[33] = vx_base_modes; o[34] = vesa_modes_cnt; o[35] = vx_held_n; o[36] = vx_extras_on; o[37] = pr_arm;
+		{extern uint32_t vx_dos_clock; o[39] = vx_dos_clock;} /* .673 */
 		for(i = 0; i < vesa_modes_cnt && i < 24; i++) o[40 + i] = vesa_modes[i].width | ((DWORD)vesa_modes[i].height << 12) | ((DWORD)vesa_modes[i].bpp << 24);
 		o[38] = i;
+	}
+	else if(sub == 7) /* .680 (VXCLIP's DMA question): a read-only dump of 62 engine registers (BAR1) from in[1], word aligned, at most to 0x1FFC; [2..63] */
+	{
+		extern uint32_t VX3DN_peek(uint32_t);
+		DWORD at = n > 1 ? in[1] & ~3UL : 0xE00UL;
+		for(i = 0; i < 62; i++) o[2 + i] = (at + i * 4 <= 0x1FFCUL) ? VX3DN_peek(at + i * 4) : 0xDEADDEADUL;
 	}
 	else if(sub == 2)
 	{
@@ -1382,6 +1390,19 @@ void VX_probe(const DWORD *in, DWORD n, DWORD *o)
 	else if(sub == 3)
 	{
 		pr_arm = n > 1 ? (in[1] & 7) : 0; pr_arm_ms = Get_System_Time(); o[2] = pr_arm;
+	}
+	else if(sub == 6) /* .657 (VXREG; .658: 6, 4 is the mode-set history above, which answered instead): the cursor's state: [2] the frame-buffer access count, [3] primary-Lock brackets open (VX2D_access), [4-7]
+	                   * their begins done, begins skipped (engine busy), ends done, ends with none open; [8] cur_hw, [9] cur_drawn, [10] cur_hw_ok,
+	                   * [11] the shape the hardware has (cur_hw_gen), [12] the current shape (vx_cursor_gen), [13] cur_epoch, [14] the reset epoch,
+	                   * [15] cursor_visible, [16] the 2D engine lost, [17] native fault, [18] a software show put off, [19] software shows,
+	                   * [20] hardware moves done with another access open, [21] x, [22] y, [23] ACCEL_HWCURSOR (vx2d_hwcur) */
+	{
+		extern uint32_t vx2d_acc_stat[4]; uint32_t VX2D_acc_open(void); BOOL lk = FBHDA_lock();
+		o[2] = (DWORD)fb_lock_cnt; o[3] = VX2D_acc_open(); o[4] = vx2d_acc_stat[0]; o[5] = vx2d_acc_stat[1]; o[6] = vx2d_acc_stat[2]; o[7] = vx2d_acc_stat[3];
+		o[8] = cur_hw; o[9] = cur_drawn; o[10] = cur_hw_ok; o[11] = cur_hw_gen; o[12] = vx_cursor_gen; o[13] = cur_epoch; o[14] = vx2d_reset_epoch;
+		o[15] = wram ? wram->regs.s.cursor_visible : 0; o[16] = VX2D_is_lost(); o[17] = VX2D_native_fault(); o[18] = cur_pend; o[19] = cur_sw_shows;
+		o[20] = cur_hw_held; o[21] = wram ? (DWORD)wram->regs.s.cursor_x : 0; o[22] = wram ? (DWORD)wram->regs.s.cursor_y : 0; o[23] = vx2d_hwcur;
+		FBHDA_release(lk);
 	}
 	else if(sub == 5) /* .583 (VXTIME: the driver's own timing on a device where it is still under test): in[1] 0 / 1 sets the switch for the mode
 	                   * sets that follow (anything else only reads); [2] the switch before, [3] now, [4] the last set's result (0 the BIOS's
@@ -1494,6 +1515,10 @@ void FBHDA_access_end(DWORD flags)
 	if(vx_direct)
 	{
 		if(fb_lock_cnt == 0) cursor_show();
+		/* .657 (board, .654-.656: the pointer's image frozen, the real pointer moving unseen, with the access count left above 0): a mouse
+		 * move or a new shape while somebody else's access is open still moves (or programs) the hardware cursor, which draws nothing into
+		 * the frame buffer; only the software cursor waits for the count to reach 0 */
+		else if((flags & FBHDA_ACCESS_MOUSE_MOVE) && !cur_drawn) {if(cursor_hw_show()) cur_hw_held++;}
 	}
 	else if(!timer_set || !async_blit_running())
 	{
@@ -1535,6 +1560,8 @@ void VESA_HIRES_disable()
 {
 	dbg_printf("VESA_HIRES_disable\n");
 	VX2D_sync(); /* v10.139 (review F01) */
+	{extern void VX3DN_ring_stop(void);VX3DN_ring_stop();} /* .646 (review of .644): the ring's fetcher stopped before the DOS box's or text
+	 * mode's BIOS mode set, as VESA_setmode does (v10.391); the next 3D group starts it again (xr_state 1) */
 	if(FBHDA_lock()) {cursor_hide(); FBHDA_release(TRUE);} else cursor_hide(); /* v10.140: the sync can release the cursor exclusion and draw the software cursor; put the background back instead of only clearing the flag */
 	CUR_SET(FALSE);
 	cursor_hw_off(); /* v10.105: a DOS box or the text mode must not show the hardware cursor */
@@ -1544,6 +1571,42 @@ void VESA_HIRES_disable()
 }
 
 extern BOOL mode_changing;
+
+/* .673 (the NC20, a VX800 laptop, VXDOS v1.0 on .670): the first full-screen DOS session of a boot stayed black. The VDD had restored the
+ * session's registers from its own copy of a standard mode 3, misc output 67 (clock select 1, 28 MHz), where this laptop's BIOS sets 6F
+ * for text and EF for mode 12h (clock select 3) in plain DOS as well; every other register the same. The BIOS's own mode set brought the
+ * picture back, and later switches stayed right in that boot. The misc output the BIOS left at the VxD's first call (Sys_Critical_Init)
+ * is kept; when a DOS session is given the display (RESTORE_REGISTERS for a VM other than Windows' own, and POST_HIRES_TO_VGA; in VGA mode) and that BIOS used
+ * clock select 3 while the restored value does not, clock select 3 is written (the sequencer held in reset around it, as a mode set does).
+ * A BIOS that used another clock (the VX855 desktops: 67) changes nothing. vx_dos_clock: bits 7:0 the BIOS's misc output, 15:8 kept
+ * (1), the rest the times the clock was set (VXPROBE sub 1, o[39]) */
+uint32_t vx_dos_clock;
+/* .693 (NC20 VXDOS on .673: "the BIOS's misc output at boot: not kept", the first DOS session still black): the VDD loads this VxD
+ * dynamically, so it gets Sys_Dynamic_Device_Init and never Sys_Critical_Init, and the capture never ran. It is now also made at the
+ * start of Device_Init_proc (both inits), once, before the driver's first mode set */
+void VESA_boot_capture(void)
+{
+	if(!(vx_dos_clock & 0x100UL)) vx_dos_clock = (uint32_t)inp(0x3CC) | 0x100UL;
+}
+void VESA_dos_restore(void)
+{
+	unsigned char m, si;
+	unsigned long f;
+	if(!vga_mode || !(vx_dos_clock & 0x100UL) || (vx_dos_clock & 0x0CUL) != 0x0CUL) return;
+	f = vxd_irq_save();
+	m = (unsigned char)inp(0x3CC);
+	if((m & 0x0C) == 0x0C) {
+		vxd_irq_restore(f);
+		return;
+	}
+	si = (unsigned char)inp(0x3C4);
+	outp(0x3C4, 0x00); outp(0x3C5, 0x01);
+	outp(0x3C2, (unsigned char)(m | 0x0C));
+	outp(0x3C4, 0x00); outp(0x3C5, 0x03);
+	outp(0x3C4, si);
+	vx_dos_clock += 0x10000UL;
+	vxd_irq_restore(f);
+}
 
 static BYTE saved_vga_mode = 0xFF;
 

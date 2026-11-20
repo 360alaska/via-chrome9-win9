@@ -799,13 +799,13 @@ static int checks(void) {
      { /* v10.497: SSEEARLY (a directional light, no local viewer: Mesa's fast lighting, declined before the copy) and SSEOUTFAST (a lit draw whole
         outside with no box: the test in the registers), each against its switch off, exactly; the counts advance */
       static GLubyte img_e[2][64*64*4];static const GLfloat dl[4]={0.3f,0.5f,1.0f,0.0f};int pe,de=0,j2;unsigned long e0=vxgl_ssepass_imm_stat[2],o0,o1,ne=0,no=0;
-      glEnable(GL_LIGHTING);glEnable(GL_LIGHT0);glDisable(GL_LIGHT1);glDisable(GL_LIGHT2);glLightfv(GL_LIGHT0,GL_POSITION,dl);glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER,0);
+      glEnable(GL_LIGHTING);glEnable(GL_LIGHT0);glDisable(GL_LIGHT1);glDisable(GL_LIGHT2);glLightfv(GL_LIGHT0,GL_POSITION,dl);glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER,0);glLightModeli(GL_LIGHT_MODEL_TWO_SIDE,1); /* .639: two-sided lighting is the state declined early now (a directional light alone is taken by the pass) */
       glDisable(GL_COLOR_MATERIAL);glDisable(GL_FOG);glDisable(GL_TEXTURE_2D);
       for(pe=0;pe<2;pe++){vxgl_ssepass_early=!pe;vxgl_ssepass_on=5;glClear(GL_COLOR_BUFFER_BIT);
        for(q=0;q<3;q++){glBegin(GL_TRIANGLE_STRIP);for(k=0;k<40;k++){glNormal3f(0.6f*(float)sin(k*0.4+q),0.5f*(float)cos(k*0.3),1.0f);glVertex3f(2.0f+(float)(k/2)*3.1f+q*0.7f,((k&1)?50.5f:8.25f)-q*4.0f,(float)(k%9)/10.0f-0.4f);}glEnd();}
        glFinish();glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,img_e[pe]);if(!pe)ne=vxgl_ssepass_imm_stat[2]-e0;}
       for(i=0;i<64*64*4;i++)if(img_e[0][i]!=img_e[1][i])de++;
-      glLightfv(GL_LIGHT0,GL_POSITION,pos);glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER,1);vxgl_ssepass_immbox=0;
+      glLightModeli(GL_LIGHT_MODEL_TWO_SIDE,0);glLightfv(GL_LIGHT0,GL_POSITION,pos);glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER,1);vxgl_ssepass_immbox=0;
       for(j2=0;j2<2;j2++){vxgl_ssepass_outfast=!j2;o0=vxgl_ssepass_stat[5];
        glBegin(GL_TRIANGLE_STRIP);for(k=0;k<40;k++){glNormal3f(0,0,1);glVertex3f(5000.0f+(float)(k/2)*3.1f,(k&1)?50.5f:8.25f,0.1f);}glEnd();glFinish();
        o1=vxgl_ssepass_stat[5];if(o1!=o0)no++;}
@@ -1500,6 +1500,24 @@ static int defer_check(void) {
  vxgl_ssepass_on=k0;vxgl_ssepass_defer=k1;vxgl_ssepass_sse2=k2;{extern int vxgl_ssepass_range;vxgl_ssepass_range=1;}
  return fails;
 }
+/* .639: the Flocks scene (src/vx_gl_scenes.h s_flock: 363 one-triangle list draws, a directional light, no local viewer, colour material)
+ * with the SSE pass against the same without it: the pass takes the draws (object space, GL_NORMALIZE, and a scale that forces eye
+ * space), and no channel is more than 1 apart from Mesa's fast lighting. */
+static int flock_check(void) {
+ extern int vxgl_ssepass_on;extern unsigned long vxgl_ssepass_stat[20];int k0=vxgl_ssepass_on,run,i,d=0,mx=0,fails=0;unsigned long took=0,lit=0;static GLubyte fi[2][W*H*4];
+ for(run=0;run<2;run++){vxgl_ctx *c;unsigned long p0,l0;
+  vxgl_ssepass_on=run?0:5;
+  memset(vram,0x5A,sizeof(vram));memset(&thefb,0,sizeof(thefb));thefb.pf=1;thefb.hwnd=(HWND)1;thefb.cb=host_cbits;vxgl_hw_enabled=1;
+  c=vxgl_create_context(1,(HDC)1,0);if(!c||!vxgl_make_current(c,(HDC)1)){printf("check FAIL: flock context\n");return 1;}cur=c;
+  p0=vxgl_ssepass_stat[0];l0=vxgl_ssepass_stat[7];
+  s_flock();glFinish();glReadBuffer(GL_BACK);glPixelStorei(GL_PACK_ALIGNMENT,1);glReadPixels(0,0,W,H,GL_RGBA,GL_UNSIGNED_BYTE,fi[run]);
+  if(!run){took=vxgl_ssepass_stat[0]-p0;lit=vxgl_ssepass_stat[7]-l0;}
+  vxgl_make_current(0,0);vxgl_destroy_context(c);vxgl_fb_release(&thefb);}
+ for(i=0;i<W*H*4;i++){int e=fi[0][i]-fi[1][i];if(e<0)e=-e;if(e){d++;if(e>mx)mx=e;}}
+ if(took<363||lit<300||mx>1)fails++;
+ printf("flock check: the pass took %lu of 363 draws (%lu lit and drawn); %d channel bytes differ from the pipeline's, at most %d%s\n",took,lit,d,mx,fails?"  FAIL":"");
+ vxgl_ssepass_on=k0;return fails;
+}
 static int ring_check(void) {int f=0;vxgl_seq_ring=0;f+=ring_check1();vxgl_seq_ring=1;f+=ring_check1();vxgl_seq_ring=0;return f;}
 static int ring_check1(void) {
  extern int vxgl_gl_texring,vxgl_gl_tex16;int run,fails=0,i,f,keep=vxgl_gl_texring;unsigned long st[4],bad0=host_direct_bad,dw0=host_direct_writes;
@@ -1755,6 +1773,7 @@ int main(int argc,char **argv) {
  scene_ati_cop2=glColorFragmentOp2ATI;scene_ati_cop3=glColorFragmentOp3ATI;scene_ati_aop2=glAlphaFragmentOp2ATI;scene_ati_const=glSetFragmentShaderConstantATI;
  if(argc>1&&!strcmp(argv[1],"-v"))verbose=1;
  if(getenv("VXGL_FRAMELOG"))vxgl_framelog=1; /* v10.343 */
+ if(getenv("VXGL_LOCKDRAW")){extern int _tnl_vx855_lockdraw,vxgl_gl_lockdraw;_tnl_vx855_lockdraw=vxgl_gl_lockdraw=atoi(getenv("VXGL_LOCKDRAW"));} /* .672 */
  {extern int vxgl_gl_zclear3d;const char *e=getenv("VXGL_ZCLEAR3D");if(e)vxgl_gl_zclear3d=atoi(e);} /* v10.346: default 1; 0 the 2D fill; v10.362: 2 the colour in the quad too */
  if(getenv("VXGL_NOCOLOR"))vxgl_gl_nocolor=atoi(getenv("VXGL_NOCOLOR"))!=0; /* v10.346 */
  if(getenv("GLREPLAY")){extern int gr_check(const char*,void*,const char*);struct {void *(*gp)(const char*);int (*b)(void*,int,unsigned,unsigned);void (*s)(void*);void (*e)(void*);void (*o)(void*,const char*);void *u;} io;
@@ -1798,6 +1817,35 @@ int main(int argc,char **argv) {
   memset(vram,0x5A,sizeof(vram));memset(&thefb,0,sizeof(thefb));thefb.pf=1;thefb.hwnd=(HWND)1;thefb.cb=32;vxgl_hw_enabled=getenv("VXGL_BENCH_HW")?atoi(getenv("VXGL_BENCH_HW")):1;host_nodraw=getenv("VXGL_BENCH_IMG")?0:1; /* v10.500: VXGL_BENCH_IMG: the last frame drawn by the model and written out; VXGL_BENCH_HW 0: software */
   if(getenv("VXGL_BENCH_CORE")){extern uint32_t vx_d3d_prepack,vx_d3d_indexed;int m=atoi(getenv("VXGL_BENCH_CORE"));vx_d3d_prepack=m&1;vx_d3d_indexed=(m>>1)&1;/* .527: bits 2-3 (VRECIPE, FASTMATCH) removed; .524: bit 4 (PAIRLIST) removed */}
   c=vxgl_create_context(1,(HDC)1,0);if(!c||!vxgl_make_current(c,(HDC)1))return 1;cur=c;
+  if(sc==11){ /* .672: HarborBench's drawN for the per-draw cost: one 41 x 41 grid (3,200 lit, textured triangles in one locked array, two
+   * lights), split into VXGL_BENCH_DRAWS glDrawElements calls with no state change between them */
+   static GLfloat v[41*41][3],nm[41*41][3],tc[41*41][2];static GLushort ix[3200*3];static GLubyte tx[64*64*4];
+   int nd=getenv("VXGL_BENCH_DRAWS")?atoi(getenv("VXGL_BENCH_DRAWS")):100,var=getenv("VXGL_BENCH_VAR")?atoi(getenv("VXGL_BENCH_VAR")):0,i,j,n=0;GLuint t,t2; /* var: every fifth draw 1 a colour (colour material), 2 a material, 3 the modelview, 4 the other texture, 5 flat / smooth, 8 lighting off / on */
+   static const GLfloat l0[4]={0.3f,0.5f,1.0f,0.0f},l1[4]={0.0f,0.0f,1.0f,1.0f},dc[4]={0.8f,0.7f,0.6f,1};
+   void (*lk)(GLint,GLsizei)=(void(*)(GLint,GLsizei))host_gp("glLockArraysEXT");void (*ul)(void)=(void(*)(void))host_gp("glUnlockArraysEXT");
+   for(j=0;j<41;j++)for(i=0;i<41;i++){int q=j*41+i;v[q][0]=-1.0f+i*0.05f;v[q][1]=-0.75f+j*0.0375f;v[q][2]=-2.0f-0.1f*(float)sin(i*0.3+j*0.2);nm[q][0]=0.2f*(float)sin(i*0.4);nm[q][1]=0.2f*(float)cos(j*0.3);nm[q][2]=1;tc[q][0]=i/40.0f;tc[q][1]=j/40.0f;}
+   for(j=0;j<40;j++)for(i=0;i<40;i++){int q=j*41+i;ix[n++]=q;ix[n++]=q+1;ix[n++]=q+41;ix[n++]=q+1;ix[n++]=q+42;ix[n++]=q+41;}
+   for(i=0;i<64*64;i++){tx[i*4]=(GLubyte)(i*7);tx[i*4+1]=(GLubyte)(i>>4);tx[i*4+2]=(GLubyte)(i*3);tx[i*4+3]=255;}
+   glGenTextures(1,&t);glBindTexture(GL_TEXTURE_2D,t);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,64,64,0,GL_RGBA,GL_UNSIGNED_BYTE,tx);
+   glGenTextures(1,&t2);glBindTexture(GL_TEXTURE_2D,t2);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);for(i=0;i<64*64*4;i++)tx[i]^=0x55;
+   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,64,64,0,GL_RGBA,GL_UNSIGNED_BYTE,tx);glBindTexture(GL_TEXTURE_2D,t);glEnable(GL_TEXTURE_2D);glEnable(GL_DEPTH_TEST);
+   glEnable(GL_LIGHTING);glEnable(GL_LIGHT0);glEnable(GL_LIGHT1);glLightfv(GL_LIGHT0,GL_POSITION,l0);glLightfv(GL_LIGHT1,GL_POSITION,l1);glLightf(GL_LIGHT1,GL_LINEAR_ATTENUATION,0.1f);glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,dc);
+   glEnableClientState(GL_VERTEX_ARRAY);glEnableClientState(GL_NORMAL_ARRAY);glEnableClientState(GL_TEXTURE_COORD_ARRAY);glVertexPointer(3,GL_FLOAT,0,v);glNormalPointer(GL_FLOAT,0,nm);glTexCoordPointer(2,GL_FLOAT,0,tc);
+   for(f=0;f<nf;f++){glViewport(0,0,W,H);glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_PROJECTION);glLoadIdentity();glFrustum(-1,1,-0.75,0.75,1,10);glMatrixMode(GL_MODELVIEW);glLoadIdentity();
+    if(lk)lk(0,41*41);
+    if(var==1)glEnable(GL_COLOR_MATERIAL);
+    for(k=0;k<nd;k++){int a0=k*3200/nd,a1=(k+1)*3200/nd;
+     if(var&&k%5==4){GLfloat q[4]={(k%3)*0.4f,0.5f,1.0f-(k%2)*0.5f,1};
+      if(var==1)glColor4fv(q);else if(var==2)glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,q);else if(var==3)glTranslatef(0.002f,0,0);
+      else if(var==4)glBindTexture(GL_TEXTURE_2D,(k/5)&1?t2:t);else if(var==5)glShadeModel((k/5)&1?GL_FLAT:GL_SMOOTH);else if(var==8){if((k/5)&1)glDisable(GL_LIGHTING);else glEnable(GL_LIGHTING);}}
+     if(a1>a0)glDrawElements(GL_TRIANGLES,(a1-a0)*3,GL_UNSIGNED_SHORT,ix+a0*3);}
+    if(var==1)glDisable(GL_COLOR_MATERIAL);if(var==5)glShadeModel(GL_SMOOTH);if(var==8)glEnable(GL_LIGHTING);if(var==4)glBindTexture(GL_TEXTURE_2D,t);
+    if(ul)ul();
+    {extern int vxgl_swap(vxgl_ctx*,HDC);vxgl_swap(c,(HDC)1);}}
+   glFinish();{extern uint32_t vxgl_lockdraw_stat[2];extern unsigned long _tnl_vx855_lw_stat[4];printf("bench scene 11, %d frames of %d draws: %u packets, %u triangles, packet hash %08X; lock-wide draws %lu, hits %u, kept %u\n",nf,nd,packets,c->stats[0],pk_hash,_tnl_vx855_lw_stat[0],vxgl_lockdraw_stat[0],vxgl_lockdraw_stat[1]);}
+   return 0;}
   if(sc==7||sc==8){ /* v10.500: Quake 2's world and Quake 3's batches (src/vx_qscenes.h) */
    qs_init((qs_lock_fn)host_gp("glLockArraysEXT"),(qs_unlock_fn)host_gp("glUnlockArraysEXT"));
    for(f=0;f<nf;f++){glViewport(0,0,W,H);glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);if(sc==7)qs_q2(f);else qs_q3(f);
@@ -1876,6 +1924,7 @@ int main(int argc,char **argv) {
  if(only<0)fails+=ring_check(); /* v10.366 */
  if(only<0)fails+=qscene_check(); /* v10.500 */
  if(only<0)fails+=defer_check(); /* .503 */
+ if(only<0)fails+=flock_check(); /* .639 */
  if(only<0){extern int _vbo_vx855_minmax_check(void);int b=_vbo_vx855_minmax_check();printf("minmax check: %d mismatches of the SSE2 index scan against the C scans; %s\n",b,b?"FAIL":"ok");fails+=b!=0;} /* .506 */
  if(only<0)fails+=clip_check(); /* v10.360 */
  printf("failures=%d\n",fails);

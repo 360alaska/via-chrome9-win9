@@ -49,9 +49,12 @@ volatile uint32_t vx_flip_old_front=0xFFFFFFFFUL;
 volatile uint32_t vx_flip_epoch; /* .620 */
 uint32_t vx_frame_stat[16],vx_frame_worst[8][3];
 static DWORD fl_pend,fl_apply_ms,fl_apply_line,fl_last_flip_ms,fl_eng_t;static int fl_line_ok;
-/* v10.417 (XP's flip in the ring, vx_native3d_vxd.c VX3DN_ring_flip): fl_ring = the display address is the command regulator's (CR32
- * bit 0 set, as XP); vx_flip_ring_pend = the old front waits for the ring flip's fence instead of the blank */
-int VX3DN_ring_flip_ok(void);int VX3DN_ring_flip(uint32_t off);int VX3DN_ring_flip_done(void);void VX3DN_ring_flip_wait(void);int VX3DN_ring_flip_lost(void); /* .532 */
+/* v10.417 (XP's flip in the ring, vx_native3d_vxd.c VX3DN_ring_flip): fl_ring = ring flips in use (CR32
+ * bit 0 set, as XP: the manual's "real-time flipping", by scan line rather than by frame); vx_flip_ring_pend = the old front waits for the ring flip's fence instead of the blank */
+int VX3DN_ring_flip_ok(void);int VX3DN_ring_flip(uint32_t off,int two,int tear);int VX3DN_ring_flip_done(void);void VX3DN_ring_flip_wait(void);int VX3DN_ring_flip_lost(void); /* .532 */
+/* .696: fl_rt = CR32 bit 0 set by a CPU tear flip (no ring); vx_flip_tear = ACCEL_FLIP_TEAR; vx_flip_tear_stat: [0] tear flips in the ring,
+ * [1] tear flips by the CPU, [2] no-vsync flips kept as the one-frame flip (switch 0, a panel on IGA2, or IGA2 mirroring with switch 1) */
+volatile uint32_t vx_flip_tear=1;uint32_t vx_flip_tear_stat[4];static int fl_rt;
 static int fl_ring;int vx_flip_ring_pend;uint32_t vx_flip_ring_stat[4]; /* CR32 bit 0 set, cleared, CPU flips after ring flips, ring flips */
 unsigned long VX_tsc(void);
 #pragma aux VX_tsc = 0x0F 0x31 value [eax] modify exact [eax edx];
@@ -84,7 +87,7 @@ static unsigned char cr_get(unsigned short base,unsigned char i) {
  *   display address is the first unit's) and the first unit's line counter is not used. When that status bit does not toggle (vb_probe),
  *   a flip waits a frame's time after the address is written instead.
  * vx_flip_two (control FFFFFE48): [0] CR6A | CR36 << 8 | CR97 << 16 | CR99 << 24, [1] IGA2's pitch in bytes, [2] bit 0 fl_iga2, bit 1
- * fl_blank2, [3] flips written to IGA2, [4] flips that waited by time. */
+ * fl_blank2, [3] flips written to IGA2, [4] flips that waited by time, [5] ring flips that moved IGA2 too (.695). */
 uint32_t vx_flip_two[8];
 static int fl_iga2,fl_blank2;
 static void iga2_look(void) {
@@ -135,7 +138,7 @@ static void crtc_set(DWORD v) {
  outp(base,o); VX_irq_restore(f);
  ext_close(u);
 }
-/* v10.417: CR32 bit 0 (XP 0xB7092: set before its first flip in the ring; cleared in its other display paths, 0xB6DB9) */
+/* v10.417: CR32 bit 0, real-time flipping in the manual (XP 0xB7092: set before its first flip in the ring; cleared in its other display paths, 0xB6DB9) */
 static void cr32_bit0(int on) {
  unsigned char u=ext_open(),o,t; unsigned short base=crt_base(); unsigned long f;
  f=VX_irq_save(); o=inp(base); outp(base,0x32); t=inp((unsigned short)(base+1));
@@ -143,15 +146,19 @@ static void cr32_bit0(int on) {
  ext_close(u); vx_flip_ring_stat[on?0:1]++;
 }
 /* v10.417: back to CPU flips: the ring flip in flight run first, the CRTC given the address being shown, then CR32 bit 0 clear */
+static void fl_ring_lost(void);
 static void ring_off(void) {
  if(!fl_ring) return;
- if(vx_flip_ring_pend) {VX3DN_ring_flip_wait(); (void)VX3DN_ring_flip_lost(); vx_flip_ring_pend=0; fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL;} /* .532: a lost one is written below with the rest */
+ if(vx_flip_ring_pend||!VX3DN_ring_flip_done()) {VX3DN_ring_flip_wait(); /* .686: also a flip to the address already shown (queued in the ring but not marked pending here) */
+  if(VX3DN_ring_flip_lost()&&vx_flip_ring_pend) {fl_ring_lost(); return;} /* .694 (review of .693): a lost flip to a new address is written by the CPU and its old front stays guarded until the blank, as fl_ring_lost does elsewhere (it was dropped here: the next flip guarded the lost one's address while the old front was still shown) */
+  vx_flip_ring_pend=0; fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL;}
+ else (void)VX3DN_ring_flip_lost(); /* .694 (review of .693): VX3DN_ring_flip_done may have just marked a same-address flip lost; consumed here so a later flip does not take it for its own */
  if(fl_state==VXF_ST_DIRECT) crtc_set(fl_display>>fl_shift);
- cr32_bit0(0); fl_ring=0;
+ cr32_bit0(0); fl_ring=0; fl_rt=0;
 }
 /* v10.63: called by the VxD after every mode set: commit start 0 and forget the bookkeeping of the previous mode. */
 void VX_flip_modeset(void) {
- if(fl_ring) {cr32_bit0(0); fl_ring=0;} vx_flip_ring_pend=0; (void)VX3DN_ring_flip_lost(); fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; /* v10.417 (the ring was stopped before the mode set); .532: and the pending flip's bookkeeping (B1) */
+ if(fl_ring||fl_rt) {cr32_bit0(0); fl_ring=0; fl_rt=0;} vx_flip_ring_pend=0; (void)VX3DN_ring_flip_lost(); fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; /* v10.417 (the ring was stopped before the mode set); .532: and the pending flip's bookkeeping (B1) */
  crtc_set(0); k_set=0; fl_state=VXF_ST_UNTESTED; fl_vb=0; fl_display=0; fl_shift=0;
 }
 static int bios_start(DWORD x,DWORD y) {
@@ -200,9 +207,14 @@ static int fl_taken(void) { /* v10.384: 1 when the pending flip has been taken b
  if(fl_line_ok&&hda) {DWORD raw=VX2D_mmio_read(0x1290UL),l=raw>>16; if(raw!=0xFFFFFFFFUL&&l<hda->height&&l<fl_apply_line) {fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; return 1;}}
  return 0;
 }
+/* .706 (a review of .703): fl_seq, one count a flip made pending. VX_flip_front_wait runs outside the engine lock (the 3D submit's wait
+ * for the old front), and VX3DN_ring_flip_wait can block on that lock: a flip made meanwhile by another thread (it waits for this one
+ * itself first) left this wait clearing the new flip's pending state, or writing the address back for a lost one. A wait that finds a
+ * newer flip leaves the state to it. */
+static DWORD fl_seq;
 static void fl_wait_taken(void) {
- unsigned short p=st1_port(); DWORD t0=Get_System_Time();
- if(vx_flip_ring_pend) {VX3DN_ring_flip_wait(); if(VX3DN_ring_flip_lost()) fl_ring_lost(); else {fl_pend=0; vx_flip_ring_pend=0; vx_flip_old_front=0xFFFFFFFFUL; return;}} /* v10.417; .532: a lost one waits as a CPU flip (B1) */
+ unsigned short p=st1_port(); DWORD t0=Get_System_Time(),s=fl_seq;
+ if(vx_flip_ring_pend) {VX3DN_ring_flip_wait(); if(fl_seq!=s) return; if(VX3DN_ring_flip_lost()) fl_ring_lost(); else {fl_pend=0; vx_flip_ring_pend=0; vx_flip_old_front=0xFFFFFFFFUL; return;}} /* v10.417; .532: a lost one waits as a CPU flip (B1) */
  while(!fl_taken()) {
   if(vb_wait(p,1,1)) {fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; break;}
   if((DWORD)(Get_System_Time()-t0)>=60) {fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; fl_timeouts++; break;}
@@ -251,7 +263,9 @@ DWORD VX_flip_hz(void) {
 static int same_mode(void) {return k_set&&k_w==hda->width&&k_h==hda->height&&k_b==hda->bpp&&k_p==hda->pitch;}
 static void remember_mode(void) {k_w=hda->width; k_h=hda->height; k_b=hda->bpp; k_p=hda->pitch; k_set=1;}
 static void forget_if_changed(void) {
- if(k_set&&!same_mode()) {k_set=0; fl_state=VXF_ST_UNTESTED; fl_vb=0; fl_display=0; fl_shift=0; fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL;}
+ if(k_set&&!same_mode()) {if(fl_ring||fl_rt) {cr32_bit0(0); fl_ring=0; fl_rt=0;} vx_flip_ring_pend=0; (void)VX3DN_ring_flip_lost(); /* .706 (a review of .703): as VX_flip_modeset (a mode
+  * set the VxD did not report left fl_ring and fl_rt set, so the next flip did not set CR32 bit 0 again, and a ring flip pending) */
+  k_set=0; fl_state=VXF_ST_UNTESTED; fl_vb=0; fl_display=0; fl_shift=0; fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL;}
 }
 static DWORD natural_pitch(void) {return (hda->width*(hda->bpp/8)+7)&~7UL;}
 
@@ -305,16 +319,27 @@ static DWORD flip_to(DWORD off,DWORD flags) {
   * its next frame into it, unguarded (board, GTA3 with Frame Sync off on .554: the picture flashed like a strobe; with it on, fine).
   * Now: in the ring when it runs (no wait in the flip), else the CPU flip that returns once the address is written; either way a draw,
   * clear, Blt or Lock on the old front waits until the display has taken the flip. Nothing is torn and nothing is shown half drawn;
-  * an application cannot flip more often than the refresh. */
+  * an application cannot flip more often than the refresh.
+  * .696 (a .637 report, 3DMark2000 on a Wyse Cx0: frame rates locked to 30, 15 and 7.5): that one-frame flip makes a frame that misses a
+  * refresh wait for the next, and a ring flip's 6C wait idles the engine to the blank, so even triple buffering locks to 60 / n. VIA's
+  * manual: CR32 bit 0 = real-time flipping, "flip by each scan line". A no-vsync flip (tear) now sets it and is taken from the next line:
+  * the old front is not scanned past that line, so drawing into it may start at once (a tear line, no black flash as on .554, whose
+  * address waited for the frame). In the ring: the swap without the 6C wait; by the CPU: the address written, nothing pending. IGA2
+  * has no documented line flip: a panel on IGA2 alone keeps the one-frame flip; IGA2 mirroring tears only with ACCEL_FLIP_TEAR 2. */
  p=st1_port(); sync=fl_vb==1;
  frames=(flags>>24)&7; if(frames<1) frames=1;
  {DWORD t=VX_tsc(),old=fl_display,res=VXF_OK,w;
- if(sync&&vx_flip_async&&frames==1&&fl_state==VXF_ST_DIRECT&&!(off&7)&&!fl_blank2&&VX3DN_ring_flip_ok()) { /* v10.417: XP's flip in the ring */
+ int tear;
+ iga2_look(); /* .695: looked at now (a ring flip does not go through crtc_set, which looked before) */
+ tear=(flags&8UL)&&frames==1&&vx_flip_tear&&!fl_blank2&&(!fl_iga2||vx_flip_tear>=2); /* .696 */
+ if((flags&8UL)&&!tear) vx_flip_tear_stat[2]++;
+ if((sync||tear)&&vx_flip_async&&frames==1&&fl_state==VXF_ST_DIRECT&&!(off&7)&&!fl_blank2&&VX3DN_ring_flip_ok()) { /* .695 (review of .694): a mirrored IGA2 (fl_iga2) goes in the ring too, its own swap words (VX3DN_ring_flip two); a panel shown by IGA2 alone (fl_blank2) does not: the ring waits for IGA1's blank */ /* v10.417: XP's flip in the ring; .694 (review of .693): not while IGA2 shows this frame buffer too (its start address is written by crtc_set only: the ring's swap moves IGA1 alone) */
   if(fl_pend) {extern int VX_smp_wait_begin(void);extern void VX_smp_wait_end(int);int w=VX_smp_wait_begin();fl_wait_taken();VX_smp_wait_end(w);} /* v10.439 */ /* v10.434 (the sampler); the flip before has run (a ring flip: its fence; at most one frame queued) */
-  if(!fl_ring) {cr32_bit0(1); fl_ring=1;}
-  if(VX3DN_ring_flip(off)) {
-   fl_last_req=off; fl_display=off; fl_flips++; fl_last_v=off; vx_flip_ring_stat[3]++; fl_eng_t=0;
-   if(old!=off) {fl_pend=1; vx_flip_ring_pend=1; vx_flip_old_front=old;}
+  if(!fl_ring) {if(!fl_rt) cr32_bit0(1); fl_ring=1; fl_rt=0;} /* .696: already set by a CPU tear flip */
+  if(VX3DN_ring_flip(off,fl_iga2,tear)) {
+   if(tear) vx_flip_tear_stat[0]++;
+   fl_last_req=off; fl_display=off; fl_flips++; fl_last_v=off; vx_flip_ring_stat[3]++; fl_eng_t=0; if(fl_iga2) vx_flip_two[5]++;
+   if(old!=off) {fl_pend=1; vx_flip_ring_pend=1; vx_flip_old_front=old; fl_seq++;}
    vx_frame_stat[14]++;
    goto timed;
   }
@@ -326,6 +351,13 @@ static DWORD flip_to(DWORD off,DWORD flags) {
   fl_eng_t=(VX_tsc()-t2)>>8;vx_frame_stat[7]+=fl_eng_t;
   if(blocked)return VX2D_is_lost()?VXF_LOST:VXF_FAILED;
  }
+ if(tear) { /* .696: the CPU's tear flip: real-time flipping on, the address taken from the next scan line; nothing pending */
+  if(!fl_rt) {cr32_bit0(1); fl_rt=1;}
+  if(!apply(off)) return VXF_FAILED;
+  fl_last_req=off; fl_display=off; fl_flips++; fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; vx_flip_tear_stat[1]++; vx_frame_stat[14]++;
+  goto timed;
+ }
+ if(fl_rt) {cr32_bit0(0); fl_rt=0;} /* .696: a flip by the frame again */
  if(sync) fl_wait_taken(); /* v10.384: the flip before is shown first (a new address now would replace it unseen) */
  else {fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL;} /* no usable blank status (fl_vb): shown when the chip takes it, nothing to wait on */
  /* never write the address while a blank is running: it may be the very moment the chip latches it */
@@ -335,7 +367,7 @@ static DWORD flip_to(DWORD off,DWORD flags) {
  if(sync&&vx_flip_async&&frames==1) { /* v10.384: return now; the old front is waited for when it is drawn into */
   DWORD raw=VX2D_mmio_read(0x1290UL);
   fl_apply_ms=Get_System_Time(); fl_apply_line=raw>>16; fl_line_ok=!fl_blank2&&raw!=0xFFFFFFFFUL&&(raw>>16)<hda->height; /* .598: the line counter is the first unit's */
-  if(old!=off) {fl_pend=1; vx_flip_old_front=old; vx_flip_epoch++;} /* .620: one count a CPU flip (the VX900's wait word in the ring) */
+  if(old!=off) {fl_pend=1; vx_flip_old_front=old; vx_flip_epoch++; fl_seq++;} /* .620: one count a CPU flip (the VX900's wait word in the ring) */
   vx_frame_stat[14]++;
  } else if(sync) {
  /* The picture is taken from the new address from the next blank on; from the start of that blank the old
@@ -392,6 +424,7 @@ static void flip_control_unlocked(const vxf_request *q,uint32_t *r) {
   case VXF_RESET:
    forget_if_changed();
    ring_off(); /* v10.417 */
+   if(fl_rt) {cr32_bit0(0); fl_rt=0;} /* .696 */
    fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; /* v10.384 */
    if(fl_state==VXF_ST_DIRECT) { /* v10.63: commit 0 even when the bookkeeping says the desktop is shown */
     if(apply(0)) fl_display=0; else res=VXF_FAILED;
@@ -413,6 +446,12 @@ int VX3D_lab_busy(void);
 void VX_flip_control(const vxf_request *q,uint32_t *r) {
  DWORD i,cmd=q?q->cmd:VXF_INFO;int owner_busy;
  vx_lock();
+ if(q&&cmd==VXF_PRESENT) { /* .661: VXD3DMON's sampler had no frames for a windowed program (VXTLP: its line samples were never kept) */
+  static DWORD last_present;DWORD now=Get_System_Time();
+  for(i=0;i<VXF_REPLY_DWORDS;i++)r[i]=0;
+  if(q->cb==sizeof(*q)&&(!fl_last_flip_ms||(DWORD)(now-fl_last_flip_ms)>1000UL)){DWORD iv=last_present?now-last_present:0;extern void VX_smp_frame(uint32_t);VX_smp_frame(iv);}
+  last_present=now;vx_unlock();return;
+ }
  if(q&&cmd==VXF_FRONT) { /* v10.384: no engine wait: only the pending flip */
   DWORD cb=q->cb,arg=q->arg; /* .573 (peer review): the request and the reply may share a buffer (as v10.139 below); the size checked here too */
   for(i=0;i<VXF_REPLY_DWORDS;i++)r[i]=0;
@@ -426,7 +465,7 @@ void VX_flip_control(const vxf_request *q,uint32_t *r) {
  {uint32_t t=VX_tsc();
  /* v10.417: a flip that can go in the ring does not wait for the engine: the ring runs the frame's draws before it (flip_to waits
   * as before when it turns out to be a CPU flip, fl_eng_t = FFFFFFFF) */
- if(cmd==VXF_FLIP&&vx_flip_async&&!fl_blank2&&VX3DN_ring_flip_ok()){owner_busy=VX3D_lab_busy();fl_eng_t=0xFFFFFFFFUL;}
+ if(cmd==VXF_FLIP&&vx_flip_async&&!fl_blank2&&VX3DN_ring_flip_ok()) /* .695: a mirrored IGA2 too */{owner_busy=VX3D_lab_busy();fl_eng_t=0xFFFFFFFFUL;}
  else{vx3dn_rt_why=4;owner_busy=VX3DN_busy()||VX3D_lab_busy(); /* v10.309 (review): VX3D_busy would run VX3DN_busy's status reads a second time */
  if(cmd==VXF_FLIP){fl_eng_t=(VX_tsc()-t)>>8;vx_frame_stat[7]+=fl_eng_t;if(fl_eng_t>vx_frame_stat[10])vx_frame_stat[10]=fl_eng_t;}}}
  if(q&&cmd!=VXF_INFO&&(owner_busy||(vx_native_display_hold&&!VX2D_is_lost()))) {

@@ -175,7 +175,13 @@ static uint32_t log2u(uint32_t v) {uint32_t e=0;while(v>1){v>>=1;e++;}return e;}
  * vertices OpenGL's clipping puts on the window's left or top edge, GL's 0 being the engine's -0.5); the engine's clip rectangle still
  * bounds the pixels. Default 0 until the board shows the engine draws them (VXGAME guard) */
 uint32_t vx3dn_guard=1; /* v10.361: on by default (ACCEL_3D_GUARD 1), as the HAL's and VXGL's word */
-#define GUARD_OK(w,lo) (vx3dn_guard&&!(lo)&&(w)>=0x80000000UL&&(w)<=0xBF000000UL)
+/* .698: and in a packet with VX3DN_IX_GUARD (gb), any finite coordinate from -4096 to +4095 (.702; the encodings 0..457FF000, 80000000..C5800000) */
+uint32_t vx3dn_gband=1; /* ACCEL_D3D_GUARDBAND (default 1; the VX855 / VX875 only: vxd_main.c) */
+/* .704 (review by another model of .703): a coordinate outside the clip is refused unless GUARD_OK takes it; the test was (w < lo ||
+ * !GUARD_OK), so with the guard band a positive coordinate below a clip edge that is not 0 (a viewport at x 100: band vertices from 0
+ * to 100) was refused, the packet left out, while a negative one passed. Without the band GUARD_OK takes only negative encodings, so
+ * nothing changes there. */
+#define GUARD_OK(w,lo) ((vx3dn_guard&&!(lo)&&(w)>=0x80000000UL&&(w)<=0xBF000000UL)||(gb&&((w)<=0x457FF000UL||((w)>=0x80000000UL&&(w)<=0xC5800000UL)))) /* .702: up to +4095.0 (the engine's guard window is signed 13-bit: -4096 .. +4095) */
 /* v10.449 (ACCEL_D3D_ONECOPY, the VxD): a packet whose prepacked vertices are still in the caller's packet (vx3dn_vsrc_pkt, words at
  * vx3dn_vsrc): vx3dn_validate leaves their tests to the emitter, which copies them into the command block and tests the copy (pre_check,
  * the same tests); vx3dn_copyw is the VxD's block copy. */
@@ -183,8 +189,9 @@ const uint32_t *vx3dn_vsrc;const vx3dn_packet *vx3dn_vsrc_pkt;void (*vx3dn_copyw
 static int pre_check(const vx3dn_packet *p,const uint32_t *w,uint32_t n) { /* 1: every vertex passes vx3dn_validate's tests */
  uint32_t xr=fuint((uint32_t)p->clip.right),yb=fuint((uint32_t)p->clip.bottom),xl=fuint((uint32_t)p->clip.left),yt=fuint((uint32_t)p->clip.top);
  uint32_t xw=xr-xl,yh=yb-yt;const uint32_t *we=w+n*10;int tx=textured(p),two=full(p)&&p->stages.units>1;
+ const int gb=vx3dn_gband&&((p->pre.on==2&&p->bursts.n&&(p->bursts.b[0]&VX3DN_IX_GUARD))||((p->ext.dither&VX3DN_EXT_GUARD)&&!p->ext.prim)); /* .698 */
  for(;w<we;w+=10){
-  if((((w[0]-xl>xw)&&(w[0]<xl||!GUARD_OK(w[0],xl)))||((w[1]-yt>yh)&&(w[1]<yt||!GUARD_OK(w[1],yt)))||w[2]>0x3F800000UL||w[3]-1UL>=0x7F7FFFFFUL)||
+  if((((w[0]-xl>xw)&&!GUARD_OK(w[0],xl))||((w[1]-yt>yh)&&!GUARD_OK(w[1],yt))||w[2]>0x3F800000UL||w[3]-1UL>=0x7F7FFFFFUL)||
      (tx&&((w[6]&0x7F800000UL)==0x7F800000UL||(w[7]&0x7F800000UL)==0x7F800000UL))||(two&&((w[8]&0x7F800000UL)==0x7F800000UL||(w[9]&0x7F800000UL)==0x7F800000UL)))return 0;
  }
  return 1;
@@ -232,6 +239,7 @@ static uint32_t validate_x(const vx3dn_packet *p,const vx3dn_info *i,int st) {
    if(full(p)&&p->pre.on==2) {uint32_t k,ni;const uint16_t *ix=VX3DN_CIDX(p);
     if(p->ext.prim||p->bursts.n!=1||((p->bursts.b[0]>>16)&~(VX3DN_IX_BITS>>16))!=VX3DN_TOPO_INDEXED) return VX3DN_BAD_HERE; /* .523: V8 (.529: the cull bits refused) */
     if((p->bursts.b[0]&VX3DN_IX_V8)&&!VX3DN_V8_FORM(p)) return VX3DN_BAD_HERE; /* .523: 8-word vertices only in their form */
+    if((p->bursts.b[0]&VX3DN_IX_GUARD)&&!vx3dn_gband) return VX3DN_BAD_HERE; /* .698: the guard band only where it is on */
     ni=p->bursts.b[0]&0xFFFFUL;if(ni<3||ni%3||ni>VX3DN_MAX_INDICES) return VX3DN_BAD_HERE;
     /* .552: the indices two at a time (g.rec: 46,000 indices a frame at a load, a compare and a branch each, a quarter of this
      * function). An indexed packet has at most VX3DN_IX_VERTICES (384) vertices, so with K = 0x8000 - count in both halves of a word,
@@ -258,7 +266,7 @@ static uint32_t validate_x(const vx3dn_packet *p,const vx3dn_info *i,int st) {
      if(t>VX3DN_TOPO_STRIP||!c||(t==VX3DN_TOPO_LIST&&c%3)||(t==VX3DN_TOPO_STRIP&&c<3)) return VX3DN_BAD_HERE;sum+=c;}
     if(sum!=p->vertex_count) return VX3DN_BAD_HERE;}}
   /* v10.201: primitive type, dither, stencil (D24S8 only; w1 = ref, mask, write mask bytes; w2 = func 0..7, three ops 0..7) */
-  if(st&&full(p)&&(p->ext.prim>2||p->ext.dither>3||p->ext.stencil>1||(p->ext.stencil&&p->depth.format!=VX3DN_D24S8)||
+  if(st&&full(p)&&(p->ext.prim>2||(p->ext.dither&~VX3DN_EXT_GUARD)>3||((p->ext.dither&VX3DN_EXT_GUARD)&&!vx3dn_gband)||p->ext.stencil>1||(p->ext.stencil&&p->depth.format!=VX3DN_D24S8)||
      p->ext.stencil_w1>0xFFFFFFUL||(p->ext.stencil_w2&~0x0701FFUL))) return VX3DN_BAD_HERE;
   {uint32_t xr=fuint((uint32_t)p->clip.right),yb=fuint((uint32_t)p->clip.bottom),xl=fuint((uint32_t)p->clip.left),yt=fuint((uint32_t)p->clip.top);
    /* v10.236: the four bounds once per packet (fuint loops over the bits; it ran four times per vertex) */
@@ -266,8 +274,9 @@ static uint32_t validate_x(const vx3dn_packet *p,const vx3dn_info *i,int st) {
     * coordinates' check in it for a textured draw (both refusals are BAD_PACKET, nothing between them); a coordinate inside the clip is
     * one unsigned compare (x - left <= right - left: the encodings are ordered), the exact test only outside it; z and rhw one compare each */
    const vx3dn_vertex *a=p->vertices,*e=a+p->vertex_count;uint32_t xw=xr-xl,yh=yb-yt;
+   const int gb=vx3dn_gband&&((p->pre.on==2&&p->bursts.n&&(p->bursts.b[0]&VX3DN_IX_GUARD))||((p->ext.dither&VX3DN_EXT_GUARD)&&!p->ext.prim)); /* .698: the guard band (indexed packets); .703: or any triangle packet with ext.dither's VX3DN_EXT_GUARD */
    const uint32_t *t=p->tex.uv[0];
-#define VX_VPOS(a) ((((a)->x-xl>xw)&&((a)->x<xl||!GUARD_OK((a)->x,xl)))||(((a)->y-yt>yh)&&((a)->y<yt||!GUARD_OK((a)->y,yt)))|| \
+#define VX_VPOS(a) ((((a)->x-xl>xw)&&!GUARD_OK((a)->x,xl))||(((a)->y-yt>yh)&&!GUARD_OK((a)->y,yt))|| \
      (a)->z>0x3F800000UL||(a)->rhw-1UL>=0x7F7FFFFFUL)
    /* Nonnegative, finite coordinates, clipped before ring 0. Reject NaNs,
     * infinities and sign bits using ordered nonnegative IEEE encodings. */
@@ -276,7 +285,7 @@ static uint32_t validate_x(const vx3dn_packet *p,const vx3dn_info *i,int st) {
    else if(p->pre.on){ /* v10.441: the prepacked words, the same tests (x y z rhw, u0 v0 of a textured draw; u1 v1 below) */
     const uint32_t vs=VX3DN_PRE_STRIDE(p),*w=p->pre.w,*we=w+p->vertex_count*vs;int tx=textured(p); /* .523: vs the words a vertex */
     if(!vx3dn_pre_ok(p)) return VX3DN_BAD_HERE;
-#define VX_WPOS(w) ((((w)[0]-xl>xw)&&((w)[0]<xl||!GUARD_OK((w)[0],xl)))||(((w)[1]-yt>yh)&&((w)[1]<yt||!GUARD_OK((w)[1],yt)))|| \
+#define VX_WPOS(w) ((((w)[0]-xl>xw)&&!GUARD_OK((w)[0],xl))||(((w)[1]-yt>yh)&&!GUARD_OK((w)[1],yt))|| \
      (w)[2]>0x3F800000UL||(w)[3]-1UL>=0x7F7FFFFFUL)
     for(;w<we;w+=vs)if(VX_WPOS(w)||(tx&&((w[6]&0x7F800000UL)==0x7F800000UL||(w[7]&0x7F800000UL)==0x7F800000UL))) return VX3DN_BAD_HERE;
 #undef VX_WPOS
@@ -292,10 +301,10 @@ static uint32_t validate_x(const vx3dn_packet *p,const vx3dn_info *i,int st) {
   if(st&&full(p)&&(p->stages.units>3||p->stages.c22>1||(p->stages.c22&&!p->shader.count))) return VX3DN_BAD_HERE;
   /* v10.208: an explicit schedule (1..4 TAU words, 24-bit header values, up to four constants c0..c63), the 9-dword layout on one unit */
   if(st&&full(p)&&(p->stages.ps>1||(p->stages.ps&&(!xp_path(p)||!textured(p)||!p->stages.ntau||p->stages.ntau>4||p->stages.h90>0xFFFFFFUL||p->stages.h91>0xFFFFFFUL||
-     p->stages.h93>0xFFFFFFUL||p->stages.h95>0xFFFFFFUL||(p->shader.kflags&2)))||p->stages.nkc>4||p->stages.layout>VX3DN_LAYOUT_VOLUME||(p->stages.layout&&(!xp_path(p)||!textured(p)||(p->stages.units>1&&(!mixed3(p)||p->stages.layout==VX3DN_LAYOUT_PROJ||!(p->stages.s3&1))))))) return VX3DN_BAD_HERE;
-  /* v10.321: the 3D sets of a two-unit draw (no schedule, no projection), each unit's layout flat, cube or volume */
+     p->stages.h93>0xFFFFFFUL||p->stages.h95>0xFFFFFFUL||(p->shader.kflags&2)))||p->stages.nkc>4||p->stages.layout>VX3DN_LAYOUT_VOLUME||(p->stages.layout&&(!xp_path(p)||!textured(p)||(p->stages.units>1&&(!mixed3(p)||!(p->stages.s3&1))))))) return VX3DN_BAD_HERE;
+  /* v10.321: the 3D sets of a two-unit draw (no schedule; .656: projection on either unit), each unit's layout flat, cube or volume */
   if(st&&full(p)&&(p->stages.s3>3||(p->stages.s3&&(!mixed3(p)||p->stages.ps||!xp_path(p)||!textured(p))))) return VX3DN_BAD_HERE;
-  if(st&&full(p)){uint32_t u;for(u=0;u<2;u++)if(p->stages.ulayout[u]&&((p->stages.ulayout[u]!=VX3DN_LAYOUT_CUBE&&p->stages.ulayout[u]!=VX3DN_LAYOUT_VOLUME)||u+1>=units(p)||!(p->stages.s3&(1U<<p->stages.set[u+1])))) return VX3DN_BAD_HERE;}
+  if(st&&full(p)){uint32_t u;for(u=0;u<2;u++)if(p->stages.ulayout[u]&&((p->stages.ulayout[u]!=VX3DN_LAYOUT_CUBE&&p->stages.ulayout[u]!=VX3DN_LAYOUT_VOLUME&&!(p->stages.ulayout[u]==VX3DN_LAYOUT_PROJ&&u==0))||u+1>=units(p)||p->stages.set[u+1]>1||!(p->stages.s3&(1U<<p->stages.set[u+1])))) return VX3DN_BAD_HERE;} /* .705 (a review of .703): the set bounded before the shift (32 or more was undefined in C; the later set check came after) */
   if(full(p)&&(p->stages.s3&2))for(v=0;v<p->vertex_count;v++)if((p->stages.r1[v]&0x7F800000UL)==0x7F800000UL) return VX3DN_BAD_HERE;
   if(full(p)&&(p->stages.s3&1)&&!p->stages.layout)for(v=0;v<p->vertex_count;v++)if((p->stages.q[v]&0x7F800000UL)==0x7F800000UL) return VX3DN_BAD_HERE;
   if(full(p)&&p->stages.layout)for(v=0;v<p->vertex_count;v++)if((p->stages.q[v]&0x7F800000UL)==0x7F800000UL) return VX3DN_BAD_HERE; /* .524: before the state's checks */
@@ -754,6 +763,10 @@ volatile uint32_t vx3dn_ckey=1;
  * T151's 307001A0. */
 static uint32_t tau_word(const vx3dn_packet *p,uint32_t u) {
  if(u==0&&full(p)&&p->stages.layout==2)return 0x307001A0UL;
+ /* .656: unit 1 projected: unit 0's projected word differs from its plain one in bits 22:21 and 4 (T151 307001A0 against 301001B0); the
+  * same bits on unit 1's word (311111B1, giving 317111A1). Worked out from that pattern, not a trace; confirmed on the board (.657-.659: VXTLP
+  * 6i's projected grids, stage 1 projected with two units, match Direct3D's picture pixel for pixel) */
+ if(u==1&&full(p)&&p->stages.ulayout[0]==VX3DN_LAYOUT_PROJ)return (0x301001B0UL+0x01011001UL)^0x00600010UL;
  return 0x301001B0UL+u*0x01011001UL;
 }
 /* v10.303 experiment (TEXDBG 0x40 + n; board, VXGL v3.2 scene 27: GL_BLEND on LUMINANCE and INTENSITY textures wrong): where a texture
@@ -813,7 +826,11 @@ static void xp_setup(const vx3dn_packet *p,const vx3dn_io *io) {
  TYPEL(io,4);REGL(io,0x00,0xA8000AUL);REGL(io,0x01,0x020100UL);REGL(io,0x02,0x060503UL);REGL(io,0x03,0x0C0908UL);REGL(io,0x04,0x00000DUL);
  /* v10.209: 04/28 (HCM p160) says which vertex parameters the vertex carries; the rest take defaults. Bits 11:10 are coordinate set 1
   * (TextureB) S and T: with them clear, texture 1 on set 1 read (0, 0) (board, v10.208). XP sends FFCC00 for a unit on set 1 (CLXP3D T24). */
+ /* .664 (board, CLXP3D T153/T154 on .663: drawn with no bump; XP T153-T156 send FFCCC0): a dependent read on unit 2 (the three-stage
+  * bump form, its TAU words 321111B2 / 321121B2) takes its coordinates from TextureC's S and T (bits 7:6), made by the coordinate
+  * instructions, as unit 1's does from TextureB's in the two-stage form */
  {uint32_t n=units(p),u,b=0;if(full(p)&&n>1)for(u=0;u<n;u++)if(p->stages.set[u])b=0xC00UL;
+  if(full(p)&&p->stages.ps&&n==3&&p->stages.ntau==3&&(p->stages.tau[2]==0x321111B2UL||p->stages.tau[2]==0x321121B2UL||p->stages.tau[2]==0x321011B2UL||p->stages.tau[2]==0x321021B2UL||p->stages.tau[2]==0x321101B2UL))b|=0xC0UL; /* .665: shape B's (T157, T159); .666: T155's */
  REGL(io,0x25,0xF6CC00UL);REGL(io,0x28,0xFFC000UL|b);}REGL(io,0x2A,0x3F8000UL);REGL(io,0x2B,0x3F8000UL);
  V900L(v900_c10,10); /* .605 */
  LW_SAVE();

@@ -476,6 +476,7 @@ VDDPROC(POST_HIRES_TO_VGA, post_hires_to_vga)
 {
 	dbg_printf("POST_HIRES_TO_VGA\n");
 	mode_changing = FALSE;
+	{extern void VESA_dos_restore(void); VESA_dos_restore();} /* .673: as RESTORE_REGISTERS (whichever the VDD calls after its own restore; it writes only a wrong clock select) */
 	if(is_qemu)
 	{
 		Enable_Global_Trapping(0x1CE);
@@ -558,7 +559,8 @@ VDDPROC(SAVE_REGISTERS, save_registers)
 VDDPROC(RESTORE_REGISTERS, restore_registers)
 {
 	//dbg_printf("RESTORE_REGISTERS\n");
-	// NOP
+	extern void VESA_dos_restore(void);
+	if(vm != ThisVM) VESA_dos_restore(); /* .673: a DOS session given the display: the BIOS's clock select (vxd_vesa.c) */
 }
 
 VDDPROC(VIRTUALIZE_CRTC_IN, virtualize_crtc_in)

@@ -37,7 +37,7 @@ extern void _tnl_run_pipeline( GLcontext *ctx );
 
 extern void _tnl_destroy_pipeline( GLcontext *ctx );
 
-extern void _tnl_install_pipeline( GLcontext *ctx,
+extern GLboolean _tnl_install_pipeline( GLcontext *ctx,
 				   const struct tnl_pipeline_stage **stages );
 
 

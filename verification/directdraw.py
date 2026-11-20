@@ -82,10 +82,11 @@ class HAL:
     assert n==1040 and z==4;self.gpu.u.mem_write(ARENA+0x7000,bytes(u.mem_read(ip,n)));blob=pack([self.gpu.call('VX_dac',(ARENA+0x7000,))])
    elif code==0x85500018:
     assert n==16 and z==64;self.gpu.u.mem_write(REQ,bytes(u.mem_read(ip,16)));self.gpu.call('VX_flip_control',(REQ,REP));blob=bytes(self.gpu.u.mem_read(REP,64))
+    if getattr(self,'flip_result',None) is not None:blob=pack([self.flip_result])+blob[4:] # .705: the VxD's answer replaced (a timed-out blank wait)
    elif code==0x8550001C:
     assert n==80 and z==64;self.gpu.u.mem_write(REQ,bytes(u.mem_read(ip,n)));self.gpu.call('VX2D_ovl',(REQ,REP));blob=bytes(self.gpu.u.mem_read(REP,64))
    elif code==0x85500022: # v10.389: TEXDBG 0xBD 0x81 at a flip (the thread's run time): answered as the VxD does
-    assert n==8 and z==32 and (self.word(ip)==0xBD or (self.word(ip)==0xBC and self.word(ip+4)==0x446));blob=pack([self.word(ip),self.word(ip+4),getattr(self,'stretch3d',0) if self.word(ip)==0xBC else 0,0,0,0,0,0]) # .628: BC 446 = ACCEL_STRETCH3D (0: the CPU's stretch, as these checks expect)
+    assert n==8 and z==32 and (self.word(ip)==0xBD or (self.word(ip)==0xBC and self.word(ip+4) in (0x446,0x44B)));blob=pack([self.word(ip),self.word(ip+4),(getattr(self,'stretch3d',0) if self.word(ip+4)==0x446 else 1) if self.word(ip)==0xBC else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,0,3 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0]) # .681: o[7] bit 1 ACCEL_D3D_TNPF; .680: o[7] ACCEL_D3D_TNFASTIX 1; .677: ACCEL_D3D_PCLGATE, ACCEL_D3D_SPECSE 1, 1; .680: o[6] ACCEL_D3D_HWCULL 0 in the emulator (its draws cull on the CPU) # .675: BC 44B at the DLL's start (.676: ACCEL_D3D_PRECULL, ACCEL_D3D_IXSKIP: 1, 1) # .628: BC 446 = ACCEL_STRETCH3D (0: the CPU's stretch, as these checks expect)
    elif code==0x85500028: # v10.432: VX_IOCTL_LOCKMEM (the VxD's own rules are checked in native3d.py): recorded, answered as locked
     assert n==12 and z==16;q=list(struct.unpack('<3I',u.mem_read(ip,12)));self.locks=getattr(self,'locks',[])+[q]
     pages=((q[1]+q[2]-1)>>12)-(q[1]>>12)+1;blob=pack([pages,q[1]&~4095,1,1])
@@ -132,6 +133,18 @@ def checks():
   assert h.call('_VXLock@4',(lock,))==0 and g.excluded==1
   assert h.call('_VXUnlock@4',(lock,))==0 and g.excluded==0
   cases.append(f'{bpp}bpp DirectDraw primary Lock/Unlock excludes and restores cursor')
+  # .657: the bracket a Lock opened is ended by its Unlock even when the surface no longer describes as the primary (was: described again);
+  # a Lock while the engine is busy opens none, and its Unlock closes none (another bracket stays open)
+  assert h.call('_VXLock@4',(lock,))==0 and g.excluded==1
+  h.surface(h.dst,h.dg,0x10000,256,50,32);assert h.call('_VXUnlock@4',(lock,))==0 and g.excluded==0,'the Unlock left the bracket open'
+  h.surface(h.dst,h.dg,0,g.pitch,64,48);g.lab=True;assert h.call('_VXLock@4',(lock,))==0 and g.excluded==0;g.lab=False
+  g.begin();assert h.call('_VXUnlock@4',(lock,))==0 and g.excluded==1,'the Unlock closed a bracket its Lock never opened';g.end()
+  cases.append(f'{bpp}bpp primary Lock/Unlock bracket kept by surface (.657)')
+  # .706 (a review of .703): a primary destroyed while locked closes its Lock's bracket (it stayed open until the process ended)
+  assert h.call('_VXLock@4',(lock,))==0 and g.excluded==1
+  ds=ARENA+0xa100;h.u.mem_write(ds,pack([0,h.dst,0,0]));h.call('_VXDestroySurface@4',(ds,))
+  assert g.excluded==0,'the destroyed primary left its Lock\'s bracket open'
+  cases.append(f'{bpp}bpp .706: a primary destroyed while locked closes its cursor bracket')
   h.surface(h.dst,h.dg,0x10000,256,50,32)
   desc=ARENA+0xa100;can=ARENA+0xa200
   h.u.mem_write(desc,bytes(108));h.u.mem_write(desc,pack([108]));h.u.mem_write(desc+104,pack([0x4040]));h.u.mem_write(can,pack([0,desc,0,0,0]))
@@ -307,6 +320,15 @@ def cpu_checks():
   run('overlapping mirror in one surface from a staged source',v1,v1,(2,2,22,22),(6,6,26,26),0,fx=2)
   run('clipped overlapping copy in one surface from a staged source',v1,v1,(4,4,24,24),(0,0,20,20),0,clip=[(4,4,14,14),(14,14,24,24),(4,14,14,24)])
   run('clipped copy in one surface, rectangles apart, on the engine',v1,v1,(24,20,44,36),(0,0,20,16),3*E,clip=[(24,20,30,26),(34,28,44,36),(24,30,28,36)])
+  # .659 (board, .654-.658: a new process given an ended one's ID was handed that process's staging block; its stretched Present wrote
+  # there): the kept block is the process's by ID and token; a new token (a new process under the ID) gets a block of its own, no token none kept
+  if 'tok_pid' in h.sym:
+   tp,tv=h.sym['tok_pid'],h.sym['tok_val']
+   def stg():n0=getattr(h,'allocs',0);run('staged stretch (token)',v1,v1,(0,0,20,20),(10,10,20,20),0);return getattr(h,'allocs',0)-n0
+   h.u.mem_write(tp,pack([0x1000]));h.u.mem_write(tv,pack([5]))
+   a1=stg();a2=stg();h.u.mem_write(tv,pack([6]));a3=stg();a4=stg();h.u.mem_write(tp,pack([0]));h.u.mem_write(tv,pack([0]));a5=stg();a6=stg()
+   assert (a1,a2,a3,a4,a5,a6)==(1,0,1,0,1,1),(a1,a2,a3,a4,a5,a6)
+   cases.append(f'{bpp}bpp the staging block kept per process ID and token: a new token under the same ID gets its own, no token keeps none (.659)')
  # v10.285 (review): a tall clipped stretch: (2n+1)*src overflowed 32 bits (a source of 65535 rows, destination rows near 40000)
  h=HAL(32);SYS=ARENA+0x40000
  src=Surf(h,ARENA+0xc000,ARENA+0xc080,'s',SYS,4,1,65535,4);dst=Surf(h,ARENA+0xc100,ARENA+0xc180,'v',FB+0x10000,16,1,40000,4)
@@ -332,7 +354,7 @@ def flip_checks():
   def flip(flags=0,target=back):
    h.u.mem_write(data,pack([0,front,target,flags,0x1234,0,0,0]));rc=h.call('_VXFlip@4',(data,));return rc,h.word(data+16)
   v=g.vbn;assert flip()==(1,0) and g.crt_start()==stride>>1 and g.vbn>v;cases.append(f'{bpp}bpp Flip callback moves the display start to the target surface')
-  v=g.vbn;assert flip(8,front)==(1,0) and g.crt_start()==0 and g.vbn>v;cases.append(f'{bpp}bpp .555: DDFLIP_NOVSYNC flips as the one-frame flip (the old front guarded until the blank)')
+  v=g.vbn;assert flip(8,front)==(1,0) and g.crt_start()==0 and g.vbn==v and g.crt.get(0x32,0)&1;cases.append(f'{bpp}bpp .696: DDFLIP_NOVSYNC reaches the VxD and flips at once from the next scan line (CR32 bit 0, no blank wait)')
   assert flip()==(1,0)
   # a surface that is not a whole screen at the scanout pitch cannot be flipped to
   odd=ARENA+0xb500;og=ARENA+0xb600;h.surface(odd,og,stride,pitch//2,512,768);before=g.crt_start()
@@ -360,6 +382,9 @@ def flip_checks():
    h.u.mem_write(wb,pack([0,flags,0,0,0x1234,0]));assert h.call('_VXWaitVB@4',(wb,))==1 and h.word(wb+16)==0,name
   h.u.mem_write(wb,pack([0,0x80000006,7,0,0x1234,0]));assert h.call('_VXWaitVB@4',(wb,))==1 and h.word(wb+8) in (0,1);cases.append(f'{bpp}bpp WaitForVerticalBlank begin, end and test requests')
   h.u.mem_write(wb,pack([0,0x10,0,0,0x1234,0]));assert h.call('_VXWaitVB@4',(wb,))==0;cases.append(f'{bpp}bpp unknown vertical-blank request is left to the runtime')
+  for res,want in ((3,0x80004005),(2,0x80004005),(0,0)): # .705 (a review of .703): the VxD's timeout (3) or failure (2) is not a blank reached
+   h.flip_result=res;h.u.mem_write(wb,pack([0,1,0,0,0x1234,0]));assert h.call('_VXWaitVB@4',(wb,))==1 and h.word(wb+16)==want,(res,hex(h.word(wb+16)))
+  h.flip_result=None;cases.append(f'{bpp}bpp .705: a vertical-blank wait the VxD timed out or failed answers DDERR_GENERIC (was DD_OK)')
   se=ARENA+0xb900;h.u.mem_write(se,pack([0,1,0,0x1234,0]));assert h.call('_VXSetExclusive@4',(se,))==0 and g.crt_start()==stride>>1
   h.u.mem_write(se,pack([0,0,0,0x1234,0]));assert h.call('_VXSetExclusive@4',(se,))==0 and g.crt_start()==0;cases.append(f'{bpp}bpp leaving exclusive mode puts the desktop back')
   cl=[v for v in getattr(h,'ctrl_log',[]) if v>>8==0xFD0000];assert cl[-2:]==[0xFD000001,0xFD000000],cl;cases.append(f'{bpp}bpp entering and leaving exclusive mode sends the async gate codes to the VxD (on, then off)')

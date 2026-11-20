@@ -637,6 +637,15 @@ static GLfloat ref_fog(const sp_store *st,GLfloat z) {
   if(k>256-2)return (GLfloat).0006595;return st->exptab[k]+(f-k)*(st->exptab[k+1]-st->exptab[k]);}
 }
 /* vertex i of the list: clip coordinates to clip[4], its clip mask, and the engine's vertex at dst */
+/* .639 (Flocks.scr: 2,016 one-triangle lit list draws a frame, one directional light, no local viewer: every one declined, reason 0x20):
+ * the pass takes the draws Mesa lights with its fast loop (no light needs the vertices: all directional, no spot, no local viewer).
+ * With eye coordinates in use nothing changes (a directional light's _VP_inf_norm and _h_inf_norm are the eye space's, as before for a
+ * directional light among positional ones). Without them (lighting on, a length-preserving modelview, nothing else asking) Mesa lights
+ * in object space: it moves each light's direction and the eye's z into object space (compute_light_positions, the same fields) and
+ * leaves the normals where they are, normalized when GL_NORMALIZE is on (t_vb_normals.c). The pass then uses the identity in place
+ * of the inverse modelview's 3 x 3. The sums differ from Mesa's fast loop in the order of the additions only (the ambient term). */
+static const GLfloat sp_ident[16]={1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+static const GLfloat *sp_ninv(const GLcontext *ctx) {return ctx->_NeedEyeCoords?ctx->ModelviewMatrixStack.Top->inv:sp_ident;}
 static GLubyte ref_vertex(GLcontext *ctx,const sp_store *st,GLuint i,GLfloat *clip,GLubyte *dst) {
  const vx_soa *so=st->so;const GLfloat *m=ctx->_ModelProjectMatrix.m,*e=ctx->ModelviewMatrixStack.Top->m,*vp=VXGL_CTX(ctx)->ViewportMatrix.m;
  GLfloat ox=so->x[i],oy=so->y[i],oz=so->z[i],eye[3],col[4],proj[4],*w=(GLfloat*)dst;GLubyte mask=0;int u;
@@ -646,7 +655,7 @@ static GLubyte ref_vertex(GLcontext *ctx,const sp_store *st,GLuint i,GLfloat *cl
  if(mask){proj[0]=proj[1]=proj[2]=0.0F;proj[3]=1.0F;}else{GLfloat oow=1.0F/clip[3];proj[0]=clip[0]*oow;proj[1]=clip[1]*oow;proj[2]=clip[2]*oow;proj[3]=oow;}
  w[0]=vp[0]*proj[0]+vp[12];w[1]=vp[5]*proj[1]+vp[13];w[2]=vp[10]*proj[2]+vp[14];w[3]=proj[3];
  eye[0]=e[0]*ox+e[4]*oy+e[8]*oz+e[12];eye[1]=e[1]*ox+e[5]*oy+e[9]*oz+e[13];eye[2]=e[2]*ox+e[6]*oy+e[10]*oz+e[14];
- {const GLfloat *inv=ctx->ModelviewMatrixStack.Top->inv;GLfloat ux=so->nx[i],uy=so->ny[i],uz=so->nz[i],n[3];
+ {const GLfloat *inv=sp_ninv(ctx);GLfloat ux=so->nx[i],uy=so->ny[i],uz=so->nz[i],n[3];
   if(st->normmode==2){GLfloat sc=ctx->_ModelViewInvScale;n[0]=ux*(sc*inv[0])+uy*(sc*inv[1])+uz*(sc*inv[2]);n[1]=ux*(sc*inv[4])+uy*(sc*inv[5])+uz*(sc*inv[6]);n[2]=ux*(sc*inv[8])+uy*(sc*inv[9])+uz*(sc*inv[10]);}
   else {n[0]=ux*inv[0]+uy*inv[1]+uz*inv[2];n[1]=ux*inv[4]+uy*inv[5]+uz*inv[6];n[2]=ux*inv[8]+uy*inv[9]+uz*inv[10];
    if(st->normmode==1){GLdouble len=n[0]*n[0]+n[1]*n[1]+n[2]*n[2];if(len>1e-20){GLfloat sc=1.0F/SQRTF(len);n[0]*=sc;n[1]*=sc;n[2]*=sc;}else n[0]=n[1]=n[2]=0;}}
@@ -1210,7 +1219,7 @@ static GLuint sp_prepare(GLcontext *ctx,sp_store *st) {
  if(!node&&vxgl_ssepass_early&&ctx->Light.Enabled){ /* v10.497 (ACCEL_OPENGL_SSEEARLY; board, VXFLAT v2.4: the lit scenes Mesa's fast lighting draws 5-12% slower with
   * the box of v10.496, every vertex copied for a draw the pass then left): the state the lighting checks below decline, before the copy */
   GLuint e=0;
-  if(!ctx->Visual.rgbMode||!ctx->Light._NeedVertices||!ctx->_NeedEyeCoords||ctx->Light.Model.TwoSide||ctx->Light.Model.ColorControl==GL_SEPARATE_SPECULAR_COLOR)e|=SP_LIGHTKIND;
+  if(!ctx->Visual.rgbMode||ctx->Light.Model.TwoSide||ctx->Light.Model.ColorControl==GL_SEPARATE_SPECULAR_COLOR)e|=SP_LIGHTKIND;
   if(!ctx->ModelviewMatrixStack.Top->inv)e|=SP_NORMALS;
   if(e){if(RENDERINPUTS_TEST(tnl->render_inputs_bitset,_TNL_ATTRIB_COLOR1))e|=SP_LAYOUT;vxgl_ssepass_imm_stat[2]++;return e;}}
  if(!node){so=imm_build(ctx,st);if(!so)return SP_IMM;} /* v10.488 */
@@ -1236,7 +1245,7 @@ static GLuint sp_prepare(GLcontext *ctx,sp_store *st) {
  st->lit=ctx->Light.Enabled?1:0;st->colmat=0;
  if(st->lit) {
   struct gl_light *light;int n=0,keep=0;
-  if(!ctx->Visual.rgbMode||!ctx->Light._NeedVertices||!ctx->_NeedEyeCoords||ctx->Light.Model.TwoSide||ctx->Light.Model.ColorControl==GL_SEPARATE_SPECULAR_COLOR)why|=SP_LIGHTKIND;
+  if(!ctx->Visual.rgbMode||ctx->Light.Model.TwoSide||ctx->Light.Model.ColorControl==GL_SEPARATE_SPECULAR_COLOR)why|=SP_LIGHTKIND;
   if(!(so->have&1)||!ctx->ModelviewMatrixStack.Top->inv)why|=SP_NORMALS; /* the normals from the list (a constant normal: the pipeline) */
   {GLuint a;for(a=_TNL_FIRST_MAT;a<=_TNL_LAST_MAT;a++)if(VB->AttribPtr[a]&&VB->AttribPtr[a]->stride)why|=SP_MATERIAL;} /* a material per vertex: the list's (not built) */
   if(ctx->Light.ColorMaterialEnabled&&(so->have&2)&&!so->const_color){ /* colours differing with colour material: Mesa updates the material a vertex (update_materials); the
@@ -1264,7 +1273,7 @@ static GLuint sp_prepare(GLcontext *ctx,sp_store *st) {
     memcpy(st->lk,key,kn*sizeof(GLfloat));keep=2;}
    if(!keep){_mesa_update_material(ctx,~0U);_mesa_validate_all_lighting_tables(ctx);st->lk_valid=0;if(kn){memcpy(st->lk,key,kn*sizeof(GLfloat));st->lk_n=kn;st->lk_valid=2;}}}
   st->local=ctx->Light.Model.LocalViewer?1:0;
-  st->normmode=ctx->Transform.Normalize?1:(ctx->Transform.RescaleNormals&&ctx->_ModelViewInvScale!=1.0F)?2:0;
+  st->normmode=ctx->Transform.Normalize?1:((ctx->_NeedEyeCoords?ctx->Transform.RescaleNormals:!ctx->Transform.RescaleNormals)&&ctx->_ModelViewInvScale!=1.0F)?2:0; /* .639: object space: Mesa rescales there when RESCALE_NORMAL is off (t_vb_normals.c) */
   if(keep==2){n=0;why|=st->lk_why;vxgl_ssepass_stat[18]++; /* v10.495: the lights' material products splatted again */
    foreach(light,&ctx->Light.EnabledList){if(n>=st->nlights)break;
     splat3(&st->lt[n].amb,light->_MatAmbient[0]);splat3(&st->lt[n].dif,light->_MatDiffuse[0]);splat3(&st->lt[n].spc,light->_MatSpecular[0]);
@@ -1292,7 +1301,7 @@ static GLuint sp_prepare(GLcontext *ctx,sp_store *st) {
   if(!keep){st->nlights=n;st->lk_valid=st->lk_valid==2&&!why?1:0;st->lk_why=0;} /* v10.492: kept only for a set-up made whole now (a loop left early: nothing kept) */
   splat(&st->sumA,ctx->Light.Material.Attrib[MAT_ATTRIB_FRONT_DIFFUSE][3]);st->const_col[3]=to_ub(st->sumA.f[0]);
   splat3(&st->lma,ctx->Light.Model.Ambient);splat3(&st->em,ctx->Light.Material.Attrib[MAT_ATTRIB_FRONT_EMISSION]);splat3(&st->ma,ctx->Light.Material.Attrib[MAT_ATTRIB_FRONT_AMBIENT]);splat3(&st->md,ctx->Light.Material.Attrib[MAT_ATTRIB_FRONT_DIFFUSE]);
-  if(!why){const GLfloat *inv=ctx->ModelviewMatrixStack.Top->inv;GLfloat sc=st->normmode==2?ctx->_ModelViewInvScale:1.0F,t[9];static const int ix[9]={0,1,2,4,5,6,8,9,10};
+  if(!why){const GLfloat *inv=sp_ninv(ctx);GLfloat sc=st->normmode==2?ctx->_ModelViewInvScale:1.0F,t[9];static const int ix[9]={0,1,2,4,5,6,8,9,10};
    for(i=0;i<9;i++)t[i]=st->normmode==2?sc*inv[ix[i]]:inv[ix[i]];
    if(!vxgl_ssepass_cache||memcmp(t,st->nm_c,sizeof(t))){memcpy(st->nm_c,t,sizeof(t));for(i=0;i<9;i++)splat(&st->nm[i],t[i]);}} /* v10.492: splatted only when changed */
  }

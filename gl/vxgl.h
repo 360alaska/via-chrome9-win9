@@ -281,7 +281,7 @@ void vxgl_init_tri_funcs(GLcontext *ctx);
 void vxgl_fallback(vxgl_ctx *c,GLuint bit,GLboolean on);
 void vxgl_fallback_bits(vxgl_ctx *c,GLuint mask,GLuint bits);
 void vxgl_choose_render_state(GLcontext *ctx);
-void vxgl_init_pipeline(GLcontext *ctx); /* v10.295: Mesa's pipeline with the projective stage */
+GLboolean vxgl_create_tnl(GLcontext *ctx); /* v10.295: Mesa's pipeline with the projective stage */
 
 /* vxgl_state.c */
 void vxgl_translate_state(vxgl_ctx *c);

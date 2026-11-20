@@ -17,7 +17,7 @@ class D3D(HAL):
   if 'vx_d3d_hold_on' in self.sym:self.u.mem_write(self.sym['vx_d3d_hold_on'],pack([0])) # .551: the HAL sets it at DriverInit; the cases that start DrawPrimitives2 themselves (emu_start) expect it off
   self.hold=0 # .550: the queue held across DrawPrimitives2 calls off for the cases written before it (each expects its call's packets sent)
  def call(self,n,args=()):
-  if n=='_VX_D3D_DP2@4' and 'vx_d3d_hold_on' in self.sym:self.u.mem_write(self.sym['vx_d3d_hold_on'],pack([self.hold]))
+  if n in ('_VX_D3D_DP2@4','_VX_D3D_RenderState@4','_VX_D3D_RenderPrimitive@4','_VX_D3D_Clear@4') and 'vx_d3d_hold_on' in self.sym:self.u.mem_write(self.sym['vx_d3d_hold_on'],pack([self.hold])) # .663: the legacy calls hold too
   return super().call(n,args)
  def import_call(self,u,a,z,data):
   name,dll=data;argc=None;ret=1
@@ -109,6 +109,18 @@ def checks():
  assert hw(3)-st0[3]==1 and len(h.native)==n0+3 and h.word(h.sym['vx_d3d_hold_stat']+4*0)-st0[0]==4,(len(h.native)-n0,[hw(k)-st0[k] for k in range(6)])
  h.hold=0
  cases.append('.550: draw packets held across DrawPrimitives2 calls go in one VxD call at the next Lock; a refused held packet is dropped, not retried')
+ # .663 (audit 01): a legacy RenderState between a held draw and the next Lock keeps the draw (the call start cleared it unsent)
+ h.hold=1;u.mem_write(command,b'PAD!'+stream);u.mem_write(dp,pack(fields));assert h.call('_VX_D3D_DP2@4',(dp,))==1 and h.word(dp+48)==0;n1=len(h.native)
+ st=ARENA+0xd400;u.mem_write(command+0x100,pack([9,1]));u.mem_write(st,pack([context,0x100,1,h.src,0]));h.call('_VX_D3D_RenderState@4',(st,))
+ assert h.word(st+16)==0 and len(h.native)==n1,(h.word(st+16),len(h.native)-n1)
+ h.call('_VXLock@4',(lk,));assert len(h.native)==n1+1 and u32(h.native[-1],108)==3,len(h.native)-n1
+ cases.append('.663 (audit 01): a held draw survives a legacy RenderState call and goes at the next Lock')
+ # .663 (audit 04): a legacy Clear sends the held draws before the clear
+ u.mem_write(command,b'PAD!'+stream);u.mem_write(dp,pack(fields));assert h.call('_VX_D3D_DP2@4',(dp,))==1;n1=len(h.native)
+ cl=ARENA+0xd500;u.mem_write(cl,pack([context,1,0xff123456,0,0,0,0]));h.call('_VX_D3D_Clear@4',(cl,))
+ assert h.word(cl+24)==0 and len(h.native)==n1+2 and u32(h.native[-2],108)==3 and u32(h.native[-1],12)==2,(len(h.native)-n1)
+ h.hold=0
+ cases.append('.663 (audit 04): a legacy Clear sends the held draws first, then the clear')
  # DX3/5 entry points share the parser and native backend. These exercise
  # the compiled stdcall ABI rather than calling a host-side reimplementation.
  state=ARENA+0xd000;get=ARENA+0xd100;one=ARENA+0xd200;indexed=ARENA+0xd300
@@ -178,8 +190,11 @@ def checks():
  u.mem_write(create,pack([ARENA+0xb000,h.dst,0,h.pid,0,0]));h.call('_VX_D3D_Create@4',(create,));context=h.word(create+16)
  u.mem_write(state,pack([0,h.dst,0,0]));assert h.call('_VXDestroySurface@4',(state,))==0
  u.mem_write(get,pack([context,4,9,0,0]));h.call('_VX_D3D_GetState@4',(get,))
- assert h.word(get+16)==0x887601c2
- cases.append('destroying an unmapped context surface invalidates the context before address reuse')
+ # .649 (board, 3DMark 2001 on .648: a depth surface destroyed while bound lost the context for good, ValidateDevice failed): the
+ # surface is unbound (its description and identity forgotten, so a surface made later at the same address is not drawn to), not lost
+ assert h.word(get+16)!=0x887601c2
+ qp=ARENA+0xd000;assert h.call('_VX_D3D_QueryPhases@8',(qp,395))==395 and h.word(qp+394*4)>=1
+ cases.append('destroying an unmapped context surface unbinds it from the context (not lost) before address reuse')
  return cases+audit_checks()+texture_checks()+memory_checks()+lock_checks()+alignment_checks()+audit319_checks()+phase_checks()+indexed_list_checks()+recorder_checks()
 
 def audit_checks():
@@ -416,6 +431,10 @@ def audit_checks():
  waits=lambda:h.word(h.sym['vx_d3d_rt_waits']);w0=waits()
  assert target(5001)==0 and waits()==w0
  assert dp2(clear)[0]==0 and struct.unpack_from('<5I',h.native[-1],20)==(0xe8000,256,64,64,1),struct.unpack_from('<5I',h.native[-1],20)
+ # Rebinding the same colour storage stays ordered without a synchronous engine wait.
+ assert target(5001)==0 and waits()==w0,'rebinding the same render-target texture waited'
+ assert dp2(clear)[0]==0 and u32(h.native[-1],20)==0xe8000
+ cases.append('rebinding the same RTT colour surface keeps both clears on the same target and skips the GPU wait')
  assert target(1129)==0 and waits()==w0+1,'leaving a render-target texture waits for its draws'
  assert target(1129)==0 and waits()==w0+1,'leaving an ordinary target does not'
  stream=struct.pack('<BBH',25,0,7)+b''.join(struct.pack('<HHI',0,k,v) for k,v in [(0,5001),(1,2),(2,2),(4,2),(5,2),(13,3),(16,2)])+struct.pack('<BBHH',18,0,1,0)

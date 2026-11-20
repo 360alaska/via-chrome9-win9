@@ -30,7 +30,7 @@ def main():
   run('the answers kept for a state follow the state: one call against a call a command, 3,000 random streams'+(', and against .551' if a.ref else '')+' (.552)',[sys.executable,'tests/test_ep.py','3000'],ref)
   # the captured recordings (g.rec, tests/tnl_544.bin) are not in the public repository: their checks run only when the files are there
   if a.ref and (ROOT/'g.rec').exists():
-   run('the recording\'s validated packets for the index check',[ROOT/'tests/vx_replay','g.rec','-q'],{'VX_DUMP':str(ROOT/'tests/ixcheck_packets.bin')})
+   run('the recording\'s validated packets for the index check',[ROOT/'tests/vx_replay','g.rec','-q','-z','5'],{'VX_DUMP':str(ROOT/'tests/ixcheck_packets.bin')})
    run('the VxD\'s index check two a word: the arithmetic, and 20,000 changed packets against .551\'s loop (.552)',[sys.executable,'tests/test_ixcheck.py',ROOT/'tests/core.so',ROOT/'tests/ref_core.so',ROOT/'tests/ixcheck_packets.bin','20000'])
   else:run('the VxD\'s index check two a word: the arithmetic against the loop (.552; --ref adds the built function against .551)',[sys.executable,'tests/test_ixcheck.py'])
   # .553 (.552 changes): the scalar fog's bits, the span constants after a template reset and an FVF change; the packet copy by spans
@@ -42,6 +42,18 @@ def main():
   if (ROOT/'tests/tnl_544.bin').exists():run('the T&L group path against .543, GRID-like scene (.544)',[sys.executable,'tests/bench_tnl.py','tests/core.so','3','tests/tnl_544.bin'])
   run('the T&L cases of .544\'s review (ZBIAS, base 65535, linear fog, the side-plane fallback) through the VxD\'s checks',[sys.executable,'tests/tnl_544_cases.py'])
   run('v4 review: clip overflow and rejected ZRANGE',[sys.executable,'tests/tnl_v4_review_cases.py'])
+  run('.640: untransformed points and lines through the driver\'s T&L, draws larger than the scratch buffer, the _IMM commands, XYZB vertices',[sys.executable,'tests/tnl_pl_cases.py'])
+  run('.656: a projected set with two texture units (unit 1 on its own set, unit 0 with a second unit)',[sys.executable,'tests/proj2_cases.py'])
+  run('.658: each VXPROBE request answered by one branch',[sys.executable,'tests/probe_subs.py'])
+  run('.663 (review of .661): a busy retry puts back the T&L state the commands after its offset changed',[sys.executable,'tests/tnl_retry_cases.py','tests/core.so'])
+  run('.663 (review of .661): the review\'s findings fixed (texture sets, flat shading, fog, edge flags, wide points, state blocks, legacy wrap)',[sys.executable,'tests/audit663_cases.py','tests/core.so'])
+  run('.668 (review of .667): state blocks keep their final T&L state (past 1,024 bytes, past eight blocks), light definitions parked, not lost',[sys.executable,'tests/review667_cases.py','tests/core.so'])
+  run('.642: the T&L\'s draws taken as a vertex range in order against the gather by index (the same vertex bytes); a transformed z of infinity held to the range',[sys.executable,'tests/tnl_dense_cases.py'])
+  run('.646 (review of .644): the T&L\'s lighting against Direct3D\'s formulas (spot cones, specular, light indices past 15)',[sys.executable,'tests/tnl_light_cases.py','tests/core.so','100','645'])
+  run('.646 (review of .644): the T&L\'s output coordinate set for each stage (a third stage reading set 0)',[sys.executable,'tests/tnl_stage_sets.py','tests/core.so'])
+  run('.649: a context whose target or depth surface was destroyed while bound: unbound, not lost',[sys.executable,'tests/rt_unbound_cases.py','tests/core.so'])
+  run('.646 (review of .644): the T&L\'s fast paths against its one-vertex path, 300 random scenes',[sys.executable,'tests/fuzz_tnl_diff.py','tests/core.so','300','644'])
+  run('.698: the T&L with the guard band against without, rasterised, 200 random scenes',[sys.executable,'tests/tnl_guard_cases.py','tests/core.so','200','698'])
   run('the pass-through span kernels: the assembled SSE2 bytes against the C reference (.545)',['clang','-m32','--target=i686-linux-gnu','-O2','-msse2','-nostdlib','-static','-ffreestanding','-fno-stack-protector','-fno-pic','-Wa,--noexecstack','tests/test_hal_asm.c','tests/hal_kernels.s','-o','tests/test_hal_asm'])
   run('the pass-through span kernels and the index maximum, bytes == C, 60,000 random cases',[ROOT/'tests/test_hal_asm'])
   if a.asan:
@@ -76,6 +88,7 @@ def main():
   run('the VX900 vertex input in the 3D layer (.605)',[sys.executable,'tests/vx900_d3d.py'])
   run('the built VXDDRAW.DLL with packets held and the callback lock not to be had: Lock, Blt and Flip answer still drawing (.575, peer review)',[sys.executable,'tests/hold_timeout.py'])
   if a.asan:run('OpenGL ICD on the host: Mesa, back end and core against swrast',[sys.executable,'tests/gl_host.py']) # v10.239
+  if a.asan:run('.672: lock-wide draws (ACCEL_OPENGL_LOCKDRAW) give the same packets as narrow ones, with state changes between draws',[sys.executable,'tests/lockdraw_cases.py'])
  finally:
   gen={'.o','.obj','.err','.map','.lib','.dll','.exe','.lst','.res','.pyc'} # v10.319 (audit T4): gl/ too, build products left out
   hashes={p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(list((ROOT/'src').rglob('*'))+list((ROOT/'gl').rglob('*'))) if p.is_file() and p.suffix.lower() not in gen}

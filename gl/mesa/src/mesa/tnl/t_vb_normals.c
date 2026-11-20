@@ -159,7 +159,7 @@ alloc_normal_data(GLcontext *ctx, struct tnl_pipeline_stage *stage)
       return GL_FALSE;
 
    _mesa_vector4f_alloc( &store->normal, 0, tnl->vb.Size, 32 );
-   return GL_TRUE;
+   return store->normal.data != NULL;
 }
 
 

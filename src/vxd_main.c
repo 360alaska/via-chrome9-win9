@@ -41,6 +41,9 @@ THE SOFTWARE.
 #include "vx855_3d.h"
 #include "vx855_2d.h"
 #include "vx855_flip.h"
+/* .668 (board, .667: VXD3DMON's 3DMark log read the VxD's per-run packet and flip counters as zero while the HAL counted 41,049
+ * submits): every clear of them counted, so the monitor can tell when another program cleared them while it watched */
+uint32_t vx_clr_stat[2];
 void vx_lock(void);void vx_unlock(void);void vx_lock_init(uint32_t cyc_per_ms); /* .515: the engine's own lock (vx855_2d.c) */
 
 #include "3d_accel.h"
@@ -195,7 +198,8 @@ void VDD_Get_Mini_Dispatch_Table()
  **/
 void Sys_Critical_Init_proc()
 {
-	// nop
+	extern void VESA_boot_capture(void);
+	VESA_boot_capture(); /* .673: the misc output the BIOS left (the clock select a DOS session needs, vxd_vesa.c) */
 }
 
 DWORD __stdcall Device_IO_Control_proc(DWORD vmhandle, struct DIOCParams *params);
@@ -687,7 +691,7 @@ static void configure_FBHDA()
 			dbg_printf("Vertex area at %lx\n", vx3dn_va_off);
 		}
 		
-		{extern uint32_t vx_stretch3d; DWORD st = 1; /* .632: 1 the default (board, .631, VX900: 0 of 307200 pixels differ from the CPU's, 0.73 ms a Blt against 35.45; VX855 1.14 against 62) */ RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_STRETCH3D", &st); vx_stretch3d = st > 2UL ? 2UL : st;} /* .628: stretching Blts by the 3D engine, a tuning value under test (vx_ddraw.c): 0 the CPU, 1 nearest pixel, 2 bilinear */
+		{extern uint32_t vx_stretch3d; DWORD st = 1; /* .632: 1 the default (board, .631, VX900: 0 of 307200 pixels differ from the CPU's, 0.73 ms a Blt against 35.45; VX855 1.14 against 62) */ RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_STRETCH3D", &st); vx_stretch3d = st > 2UL ? 2UL : st;}
 		{extern uint32_t vx3dn_seam; DWORD sm = 0; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_SEAM", &sm); vx3dn_seam = sm & 0xFFFFUL;} /* .628: the seam cover, a tuning value under test (vx_native3d_hw.c): 0 off, x + 256 * y sixteenths of a pixel */
 		/* .530: FORCE_SOFTWARE, FORCE_QEMU3DFX (the virtual machines' ICDs) and ACCEL_DCI removed: our ICD and the DCI correction always */
 
@@ -728,7 +732,9 @@ static void configure_FBHDA()
 					{extern volatile unsigned long vx2d_prefilter, vx2d_prefilter_cfg; acc = 1; vx2d_prefilter = vx2d_prefilter_cfg = acc ? 1UL : 0UL;}
 					{extern volatile uint32_t vx3dn_mipon, vx3dn_aniso; acc = 1UL; vx3dn_mipon = acc ? 1UL : 0UL; acc = 1UL; vx3dn_aniso = acc ? 1UL : 0UL;} /* v10.199: mipmaps, anisotropic filtering */
 					{extern volatile uint32_t vx3dn_frontz; acc = 1UL; vx3dn_frontz = acc ? 1UL : 0UL;} /* v10.416 */
-					{extern volatile uint32_t vx3dn_flip_ring; acc = 1UL; vx3dn_flip_ring = acc ? 1UL : 0UL;} /* v10.417: XP's flip in the ring */
+					{extern volatile uint32_t vx3dn_flip_ring; acc = 1UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_3D_RINGFLIP", &acc); vx3dn_flip_ring = acc ? 1UL : 0UL;}
+					{extern uint32_t vx3dn_gband; extern unsigned long vx_chip_id; vx3dn_gband = vx_chip_id == 0x5122UL ? 1UL : 0UL;} /* .698: the VxD takes guard-band packets (VX3DN_IX_GUARD) on the VX855 / VX875, where VXCLIP proved the engine's own screen-space clipping (board A, .693); whether the driver's T&L makes them is ACCEL_D3D_GUARDBAND, read by each program as it starts (TEXDBG BC 44B word 3) */
+					{extern volatile uint32_t vx_flip_tear; acc = 1UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_FLIP_TEAR", &acc); vx_flip_tear = acc > 2UL ? 1UL : acc; {extern unsigned long vx_chip_id; if(vx_chip_id != 0x5122UL) vx_flip_tear = 0;}} /* .702: the VX855 / VX875 only until VXNOSYNC pass 9 passes on the VX800 and VX900 (REGRESS.TXT) */ /* .696: a no-vsync flip shown from the next scan line (CR32 bit 0, real-time flipping): 0 = the one-frame flip (.555), 1 = by the line when IGA1 alone shows the frame buffer (default), 2 = also with IGA2 mirroring it (IGA2 has no documented line flip). Under test: kept as a switch until the board confirms it */ /* .692: XP's flip in the ring (v10.417) with the swap's own blank wait skipped (12 = 0C, vx_native3d_vxd.c VX3DN_ring_flip), on by default; the switch stays until board B and GTA3 confirm it (.685-.691: 0 off, 1-6 the forms tried on board A) */
 					{extern volatile uint32_t vx3dn_ringclear; acc = 1UL; vx3dn_ringclear = acc ? 1UL : 0UL;} /* v10.418 */
 					{extern volatile uint32_t vx3dn_unit2c; acc = 1UL; vx3dn_unit2c = acc ? 1UL : 0UL;} /* v10.310: unit 2 on its own coordinate set (TextureC) */
 					{extern volatile uint32_t vx3dn_ckey; acc = 1UL; vx3dn_ckey = acc ? 1UL : 0UL;} /* v10.197: Direct3D texture colour key (XP's T45 program) */
@@ -910,6 +916,7 @@ static void configure_FBHDA()
 /* init device and fill dispatch table */
 BOOL Device_Init_proc(DWORD VM)
 {
+	{extern void VESA_boot_capture(void); VESA_boot_capture();} /* .693: the BIOS's misc output, also when the VDD loads this VxD dynamically (no Sys_Critical_Init) */
 	if(device_ready) return TRUE;
 	critical_section_enter();
 	dbg_printf(dbg_Device_Init_proc);
@@ -976,8 +983,12 @@ volatile unsigned long vx_lock_hal=1;uint32_t vx_lock_stat[6];
 static DWORD lk_page,lk_n,lk_holder[64],lk_holders; /* v10.466: 64 holders (was 16) */
 static void lk_release(void) {if(lk_n){DWORD i;for(i=0;i<lk_n;i++)_LinPageUnLock(lk_page+i,1,0);vx_lock_stat[4]++;}lk_n=0;lk_page=0;lk_holders=0;vx_lock_stat[0]=0;vx_lock_stat[1]=0;vx_lock_stat[5]=0;}
 static void lk_drop(DWORD hdev) {DWORD k;for(k=0;k<lk_holders;k++)if(lk_holder[k]==hdev){lk_holder[k]=lk_holder[--lk_holders];break;}vx_lock_stat[5]=lk_holders;if(lk_n&&!lk_holders)lk_release();}
+void vx_lock(void);void vx_unlock(void); /* vx855_2d.c */
+/* .706 (a review of .703): the page-lock table under the engine lock: _LinPageLock can block (a page brought in), and another thread's
+ * request or handle close could then run halfway through this one (two locks of the range, a holder lost, pages left locked) */
 void VX_lock_request(DWORD op,DWORD a,DWORD n,DWORD hdev,DWORD *out) {
  DWORD page=a>>12,np=n?((a+n-1)>>12)-page+1:0,k,held=0;
+ vx_lock();
  if(op==1){vx_lock_stat[2]++;
   if(!vx_lock_hal||a<0x80000000UL||a+n<a||a+n>0xC0000000UL||!np||np>2048)vx_lock_stat[3]++; /* .560: 2,048 pages (1,024: .559's image, 1,438 pages with the template table and the larger packets, was refused and not kept in memory) */
   else if(lk_n&&(lk_page!=page||lk_n!=np)&&!(lk_holders==1&&lk_holder[0]==hdev))vx_lock_stat[3]++; /* v10.466 (review): another range while
@@ -990,8 +1001,9 @@ void VX_lock_request(DWORD op,DWORD a,DWORD n,DWORD hdev,DWORD *out) {
    if(lk_n){for(k=0;k<lk_holders;k++)if(lk_holder[k]==hdev)held=1;if(!held){if(lk_holders<64)lk_holder[lk_holders++]=hdev;else vx_lock_stat[3]++;}vx_lock_stat[5]=lk_holders;}}}
  else if(op==0)lk_drop(hdev);
  out[0]=lk_n;out[1]=lk_page<<12;out[2]=lk_holders;out[3]=vx_lock_hal;
+ vx_unlock();
 }
-void VX_lock_close(DWORD hdev) {if(lk_holders)lk_drop(hdev);}
+void VX_lock_close(DWORD hdev) {vx_lock();if(lk_holders)lk_drop(hdev);vx_unlock();}
 /* v10.434: the sampler sees whether the render thread is inside this call, while it is on. v10.439 (board, v10.438: "in the VxD" 87 ms of
  * a 132 ms gameplay frame, more than DrawPrimitives2 and Blt together): each thread inside has its own entry in the sampler's table
  * (VX_smp_enter / VX_smp_leave: depth and waits), nothing tied to which thread is the render thread; the render thread's time inside is
@@ -1100,7 +1112,7 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     outBuf[2]=vx_chip_id;outBuf[3]=vx_chip_fb_cfg|(vx_chip_mmio_cfg<<8);{extern int VX_chip_2d(void);outBuf[4]=(DWORD)(VX_chip_accel()?1:0)|(DWORD)(VX_chip_2d()?2:0);} /* .601: bit 0 the 3D engine used, bit 1 the 2D engine */outBuf[5]=vx_status.bar0;outBuf[6]=vx_status.bar1;outBuf[7]=vx_status.stage|(vx_status.failure<<8);} /* .579: the device, its BARs' configuration offsets and bases, whether the engines are used, the bring-up stage and failure */
    if(inBuf[0]==0x7C){extern uint32_t vx3dn_idle_stable;outBuf[0]=0x7C;outBuf[1]=vx3dn_idle_stable;} /* v10.221: idle reads */
    if(inBuf[0]>=0x64&&inBuf[0]<=0x68){extern void VX3DN_lat(uint32_t,uint32_t *);VX3DN_lat(inBuf[0],(uint32_t*)outBuf);} /* v10.321: latency distributions (vx_native3d_vxd.c) */
-   if(inBuf[0]==0x76||inBuf[0]==0x77){extern uint32_t vx3dn_prof[8];int k;outBuf[0]=inBuf[0];for(k=0;k<7;k++)outBuf[1+k]=vx3dn_prof[k];if(inBuf[0]==0x77)for(k=0;k<8;k++)vx3dn_prof[k]=0;} /* v10.220: profile */
+   if(inBuf[0]==0x76||inBuf[0]==0x77){extern uint32_t vx3dn_prof[8];int k;outBuf[0]=inBuf[0];for(k=0;k<7;k++)outBuf[1+k]=vx3dn_prof[k];if(inBuf[0]==0x77){for(k=0;k<8;k++)vx3dn_prof[k]=0;vx_clr_stat[0]++;}} /* v10.220: profile; .668: the clears counted */
    if(inBuf[0]==0xA3||inBuf[0]==0xA4){extern volatile uint32_t vx3dn_fetch,vx3dn_async;extern uint32_t vx3dn_fetch_stat[6];extern volatile unsigned long vx3dn_cmd_off;int k;
     outBuf[0]=vx3dn_fetch?0xA1:0xA2;for(k=0;k<5;k++)outBuf[1+k]=vx3dn_fetch_stat[k];outBuf[6]=vx3dn_cmd_off;outBuf[7]=(vx3dn_async?0x80000000UL:0)|(vx3dn_fetch_stat[5]&0x7FFFFFFFUL);if(inBuf[0]==0xA4)for(k=0;k<6;k++)vx3dn_fetch_stat[k]=0;} /* v10.231: [7] bit 31 async, the rest draws left running */ /* v10.228: fetch on/off, statistics, block offset */
    if(inBuf[0]==0xB0||inBuf[0]==0xB1){extern uint32_t vx3dn_strip_hw,vx3dn_strip_stat[3];int k;outBuf[0]=0xAE;outBuf[1]=vx3dn_strip_hw;for(k=0;k<3;k++)outBuf[2+k]=vx3dn_strip_stat[k];if(inBuf[0]==0xB0)for(k=0;k<3;k++)vx3dn_strip_stat[k]=0;} /* v10.236: AE/AF strips on/off; B0 reads and clears, B1 only reads: strip runs, strip vertices, list runs */
@@ -1109,7 +1121,7 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     if(i<3)for(k=0;k<6&&i*6+k<16;k++)outBuf[2+k]=vx_frame_stat[i*6+k];
     else if(i<11){outBuf[2]=vx_frame_worst[i-3][0];outBuf[3]=vx_frame_worst[i-3][1];outBuf[4]=vx_frame_worst[i-3][2];}
     else if(i==11)outBuf[2]=vx_flip_async;
-    if(inBuf[0]==0xBF){for(k=0;k<16;k++)vx_frame_stat[k]=0;for(k=0;k<8;k++)vx_frame_worst[k][0]=vx_frame_worst[k][1]=vx_frame_worst[k][2]=0;}}
+    if(inBuf[0]==0xBF){vx_clr_stat[1]++;for(k=0;k<16;k++)vx_frame_stat[k]=0;for(k=0;k<8;k++)vx_frame_worst[k][0]=vx_frame_worst[k][1]=vx_frame_worst[k][2]=0;}}
    if(inBuf[0]==0xBD){extern uint32_t vx3dn_sv_worst[8][10],vx3dn_sv_count;uint32_t i=params->cbInBuffer>=8?inBuf[1]:0,k; /* v10.388: slow batch calls */
     for(k=0;k<8;k++)outBuf[k]=0;outBuf[0]=0xBD;outBuf[1]=i;
     if(i==8)outBuf[2]=vx3dn_sv_count;else if(i<8)for(k=0;k<6;k++)outBuf[2+k]=vx3dn_sv_worst[i][k];else if(i>=0x10&&i<0x18){outBuf[2]=vx3dn_sv_worst[i-0x10][6];outBuf[3]=vx3dn_sv_worst[i-0x10][7];outBuf[4]=vx3dn_sv_worst[i-0x10][8];outBuf[5]=vx3dn_sv_worst[i-0x10][9];}
@@ -1124,6 +1136,8 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     if(i<2)for(k=0;k<6;k++)outBuf[2+k]=vx3dn_rhang[i][k];
     else if(i<66)for(k=0;k<6;k++)outBuf[2+k]=vx3dn_rhang_trace[i-2][k];
     else if(i<74)for(k=0;k<6;k++)outBuf[2+k]=vx3dn_rhang_words[(i-66)*6+k];
+    else if(i==0x85){extern uint32_t vx3dn_dq_stat[2],vx_flip_two[8],vx3dn_fr_two,vx3dn_fr_late,vx3dn_xr_late;outBuf[2]=vx3dn_dq_stat[0];outBuf[3]=vx3dn_dq_stat[1];outBuf[4]=vx_flip_two[2]|(vx_flip_two[0]<<8);outBuf[5]=vx3dn_fr_two;outBuf[6]=vx3dn_fr_late;outBuf[7]=vx3dn_xr_late;} /* .695: [4] bit 0 IGA2 shows this frame buffer, bit 1 IGA2 alone (panel), bits 8-15 CR6A, 16-23 CR36; [5] ring flips that moved IGA2 too; [6] ring-flip waits past 100 ms whose flip had run; [7] ring groups that finished while the hang record sampled */ /* .688: the display FIFO registers written again after a reset; how many read different after it */
+    else if(i>=0x82&&i<=0x84){extern uint32_t vx3dn_rhang_disp[18];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_rhang_disp[(i-0x82)*6+k];}
     else if(i==0x81)for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rhang_wn[k]; /* v10.386: the two groups' words and starts */
     else if(i>=0x100&&i<0x140)for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rhang_trace[i-0x100][6+k]; /* v10.386: the groups' first packets */
     else if(i>=0x200&&i<0x200+171)for(k=0;k<6;k++){uint32_t w=(i-0x200)*6+k;outBuf[2+k]=w<1024?vx3dn_rhang_words[w]:0;} /* v10.386: both groups' words (6 a read) */
@@ -1136,7 +1150,15 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i==0xC00){extern uint32_t VX3DN_probe_reset(void);outBuf[2]=VX3DN_probe_reset();} /* .619: VXREG RESET */
     else if(i>=0xA00&&i<0xC00){extern uint32_t vx3dn_rst_snap[2][198];uint32_t w=(i>>8)-0xA,n=(i&0xFFUL)*6;for(k=0;k<6;k++)outBuf[2+k]=n+k<198?vx3dn_rst_snap[w][n+k]:0;}
     else if(i>=0x400&&i<0x410){extern uint32_t VX3DN_peek(uint32_t);for(k=0;k<4;k++)outBuf[2+k]=VX3DN_peek(0x200UL+(i-0x400)*16UL+k*4UL);}
-    else if(i==0x446){extern uint32_t vx_stretch3d;outBuf[2]=vx_stretch3d;} /* .628: ACCEL_STRETCH3D, for the HAL */
+    else if(i==0x44C||i==0x44D){extern void VX2D_proof(uint32_t,uint32_t *);uint32_t pr[8];VX2D_proof(i==0x44D?1UL:0UL,pr);outBuf[1]=i;outBuf[2]=pr[0]|(pr[1]<<8);for(k=0;k<5;k++)outBuf[3+k]=pr[2+k];} /* [2] result | 2D state << 8, [3-7] vx2d_verify[0-4] */ /* .683: the 2D engine's proof (VXREG GDITEST) */
+    else if(i==0x44B){DWORD fx=1,gb=1;extern uint32_t vx3dn_gband;RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_TNFASTIX",&fx);RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_GUARDBAND",&gb);outBuf[1]=0x44B;outBuf[2]=fx?1:0;outBuf[3]=vx3dn_gband?(gb==2?2:gb?1:0):0;} /* .702: 2, the band without its viewport codes (the A/B: does their rejection pay?) */ /* .698: word 3 ACCEL_D3D_GUARDBAND (default 1; 0 where the VxD does not take the guard band) */ /* .682: ACCEL_D3D_TNFASTIX alone
+     * (kept while the T681 3DMark fault is found; PRECULL, IXSKIP, PCLGATE, SPECSE and TNPF always on, .680's engine cull and BC 44C removed): read
+     * from the registry at the call, VXDDRAW.DLL asks at each program's start */
+    else if(i==0x446){extern uint32_t vx_stretch3d;outBuf[2]=vx_stretch3d;} /* .628: ACCEL_STRETCH3D, for the HAL (.669-.670 also gave the sample offset, removed in .671) */
+    else if(i>=0x44B0000UL&&i<=0x44B0003UL){extern volatile uint32_t vx_flip_tear;extern uint32_t vx_flip_tear_stat[4];{extern unsigned long vx_chip_id;if((i&3UL)!=3UL&&vx_chip_id==0x5122UL)vx_flip_tear=i&3UL;} /* .702: set on the VX855 / VX875 only */outBuf[2]=vx_flip_tear;outBuf[3]=vx_flip_tear_stat[0];outBuf[4]=vx_flip_tear_stat[1];outBuf[5]=vx_flip_tear_stat[2];} /* .696: VXNOSYNC sets ACCEL_FLIP_TEAR live (0-2; 3 reads it) and puts it back */
+    else if(i>=0x44A0000UL&&i<=0x44A0002UL){extern uint32_t vx_stretch3d;vx_stretch3d=i&3UL;outBuf[2]=vx_stretch3d;} /* .670: VXNOSYNC STRETCH sets ACCEL_STRETCH3D live (0 the CPU, 1 nearest, 2 bilinear) while it measures, and puts it back */
+    else if(i==0x448){outBuf[2]=vx_clr_stat[0];outBuf[3]=vx_clr_stat[1];} /* .668: how often the per-run counters were cleared (77 the packets', BF the frames') */
+    else if(i==0x447){extern uint32_t vx3dn_fr_prog,vx3dn_fr_stat[8];extern int VX3DN_ring_flip_given_up(void);outBuf[2]=vx3dn_fr_prog;outBuf[3]=vx3dn_fr_stat[4];outBuf[4]=(uint32_t)VX3DN_ring_flip_given_up();} /* .667: ring-flip waits that went past 100 ms on progress, those that ran out, ring flips given up for the boot */
     else if(i==0x445){extern uint32_t vx3dn_seam,vx3dn_seam_stat[2];outBuf[2]=vx3dn_seam;outBuf[3]=vx3dn_seam_stat[0];outBuf[4]=vx3dn_seam_stat[1];} /* .628: the seam cover */
     else if(i==0x443){extern uint32_t vx3dn_v900_ix[2];outBuf[2]=vx3dn_v900_ix[0];outBuf[3]=vx3dn_v900_ix[1];} /* .627: packets drawn by index on the VX900, their vertices */
     else if(i==0x442){extern uint32_t vx3dn_xr_pages;outBuf[2]=vx3dn_xr_pages*4UL;} /* .625: the ring's size in KB */
@@ -1346,10 +1368,12 @@ void Device_Exit_proc(DWORD VM)
  VX2D_sync(); /* v10.144: a kept engine context is handed back before Windows leaves */
  VX2D_hwcur_hide(); /* v10.105: no hardware cursor over the text mode Windows leaves behind */
  VX2D_ovl_hide(); /* v10.106 */
+ {extern void VX3DN_ring_stop(void);VX3DN_ring_stop();} /* .646 (review of .644): the 3D ring's fetcher stopped as before a mode set (vxd_vesa.c);
+  * VX2D_sync above only retired the last group and left the fetcher enabled at its pause, with the GART entries pointing at the ring's pages */
 
 	dbg_printf(dbg_destroy);
-	
-	// TODO: free memory
+	/* .646: no pages are handed back here. System_Exit is the last message (Sys_Dynamic_Device_Exit is refused while device_ready), so the
+	 * ring, wram, the mouse buffer and the BIOS copy end with Windows; the ring is stopped above so nothing reads its pages afterwards */
 }
 
 static DWORD __stdcall service_get_ver()

@@ -137,6 +137,10 @@ def main():
  # the cursor handshake: drawn cursor -> the exclusion calls; a put-off show -> released after the drawing
  r.setup(32,cur=3);rv=r.output([(10,10),(60,40)],13,0xFF);cases+=1
  if r.ops!=[OP_RECT,OP_END] or r.fb()!=r.model([(10,10),(60,40)],13,0xFF):fails+=1;print('FAIL drawn cursor: ops',[hex(o) for o in r.ops])
+ # .705 (a review of .703): a polyline wholly outside the clip rectangle, cursor drawn: answered done with no VxD call and nothing drawn
+ for pts in ([(5,5),(30,10),(20,25)],[(200,5),(300,40)],[(5,150),(90,190)],[(40,5),(60,30),(80,8)]):
+  r.setup(32,cur=3);rv=r.output(pts,13,0xFF,clip=(100,40,180,140));cases+=1
+  if rv!=1 or r.ops or r.fb()!=r.bg:fails+=1;print('FAIL wholly clipped polyline',pts,rv,[hex(o) for o in r.ops])
  r.setup(32,cur=5);rv=r.output([(10,10),(60,40)],13,0xFF);cases+=1
  if r.ops!=[OP_RECT,OP_END]:fails+=1;print('FAIL put-off show not released: ops',[hex(o) for o in r.ops])
  busy=struct.unpack('<H',bytes(r.u.mem_read(r.A+0x400+256,2)))[0]

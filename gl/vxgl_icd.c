@@ -381,6 +381,9 @@ unsigned long vxgl_texmem_freed; /* v10.287 */
 static void dd_release_surface(LPDIRECTDRAWSURFACE7 *s) {if(*s){IDirectDrawSurface7_Release(*s);*s=0;vxgl_texmem_freed++;}}
 /* a surface's size, pitch and CPU address (from a lock), and its video-memory offset (from the HAL: the lock's address is DirectDraw's
  * alias of video memory on Windows 98, not the frame buffer's own address; board, v10.240) */
+/* .668: the largest buffer the ICD makes (8192 x 8192 at 4 bytes and a 64 KB pitch x 8192 rows stay below 2^32; the engine itself takes
+ * 2048) */
+#define VXGL_FB_MAX 8192U
 static int surface_where(LPDIRECTDRAWSURFACE7 s,vx3dn_surface *d,GLubyte **cpu) {
  DDSURFACEDESC2 sd;HRESULT r;DWORD off=0,pitch=0;
  vxgl_batch_flush(); /* v10.275 */
@@ -388,6 +391,7 @@ static int surface_where(LPDIRECTDRAWSURFACE7 s,vx3dn_surface *d,GLubyte **cpu) 
  r=IDirectDrawSurface7_Lock(s,NULL,&sd,DDLOCK_WAIT|DDLOCK_NOSYSLOCK,NULL);if(r!=DD_OK){vxgl_log("lock for the offset failed %08lX\n",(unsigned long)r);return 0;}
  IDirectDrawSurface7_Unlock(s,NULL);
  *cpu=(GLubyte*)sd.lpSurface;d->pitch=(uint32_t)sd.lPitch;d->width=sd.dwWidth;d->height=sd.dwHeight;
+ if(sd.lPitch<=0||sd.lPitch>0x10000L||sd.dwWidth>VXGL_FB_MAX||sd.dwHeight>VXGL_FB_MAX){vxgl_log("surface %p: pitch %ld, %lux%lu: outside the sizes this ICD takes\n",(void*)s,(long)sd.lPitch,(unsigned long)sd.dwWidth,(unsigned long)sd.dwHeight);d->pitch=0;return 0;} /* .668 (review of .667, finding 7): the products below stay inside 32 bits */
  if(!dd_surface||!dd_surface(s,&off,&pitch)){vxgl_log("surface %p (lock %p): the HAL has no video memory offset for it\n",(void*)s,sd.lpSurface);return 0;}
  if(pitch!=(DWORD)sd.lPitch){vxgl_log("surface %p: the HAL's pitch %lu, the lock's %ld\n",(void*)s,(unsigned long)pitch,(long)sd.lPitch);return 0;}
  d->offset=off;
@@ -434,7 +438,9 @@ static GLubyte *soft_front(vxgl_fb *fb) {
  return fb->fbits;
 }
 static void soft_front_fill(vxgl_fb *fb) {HDC w;if(!fb->fdc||!(w=GetDC(fb->hwnd)))return;BitBlt((HDC)fb->fdc,0,0,(int)fb->w,(int)fb->h,w,0,0,SRCCOPY);ReleaseDC(fb->hwnd,w);GdiFlush();}
-static void soft_front_show(vxgl_fb *fb) {HDC w;if(!fb->fdc||!(w=GetDC(fb->hwnd)))return;GdiFlush();BitBlt(w,0,0,(int)fb->w,(int)fb->h,(HDC)fb->fdc,0,0,SRCCOPY);ReleaseDC(fb->hwnd,w);}
+/* .705 (a review of .703): 1 when shown (or nothing can show it: plain memory, no DIB), 0 when GetDC or BitBlt failed: the front stays
+ * marked drawn and is shown at the next glFlush / glFinish, as the surface path keeps it */
+static int soft_front_show(vxgl_fb *fb) {HDC w;BOOL ok;if(!fb->fdc)return 1;if(!(w=GetDC(fb->hwnd)))return 0;GdiFlush();ok=BitBlt(w,0,0,(int)fb->w,(int)fb->h,(HDC)fb->fdc,0,0,SRCCOPY);ReleaseDC(fb->hwnd,w);return ok!=0;}
 /* the engine may still be drawing into the surfaces (packets sent, not finished): a lock waits for it (the HAL's Lock retires 3D work),
  * so their video memory is not handed to a new surface while it is written */
 static volatile int vxgl_gone; /* v10.260: set at DLL_PROCESS_DETACH: every Drv* entry returns at once */
@@ -463,8 +469,10 @@ static int fb_seed(vxgl_fb *fb,LPDIRECTDRAWSURFACE7 s,int from_window) {
   DDSURFACEDESC2 sd;GLuint y,bytes=fb->cb==16?2:4;
   memset(&sd,0,sizeof(sd));sd.dwSize=sizeof(sd);
   if(IDirectDrawSurface7_Lock(s,NULL,&sd,DDLOCK_WAIT|DDLOCK_NOSYSLOCK|DDLOCK_WRITEONLY,NULL)==DD_OK){
-   if(sd.lpSurface&&sd.lPitch>0)for(y=0;y<sd.dwHeight;y++)memset((GLubyte*)sd.lpSurface+y*(DWORD)sd.lPitch,0,sd.dwWidth*bytes);
-   IDirectDrawSurface7_Unlock(s,NULL);if(sd.lpSurface&&sd.lPitch>0)return 1;}
+   const int usable=sd.lpSurface&&sd.lPitch>0&&sd.lPitch<=0x10000L&&
+                    sd.dwWidth==fb->w&&sd.dwHeight==fb->h&&sd.dwWidth<=(DWORD)sd.lPitch/bytes;
+   if(usable)for(y=0;y<sd.dwHeight;y++)memset((GLubyte*)sd.lpSurface+y*(DWORD)sd.lPitch,0,sd.dwWidth*bytes);
+   IDirectDrawSurface7_Unlock(s,NULL);if(usable)return 1;}
   {static int logged;if(logged++<4)vxgl_log("surface %ux%u: not cleared either %08lX\n",fb->w,fb->h,(unsigned long)r);return 0;}}
  return 1;
 }
@@ -472,6 +480,7 @@ static int fb_make_surfaces(vxgl_fb *fb,GLuint w,GLuint h) {
  DDSURFACEDESC2 sd;int db,zb,sb,cb;
  fb_wait(fb);fb_free_surfaces(fb);
  if(!w)w=1;if(!h)h=1;
+ if(w>VXGL_FB_MAX||h>VXGL_FB_MAX){vxgl_log("buffers %ux%u: larger than %u x %u, not made\n",w,h,VXGL_FB_MAX,VXGL_FB_MAX);return 0;} /* .668 (review of .667, finding 7): w x 4 x h, the stencil plane's size and pitch x h stay inside 32 bits */
  if(!dd_init())return 0;
  vxgl_pf_info(fb->pf,&db,&zb,&sb,&cb);cb=fb->cb;
  memset(&sd,0,sizeof(sd));sd.dwSize=sizeof(sd);sd.dwFlags=DDSD_CAPS|DDSD_WIDTH|DDSD_HEIGHT|DDSD_PIXELFORMAT;sd.dwWidth=w;sd.dwHeight=h;
@@ -607,6 +616,7 @@ GLubyte *vxgl_texmem_map(vxgl_texmem *m,GLuint l,uint32_t *pitch) {
  memset(&sd,0,sizeof(sd));sd.dwSize=sizeof(sd);
  if((r=IDirectDrawSurface7_Lock((LPDIRECTDRAWSURFACE7)s,NULL,&sd,DDLOCK_WAIT|DDLOCK_NOSYSLOCK,NULL))!=DD_OK){
   static int logged;if(logged++<8)vxgl_log("video memory level %u: lock %08lX\n",l,(unsigned long)r);return 0;}
+ vxgl_seq_idle(); /* .706 (a review of .703): this Lock waited for the engine too (as vxgl_texmem_lock's): the texture ring sees its spares free */
  if(m->block){*pitch=m->pitch[l];return (GLubyte*)sd.lpSurface+m->rel[l];}
  *pitch=(uint32_t)sd.lPitch;return (GLubyte*)sd.lpSurface;
 }
@@ -1099,8 +1109,10 @@ int vxgl_front_load(vxgl_fb *fb) {
    else memset(&fb->sfront,0,sizeof(fb->sfront));}
  }
  if(!fb->front) { /* v10.261: no surface (or no back surface to model it on): the system-memory front, filled from the window */
-  fb->fsoft=1;fb->fstate=(fb->fstate|1)&~2;
-  if(!soft_front(fb))return 0;
+  fb->fsoft=1;
+  if(!soft_front(fb))return 0; /* .705 (a review of .703): marked loaded only once its memory is there (it was marked first: after a failed
+   * allocation every later call returned 0 at once, never trying again) */
+  fb->fstate=(fb->fstate|1)&~2;
   soft_front_fill(fb);return 1;
  }
  if(fb->cb==desktop_bpp&&primary_ok()&&window_rects(fb,&dst,&src,&scr)&&scr){
@@ -1115,7 +1127,7 @@ int vxgl_front_load(vxgl_fb *fb) {
 }
 static int blit_to_window(vxgl_fb *fb,LPDIRECTDRAWSURFACE7 from,int *shown);
 /* v10.287: a front buffer not shown (neither DirectDraw nor GDI took it) stays to be shown at the next glFlush / glFinish */
-void vxgl_front_present(vxgl_fb *fb) {int shown=0;vxgl_fb_settle(fb);if(fb->fsoft){soft_front_show(fb);fb->fstate&=~2;}else if(fb->front&&blit_to_window(fb,fb->front,&shown)&&shown)fb->fstate&=~2;
+void vxgl_front_present(vxgl_fb *fb) {int shown=0;vxgl_fb_settle(fb);if(fb->fsoft){if(soft_front_show(fb))fb->fstate&=~2;}else if(fb->front&&blit_to_window(fb,fb->front,&shown)&&shown)fb->fstate&=~2;
  if(vxgl_ftrace)vxgl_log("ftrace: present: shown %d, fstate now %d\n",shown,fb->fstate);}
 int vxgl_swap_blit(vxgl_fb *fb) {int shown,k,n=fb->swap_interval_set?fb->swap_interval:vxgl_swap_default;
  /* Interval zero keeps the unthrottled path. Single-buffer/front presentations do not wait. */
@@ -1264,6 +1276,8 @@ BOOL WINAPI DllMain(HINSTANCE h,DWORD why,LPVOID r) {
   {extern int vxgl_gl_trilist,_tnl_vx855_cvacache,_vbo_vx855_fastvtx,vxgl_gl_storesnap,vxgl_gl_glapione; /* v10.500 */
    vxgl_gl_trilist=(1)!=0;_tnl_vx855_cvacache=(1)!=0;_vbo_vx855_fastvtx=(1)!=0;
    vxgl_gl_storesnap=(1)!=0;vxgl_gl_glapione=(1)!=0;}
+  /* .674: ACCEL_OPENGL_LOCKDRAW removed, always on (board, .673, HarborBench OpenGL: draw2000 88.1 -> 32.1 ms a frame, draw1000 47.7 -> 19.9,
+   * draw500 30.2 -> 14.0, draw100 10.7 -> 7.7; the city scenes and particles within 0.3%) */
   /* .506: ACCEL_OPENGL_CLIPINT removed */ /* v10.485: the clip test's compares in integer registers; v10.486: 0 by default (board: VXFLAT v1.5, 2-7% slower; Lattice: the clip test 7.7%) */
   vxgl_gl_smoothatest=(1)!=0;vxgl_gl_mirrorclamp=(1)!=0; /* v10.353 */
   vxgl_gl_front=(1)!=0;vxgl_gl_tex3d=(1)!=0;
