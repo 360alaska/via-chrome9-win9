@@ -617,8 +617,10 @@ static void ph_account(uint32_t run0,uint32_t run1) {
 /* .527: ids 0 (VRECIPE), 1 (FASTMATCH), 2 (FASTVV) and 6 (PFVV2) removed: they answer 0xFFFFFFFF as unknown ids. .528: 15 ACCEL_D3D_TEXRUNS. */
 /* .533: VX_D3D_Switch (v10.446-.532: the HAL's switches for an A/B inside one run) removed: no switch is left; a feature under test
  * brings its own back */
+/* .720: VXTLP 6Q's test switches in its own process (vx_d3d_test_set, vx_d3d_core.c) */
+DWORD WINAPI VX_D3D_TestSet(DWORD id,DWORD v) {extern uint32_t vx_d3d_test_set(uint32_t,uint32_t);return vx_d3d_test_set(id,v);}
 DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
- DWORD k,i,reset=n&0x80000000UL,stop=n&0x40000000UL,w[454];extern DWORD vx_lock_result[4];extern DWORD vx_flip_seen[7];extern DWORD vx_init_seen[3];
+ DWORD k,i,reset=n&0x80000000UL,stop=n&0x40000000UL,w[460];extern DWORD vx_lock_result[4];extern DWORD vx_flip_seen[7];extern DWORD vx_init_seen[3];
  /* .572: bit 29 (the test switch of .555-.557, .559-.563 and .567-.569) does nothing: no switch is left; word 343 reads 0. 350-355: the culled pass-through's counters (vx_d3d_core.c vx_d3d_cp) */
  n&=0x00FFFFFFUL;if(!out||!n)return 0; /* .561: the count is the low 24 bits (.559-.560 kept flag bits 24-27 in it: a count of 1 with bit 24 set was answered with every word, over the caller's one-word buffer) */
  w[0]=0x431;w[1]=VX_dd_cpms()/1000UL;w[2]=pc_n;w[270]=vx_d3d_tnl;for(k=0;k<18;k++)w[271+k]=vx_d3d_tlp[k];w[289]=0; /* .534: the T&L probe (vx_d3d_core.c) */{extern uint32_t vx_d3d_tn[12];for(k=0;k<12;k++)w[290+k]=vx_d3d_tn[k];} /* .536: the driver's T&L (vx_d3d_tnl.inc) */
@@ -658,7 +660,8 @@ DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
  w[440]=w[441]=w[442]=0; /* .680's engine cull (removed .682) */
  {extern uint32_t vx_d3d_tn_fastix,vx_d3d_tn_fastix_stat[4];w[443]=vx_d3d_tn_fastix;for(k=0;k<4;k++)w[444+k]=vx_d3d_tn_fastix_stat[k];}
  {extern uint32_t vx_d3d_gband,vx_d3d_gbs[2],vx_d3d_vcd[3];w[448]=vx_d3d_gband;w[449]=vx_d3d_gbs[0];w[450]=vx_d3d_gbs[1];w[451]=vx_d3d_vcd[0];w[452]=vx_d3d_vcd[1];w[453]=vx_d3d_vcd[2];} /* .703: 453 those draws sent through the triangle pass */ /* .702: 451-452 the band's draws without and with a vertex past the viewport (codes made only then) */ /* .701: 449-450 the T&L's set-ups with and without the band */ /* .698: 448 the guard band (ACCEL_D3D_GUARDBAND, this process); 449-451 (.681's prefetch switch, removed .682) */
- if(n>454)n=454;for(k=0;k<n;k++)out[k]=w[k]; /* .534: 270-289 the T&L probe; .536: 290-301 the driver's T&L */ /* .533: 270-273 (.531's kept answers) removed with them */
+ {extern uint32_t vx_d3d_tn_dfr[4];for(k=0;k<4;k++)w[454+k]=vx_d3d_tn_dfr[k];} {extern uint32_t vx_d3d_q1[2];w[458]=vx_d3d_q1[0];w[459]=vx_d3d_q1[1];} /* .723: projected packets with q = 1 sent plain, projected packets left projected */ /* .718: 454-457 the T&L's deferred side planes: draws (triangles, lines), new vertices beyond an x / y edge there */
+ if(n>460)n=460;for(k=0;k<n;k++)out[k]=w[k]; /* .534: 270-289 the T&L probe; .536: 290-301 the driver's T&L */ /* .533: 270-273 (.531's kept answers) removed with them */
  if(stop){ph_on=0;vx_d3d_geo_on=0;vx_d3d_ftprof=0;}else if(reset){ph_on=1;vx_d3d_geo_on=1;vx_d3d_ftprof=1;vv_fast_n=0;for(k=0;k<32;k++)vx_d3d_ft[k]=0;for(k=0;k<8;k++)vx_d3d_tprof[k]=0;for(k=0;k<24;k++)vx_d3d_geo[k]=0;for(k=0;k<16;k++)vx_d3d_tk[k]=0;{extern uint32_t vx_d3d_px[6];for(k=0;k<6;k++)vx_d3d_px[k]=0;}vx_d3d_pre_stat[0]=vx_d3d_pre_stat[1]=0;
   for(k=0;k<VX_PH_N;k++){ph_sum[k]=ph_cnt[k]=ph_max[k]=ph_calls[k]=0;for(i=0;i<6;i++)ph_h[k][i]=0;}
   for(k=0;k<6;k++)pc_h[k]=pc_wall[k]=pc_run[k]=pc_runok[k]=pc_pf[k]=pc_pi[k]=0;for(k=0;k<5;k++)pc_sl[k]=0;pc_n=pv_n=pv_in=pv_run=0;for(k=0;k<4;k++)vx_d3d_bad_why[k]=0;vx_d3d_rhw0_prims=0;{extern uint32_t vx_d3d_bad_rec[18],vx_d3d_zinf_prims,vx_d3d_tn_dense[4];for(k=0;k<18;k++)vx_d3d_bad_rec[k]=0;vx_d3d_zinf_prims=0;for(k=0;k<4;k++)vx_d3d_tn_dense[k]=0;{extern uint32_t vx_d3d_tn_one,vx_d3d_tn_setup[3],vx_d3d_tn_plg;vx_d3d_tn_one=0;vx_d3d_tn_setup[0]=vx_d3d_tn_setup[1]=vx_d3d_tn_setup[2]=0;vx_d3d_tn_plg=0;{extern uint32_t vx_d3d_tnp[8],vx_d3d_tn_why[10];for(k=0;k<8;k++)vx_d3d_tnp[k]=0;for(k=0;k<10;k++)vx_d3d_tn_why[k]=0;{extern uint32_t vx_d3d_tn_cdrop;vx_d3d_tn_cdrop=0;}};}}}
@@ -1259,9 +1262,10 @@ static DWORD WINAPI create_surface_ex(LPDDHAL_CREATESURFACEEXDATA p) {
   /* ContextCreate can precede the first CreateSurfaceEx. In that case
    * no previous table entry exists to compare with the live descriptor. */
   for(k=0;k<CONTEXTS;k++) {
-   context_slot *c=&contexts[k];
+   context_slot *c=&contexts[k];vx3dn_surface tdesc; /* .717 (review): a render-target texture bound as the target is compared in its target form
+    * (VX_D3D_surface_target: the target format codes), not the texture form desc[j] holds: the formats never matched and the context was marked lost */
    if(c->handle&&c->owner==owner&&c->local==t->local&&
-     ((c->target_key==(uint32_t)nodes[j]&&memcmp(&c->core.target,&desc[j],sizeof(desc[j])))||
+     ((c->target_key==(uint32_t)nodes[j]&&memcmp(&c->core.target,VX_D3D_rt_texture(nodes[j])&&VX_D3D_surface_target(nodes[j],&tdesc)?&tdesc:&desc[j],sizeof(desc[j])))||
       (c->depth_key==(uint32_t)nodes[j]&&memcmp(&c->core.depth,&desc[j],sizeof(desc[j]))))){c->core.lost=1;note_lost(0x21,(DWORD)nodes[j]);}
   }
   s->handle=handles[j];s->native_key=(uint32_t)nodes[j];s->desc=desc[j];
@@ -1474,7 +1478,7 @@ void VX_D3D_init(void *ctx) {
  if(vx_d3d_tnl)h->dwDevCaps|=0x10000UL; /* D3DDEVCAPS_HWTRANSFORMANDLIGHT: the driver's T&L (.536); .601: on by default */
  p->dwRasterCaps=D3DPRASTERCAPS_ZTEST|D3DPRASTERCAPS_SUBPIXEL|0x80UL|0x100UL|((vx_d3d_feat&VX_F_DITHER)?0x1UL:0)|0x4000UL; /* v10.196: + FOGVERTEX, FOGTABLE (fog, v10.195); v10.201: + DITHER, ZBIAS */
  p->dwZCmpCaps=255;p->dwSrcBlendCaps=0x1FFF;p->dwDestBlendCaps=0x3FF;p->dwAlphaCmpCaps=255; /* v10.177: every blend factor (SRCALPHASAT/BOTH* as source only), alpha test */
- p->dwShadeCaps=D3DPSHADECAPS_COLORFLATRGB|D3DPSHADECAPS_COLORGOURAUDRGB|D3DPSHADECAPS_SPECULARFLATRGB|D3DPSHADECAPS_SPECULARGOURAUDRGB|D3DPSHADECAPS_ALPHAFLATBLEND|D3DPSHADECAPS_ALPHAGOURAUDBLEND|0x80000UL; /* v10.196: + FOGGOURAUD. v10.178: + specular (XP's specular programs, v10.172) */
+ p->dwShadeCaps=D3DPSHADECAPS_COLORFLATRGB|D3DPSHADECAPS_COLORGOURAUDRGB|D3DPSHADECAPS_SPECULARFLATRGB|D3DPSHADECAPS_SPECULARGOURAUDRGB|D3DPSHADECAPS_ALPHAFLATBLEND|D3DPSHADECAPS_ALPHAGOURAUDBLEND|0x80000UL|0x40000UL; /* .722: + FOGFLAT (0x40000): Hellbender requires FOGVERTEX, FOGFLAT and FOGGOURAUD (its EnumDevices callback, HELLBEND.EXE 0x402E40) and said "Your 3D adapter will not allow you to see fog" without it; flat-shaded draws keep the fog factor (the specular alpha) per vertex (.663, the clipper too), so fog works in flat shading. v10.196: + FOGGOURAUD. v10.178: + specular (XP's specular programs, v10.172) */
  h->dwDeviceRenderBitDepth=DDBD_16|DDBD_32;h->dwDeviceZBufferBitDepth=DDBD_16|DDBD_32;h->dwMaxVertexCount=4096;
  /* v10.188: was 65535. D3DIM.DLL 4.07.00.0700 (the DirectX 3/5/6 interfaces) sizes its TL vertex buffer at every Execute to at least
   * dwMaxVertexCount (56675380: max(count, hwCaps.dwMaxVertexCount), capped at 4096 only when the count is above it) plus 1 KB: 65535 asked

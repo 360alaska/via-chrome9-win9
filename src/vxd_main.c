@@ -956,6 +956,7 @@ BOOL Device_Init_proc(DWORD VM)
 
 	configure_FBHDA();
 	vx_lock_init(0); /* .515: also without the registry key (ACCEL_PRIVLOCK default 1) */
+	{extern void VX_lock_table_init(void);VX_lock_table_init();} /* .713: the page-lock table's own semaphore */
  device_ready=1;
 
 	critical_section_leave();
@@ -984,11 +985,20 @@ static DWORD lk_page,lk_n,lk_holder[64],lk_holders; /* v10.466: 64 holders (was 
 static void lk_release(void) {if(lk_n){DWORD i;for(i=0;i<lk_n;i++)_LinPageUnLock(lk_page+i,1,0);vx_lock_stat[4]++;}lk_n=0;lk_page=0;lk_holders=0;vx_lock_stat[0]=0;vx_lock_stat[1]=0;vx_lock_stat[5]=0;}
 static void lk_drop(DWORD hdev) {DWORD k;for(k=0;k<lk_holders;k++)if(lk_holder[k]==hdev){lk_holder[k]=lk_holder[--lk_holders];break;}vx_lock_stat[5]=lk_holders;if(lk_n&&!lk_holders)lk_release();}
 void vx_lock(void);void vx_unlock(void); /* vx855_2d.c */
-/* .706 (a review of .703): the page-lock table under the engine lock: _LinPageLock can block (a page brought in), and another thread's
- * request or handle close could then run halfway through this one (two locks of the range, a holder lost, pages left locked) */
+/* .706 (a review of .703): the page-lock table under a lock: _LinPageLock can block (a page brought in), and another thread's request or
+ * handle close could then run halfway through this one (two locks of the range, a holder lost, pages left locked).
+ * .713 (VX800 hand-off, the .515 order): not the engine lock: _LinPageLock under it took the engine lock before whatever _LinPageLock
+ * waits for (the system critical section while a page comes in), the reverse of .515's order (the critical section, then the engine
+ * lock: GDI's stretches and transfers): an AB-BA deadlock. The table has its own semaphore (lkt_sem, one token), taken with neither the
+ * critical section nor the engine lock held (the ioctl and the handle close come with neither), and nothing else is taken under it but
+ * _LinPageLock / _LinPageUnLock. No semaphore (its creation failed): the engine lock, as .706. */
+static ULONG lkt_sem;
+void VX_lock_table_init(void) {if(!lkt_sem)lkt_sem=Create_Semaphore(1);}
+static void lkt_take(void) {if(lkt_sem)Wait_Semaphore(lkt_sem,BLOCK_SVC_INTS|BLOCK_THREAD_IDLE);else vx_lock();}
+static void lkt_give(void) {if(lkt_sem)Signal_Semaphore(lkt_sem);else vx_unlock();}
 void VX_lock_request(DWORD op,DWORD a,DWORD n,DWORD hdev,DWORD *out) {
  DWORD page=a>>12,np=n?((a+n-1)>>12)-page+1:0,k,held=0;
- vx_lock();
+ lkt_take();
  if(op==1){vx_lock_stat[2]++;
   if(!vx_lock_hal||a<0x80000000UL||a+n<a||a+n>0xC0000000UL||!np||np>2048)vx_lock_stat[3]++; /* .560: 2,048 pages (1,024: .559's image, 1,438 pages with the template table and the larger packets, was refused and not kept in memory) */
   else if(lk_n&&(lk_page!=page||lk_n!=np)&&!(lk_holders==1&&lk_holder[0]==hdev))vx_lock_stat[3]++; /* v10.466 (review): another range while
@@ -1001,9 +1011,9 @@ void VX_lock_request(DWORD op,DWORD a,DWORD n,DWORD hdev,DWORD *out) {
    if(lk_n){for(k=0;k<lk_holders;k++)if(lk_holder[k]==hdev)held=1;if(!held){if(lk_holders<64)lk_holder[lk_holders++]=hdev;else vx_lock_stat[3]++;}vx_lock_stat[5]=lk_holders;}}}
  else if(op==0)lk_drop(hdev);
  out[0]=lk_n;out[1]=lk_page<<12;out[2]=lk_holders;out[3]=vx_lock_hal;
- vx_unlock();
+ lkt_give();
 }
-void VX_lock_close(DWORD hdev) {vx_lock();if(lk_holders)lk_drop(hdev);vx_unlock();}
+void VX_lock_close(DWORD hdev) {lkt_take();if(lk_holders)lk_drop(hdev);lkt_give();}
 /* v10.434: the sampler sees whether the render thread is inside this call, while it is on. v10.439 (board, v10.438: "in the VxD" 87 ms of
  * a 132 ms gameplay frame, more than DrawPrimitives2 and Blt together): each thread inside has its own entry in the sampler's table
  * (VX_smp_enter / VX_smp_leave: depth and waits), nothing tied to which thread is the render thread; the render thread's time inside is
@@ -1151,11 +1161,14 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i>=0xA00&&i<0xC00){extern uint32_t vx3dn_rst_snap[2][198];uint32_t w=(i>>8)-0xA,n=(i&0xFFUL)*6;for(k=0;k<6;k++)outBuf[2+k]=n+k<198?vx3dn_rst_snap[w][n+k]:0;}
     else if(i>=0x400&&i<0x410){extern uint32_t VX3DN_peek(uint32_t);for(k=0;k<4;k++)outBuf[2+k]=VX3DN_peek(0x200UL+(i-0x400)*16UL+k*4UL);}
     else if(i==0x44C||i==0x44D){extern void VX2D_proof(uint32_t,uint32_t *);uint32_t pr[8];VX2D_proof(i==0x44D?1UL:0UL,pr);outBuf[1]=i;outBuf[2]=pr[0]|(pr[1]<<8);for(k=0;k<5;k++)outBuf[3+k]=pr[2+k];} /* [2] result | 2D state << 8, [3-7] vx2d_verify[0-4] */ /* .683: the 2D engine's proof (VXREG GDITEST) */
-    else if(i==0x44B){DWORD fx=1,gb=1;extern uint32_t vx3dn_gband;RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_TNFASTIX",&fx);RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_GUARDBAND",&gb);outBuf[1]=0x44B;outBuf[2]=fx?1:0;outBuf[3]=vx3dn_gband?(gb==2?2:gb?1:0):0;} /* .702: 2, the band without its viewport codes (the A/B: does their rejection pay?) */ /* .698: word 3 ACCEL_D3D_GUARDBAND (default 1; 0 where the VxD does not take the guard band) */ /* .682: ACCEL_D3D_TNFASTIX alone
+    else if(i==0x44B){DWORD fx=1,gb=1;extern uint32_t vx3dn_gband;RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_TNFASTIX",&fx);RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_GUARDBAND",&gb);outBuf[1]=0x44B;outBuf[2]=fx?1:0;outBuf[3]=vx3dn_gband?(gb==2?2:gb?1:0):0;outBuf[4]=0;outBuf[5]=0;} /* .711: words 4-5 free (ACCEL_D3D_INPLACE .709 and ACCEL_D3D_TNWORD .710, both measured wins on the board and hard-coded on) */ /* .702: 2, the band without its viewport codes (the A/B: does their rejection pay?) */ /* .698: word 3 ACCEL_D3D_GUARDBAND (default 1; 0 where the VxD does not take the guard band) */ /* .682: ACCEL_D3D_TNFASTIX alone
      * (kept while the T681 3DMark fault is found; PRECULL, IXSKIP, PCLGATE, SPECSE and TNPF always on, .680's engine cull and BC 44C removed): read
      * from the registry at the call, VXDDRAW.DLL asks at each program's start */
     else if(i==0x446){extern uint32_t vx_stretch3d;outBuf[2]=vx_stretch3d;} /* .628: ACCEL_STRETCH3D, for the HAL (.669-.670 also gave the sample offset, removed in .671) */
-    else if(i>=0x44B0000UL&&i<=0x44B0003UL){extern volatile uint32_t vx_flip_tear;extern uint32_t vx_flip_tear_stat[4];{extern unsigned long vx_chip_id;if((i&3UL)!=3UL&&vx_chip_id==0x5122UL)vx_flip_tear=i&3UL;} /* .702: set on the VX855 / VX875 only */outBuf[2]=vx_flip_tear;outBuf[3]=vx_flip_tear_stat[0];outBuf[4]=vx_flip_tear_stat[1];outBuf[5]=vx_flip_tear_stat[2];} /* .696: VXNOSYNC sets ACCEL_FLIP_TEAR live (0-2; 3 reads it) and puts it back */
+    else if(i>=0x44C0000UL&&i<=0x44C0003UL){extern uint32_t vx3dn_gband;if((i&3UL)!=3UL)vx3dn_gband=(i&3UL)?1UL:0UL;outBuf[2]=vx3dn_gband;} /* .716: the VxD's guard-band
+     * acceptance set live (VXREG GBAND ON / OFF: the VX800 / VX900 test; 3 reads it): programs started after it take it (TEXDBG BC 44B
+     * word 3 at their start); the boot value stays the VX855 / VX875 only until the board shows the pictures right */
+    else if(i>=0x44B0000UL&&i<=0x44B0003UL){extern volatile uint32_t vx_flip_tear;extern uint32_t vx_flip_tear_stat[4];if((i&3UL)!=3UL)vx_flip_tear=i&3UL; /* .716: set live on every chip (the VX800 / VX900 test: VXNOSYNC pass 9; their boot default stays 0). .702-.715: the VX855 / VX875 only */outBuf[2]=vx_flip_tear;outBuf[3]=vx_flip_tear_stat[0];outBuf[4]=vx_flip_tear_stat[1];outBuf[5]=vx_flip_tear_stat[2];} /* .696: VXNOSYNC sets ACCEL_FLIP_TEAR live (0-2; 3 reads it) and puts it back */
     else if(i>=0x44A0000UL&&i<=0x44A0002UL){extern uint32_t vx_stretch3d;vx_stretch3d=i&3UL;outBuf[2]=vx_stretch3d;} /* .670: VXNOSYNC STRETCH sets ACCEL_STRETCH3D live (0 the CPU, 1 nearest, 2 bilinear) while it measures, and puts it back */
     else if(i==0x448){outBuf[2]=vx_clr_stat[0];outBuf[3]=vx_clr_stat[1];} /* .668: how often the per-run counters were cleared (77 the packets', BF the frames') */
     else if(i==0x447){extern uint32_t vx3dn_fr_prog,vx3dn_fr_stat[8];extern int VX3DN_ring_flip_given_up(void);outBuf[2]=vx3dn_fr_prog;outBuf[3]=vx3dn_fr_stat[4];outBuf[4]=(uint32_t)VX3DN_ring_flip_given_up();} /* .667: ring-flip waits that went past 100 ms on progress, those that ran out, ring flips given up for the boot */

@@ -557,6 +557,7 @@ class XRGPU(FetchGPU):
   self.hook('__PageAllocate',self.palloc);self.hook('__CopyPageTable',self.cpt);self.hook('__PageFree',lambda:1)
  def palloc(self):
   assert self.arg(0)==65 and self.arg(1)==1 and self.arg(7)&8;self.allocs+=1
+  assert self.critical==0,'.713: the ring pages allocated outside the engine lock (here the critical section): xr_prealloc runs before cs_enter'
   if self.arg(6):self.u.mem_write(self.arg(6),pack([self.PH]))
   return self.XL
  def cpt(self):
@@ -1724,8 +1725,10 @@ def wprof_checks():
 class RtcGPU(NativeGPU):
  """.524: the RTC (CMOS ports 70h/71h: registers A, B, C) and VPICD's services (int 20h, the VxD's inline calls: Virtualize_IRQ gives a
  handle, the others are logged) for the sampler, whose only clock is now the RTC's periodic interrupt"""
- def __init__(s,*a,busy_pie=False,**k):
-  super().__init__(*a,**k);s.cmos={0x0A:0x26,0x0B:0x02|(0x40 if busy_pie else 0),0x0C:0};s.cmi=0;s.vpicd=[];s.cmos_log=[]
+ def __init__(s,*a,busy_pie=False,p70=0x0B,**k):
+  # .713: port 70h reads back (p70 its value before the sampler, as on the VX800) or not (p70 None: reads FF); bit 7 the NMI mask; idx_log
+  # every index written, for the NMI-masked-while-sampling check
+  super().__init__(*a,**k);s.cmos={0x0A:0x26,0x0B:0x02|(0x40 if busy_pie else 0),0x0C:0};s.cmi=0x0B if p70 is None else p70;s.p70r=p70 is not None;s.vpicd=[];s.cmos_log=[];s.idx_log=[]
   from unicorn import UC_HOOK_INTR
   global UC_X86_REG_EIP,UC_X86_REG_EAX,UC_X86_REG_EFLAGS
   from unicorn.x86_const import UC_X86_REG_EIP,UC_X86_REG_EAX,UC_X86_REG_EFLAGS
@@ -1736,9 +1739,10 @@ class RtcGPU(NativeGPU):
   if sid==0x00030001:u.reg_write(UC_X86_REG_EAX,0x9000);u.reg_write(UC_X86_REG_EFLAGS,u.reg_read(UC_X86_REG_EFLAGS)&~1) # Virtualize_IRQ: a handle, CF clear
  def port_in(s,u,p,z,_):
   if p==0x71:return s.cmos.get(s.cmi&0x7F,0)
+  if p==0x70:return s.cmi if s.p70r else 0xFF
   return super().port_in(u,p,z,_)
  def port_out(s,u,p,z,v,_):
-  if p==0x70:s.cmi=v;return
+  if p==0x70:s.cmi=v;s.idx_log.append(v);return
   if p==0x71:s.cmos[s.cmi&0x7F]=v;s.cmos_log.append((s.cmi&0x7F,v));return
   return super().port_out(u,p,z,v,_)
 
@@ -1781,7 +1785,7 @@ def smp_checks():
  assert all((tw0[k]>0)==(k!=6) for k in range(8)),tw0 # the frame's time-weighted samples: every category it had a tick in (none in other threads' 16-bit code)
  assert [sum(x) for x in gap]==[4,2,1,1],gap # ticks by where they landed: render ring 3 (code x2, HAL, 16-bit), inside the VxD (2), another thread, none
  assert W(5069+5)==2 and sum(W(5069+k) for k in range(16))==2 and W(5085+5)>0,'.520: the in-VxD ticks by phase'
- assert W(5101)>0 and W(5102)==sum(W(5112+k) for k in range(8)) and W(5103)==1,'.520: the TSC rate; tw_total the sum of tw_all; .524: the clock the RTC'
+ assert W(5101)>0 and W(5102)==sum(W(5112+k) for k in range(8)) and W(5103)==0x0B0101,'.520: the TSC rate; tw_total the sum of tw_all; .524: the clock the RTC; .713: bit 8 NMI masked while sampling, bits 23:16 port 70h as found'
  g.u.mem_write(render,pack([0x999]));o=ioctl(3,10,0,out=0x10);assert o==4 and g.word(smp)>0 and g.word(render)==0x111 and g.word(ph)==5,'.520: the spin marks the render thread, keeps the phase'
  assert ioctl(2,out=0x20000)>8 and g.word(smp+4*5006)==1234,'the frame\'s triangles (vx_smp tri[0])'
  st['thr']=0x222;client(0x1234,cs=0x50,efl=0x20202)
@@ -1803,6 +1807,8 @@ def smp_checks():
  opages=[S(ob+4*i) for i in range(256)];assert 0xBFF71 in opages
  g.call('VX_smp_close',(0x55,));assert g.call('vx_smp_active')==1;g.call('VX_smp_close',(0x77,));assert g.call('vx_smp_active')==0
  assert g.cmos[0x0A]==0x26 and g.cmos[0x0B]==0x02,g.cmos # .524: A and B as they were
+ assert g.idx_log[-1]==0x0B and all(v&0x80 for v in g.idx_log[:-1]),[hex(v) for v in g.idx_log] # .713: every index the sampler wrote kept NMI masked; port 70h put back as found (0B, NMI enabled)
+ g.cmi=0x8D;tick();assert g.cmi==0x8D,'the handler leaves the CMOS index (and NMI state) it found'
  n=g.word(smp+8);ioctl(2,out=0x20000);n=g.word(smp+8);tick();ioctl(2,out=0x20000);assert g.word(smp+8)==n # stopped: an interrupt after it takes no sample
  hb=288+4096+8192+8+1024+2048+8+1001*4 # v10.438: cs16 after hist
  cs16=[S(hb+4*i) for i in range(16)];k16=cs16.index(0x1F);assert S(hb+64+8*k16)==1,(cs16,S(hb+64+8*k16)) # the 16-bit tick, by its selector
@@ -1814,13 +1820,32 @@ def smp_checks():
  g2=RtcGPU(32,busy_pie=True);g2.hook('Get_Cur_Thread_Handle',lambda:0x111);g2.hook('Get_Cur_VM_Handle',lambda:VM);g2.u.mem_map(VM,0x2000);g2.u.mem_write(VM+8,pack([CL]))
  g2.u.mem_write(inb,pack([1,0xA0000000,0xF3000,1]));assert g2.call('VX_smp_ioctl',(inb,16,smp,0x10,0x77))==8 and g2.word(smp)==0x549 and g2.word(smp+4)==0 and g2.call('vx_smp_active')==0
  assert g2.cmos[0x0A]==0x26 and g2.cmos[0x0B]==0x42 and not any(r in (0x0A,0x0B) for r,v in g2.cmos_log),(g2.cmos,g2.cmos_log)
+ for p70,end in ((None,0x0D),(0x8B,0x8B)): # .713: port 70h not readable (FF): put back as index D, NMI enabled; readable with NMI masked: masked again
+  g3=RtcGPU(32,p70=p70);g3.hook('Get_Cur_Thread_Handle',lambda:0x111);g3.hook('Get_Cur_VM_Handle',lambda:VM);g3.u.mem_map(VM,0x2000);g3.u.mem_write(VM+8,pack([CL]))
+  g3.u.mem_write(inb,pack([1,0xA0000000,0xF3000]));assert g3.call('VX_smp_ioctl',(inb,12,smp,0x10,0x77))==8 and g3.word(smp+4)==1
+  g3.call('_rtc_irq@4',(0x9000,),stdcall=True)
+  assert p70 is not None or g3.cmi==0x8C,'not readable: the handler cannot put the index back (it leaves 8C, NMI masked)'
+  g3.call('VX_smp_close',(0x77,));assert g3.call('vx_smp_active')==0 and g3.cmi==end and all(v&0x80 for v in g3.idx_log[:-1]),(hex(g3.cmi),[hex(v) for v in g3.idx_log])
+ cases.append('.713 (VX800 freeze): the sampler keeps NMI masked (port 70h bit 7) at every RTC access while it runs, the handler puts back the CMOS index it interrupted where port 70h reads back, and the stop puts port 70h back as found (not readable: index D, NMI enabled)')
  cases.append('.524: the sampler on the RTC\'s interrupt only (asked for the old time-out clock or not): IRQ 8 virtualized, A rate 6 and B\'s PIE set at the start and put back at the stop, an interrupt after the stop takes nothing; with B\'s PIE already set (another user) it does not start and writes nothing')
  return cases
 
 def lock_checks():
  """v10.432: VX_IOCTL_LOCKMEM: the shared-arena range is locked once whoever asks, each handle that asked holds it, a handle's close drops
  its hold, the last close releases it; out-of-arena, oversized and switched-off requests are refused; a new range releases the old."""
- cases=[];g=NativeGPU(32);locks=[];unlocks=[]
+ cases=[]
+ # .713: the table's own semaphore: taken before the first page lock and given after the last, the engine lock never entered (vx_lk[0]
+ # counts its outermost entries); a handle close takes the semaphore too
+ g=NativeGPU(32);ev=[];lk0=g.addr('vx_lk')
+ g.hook('_Create_Semaphore',lambda:(ev.append(('C',g.arg(0))),0x5E5)[1]);g.hook('_Wait_Semaphore',lambda:(ev.append(('W',g.arg(0))),0)[1])
+ g.hook('_Signal_Semaphore',lambda:(ev.append(('S',g.arg(0))),0)[1])
+ g.hook('__LinPageLock',lambda:(ev.append(('L',g.word(lk0))),1)[1]);g.hook('__LinPageUnLock',lambda:(ev.append(('U',g.word(lk0))),1)[1])
+ g.call('VX_lock_table_init');g.call('VX_lock_table_init');assert ev==[('C',1)],ev
+ e0=g.word(lk0);ev.clear();g.call('VX_lock_request',(1,0xA0000000,0x3000,0x11,ARENA+0x3100))
+ assert ev==[('W',0x5E5)]+[('L',e0)]*3+[('S',0x5E5)] and g.word(lk0)==e0,ev
+ ev.clear();g.call('VX_lock_close',(0x11,));assert ev==[('W',0x5E5)]+[('U',e0)]*3+[('S',0x5E5)] and g.word(lk0)==e0,ev
+ cases.append('.713: the page-lock table under its own semaphore (one token, made once), not the engine lock: requests and handle closes take it around _LinPageLock / _LinPageUnLock, the engine lock never entered (the .515 order kept)')
+ g=NativeGPU(32);locks=[];unlocks=[]
  g.hook('__LinPageLock',lambda:(locks.append((g.arg(0),g.arg(1),g.arg(2))),1)[1])
  g.hook('__LinPageUnLock',lambda:(unlocks.append((g.arg(0),g.arg(1),g.arg(2))),1)[1])
  out=ARENA+0x3100

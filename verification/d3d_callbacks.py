@@ -785,6 +785,8 @@ class D3DFail(D3D):
   elif name=='CloseHandle' and self.arg(0) in self.handles:self.closed+=1;self.closed_h.append(self.arg(0))
   elif name=='GetLastError':
    sp=u.reg_read(UC_X86_REG_ESP);u.reg_write(UC_X86_REG_EAX,50);u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,self.word(sp));return
+  elif name=='DeviceIoControl' and self.arg(1)==0x85500012 and self.arg(0) in getattr(self,'foreign',()): # .707: a value that is not this driver's handle (another program's file)
+   sp=u.reg_read(UC_X86_REG_ESP);u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+4+32);u.reg_write(UC_X86_REG_EIP,self.word(sp));return
   elif name=='DeviceIoControl' and self.arg(1)==0x85500017 and self.fail:
    self.fail-=1;sp=u.reg_read(UC_X86_REG_ESP);u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+4+32);u.reg_write(UC_X86_REG_EIP,self.word(sp));return
   return super().import_call(u,a,z,data)
@@ -812,6 +814,13 @@ def audit319_checks():
  assert h.opened-o0==10 and h.closed-c0==10,(h.opened-o0,h.closed-c0)
  h.fail=0;n0=h.opened;assert h.call('_VXLock@4',(lock,))==0;h.call('_VXUnlock@4',(unlock,));assert h.opened==n0,'the last fresh handle is the slot\'s now'
  cases.append('v10.322 (review): a call that fails only on the slot handle: the fresh one replaces it and the replaced one is closed (5 retries: 5 opens, 5 closes)')
+ # .707 (board, T700/T702/T706: VXNOSYNC's log closed under it): a slot value that does not answer as this driver (an ended process's
+ # number, in this process another program handle) is replaced but never closed
+ slot=h.handles[-1];h.foreign={slot};c2=h.closed;o2=h.opened
+ h.fail=1;assert h.call('_VXLock@4',(lock,))==0 and h.word(lock+32)==0;h.call('_VXUnlock@4',(unlock,))
+ assert h.opened==o2+1 and h.closed==c2 and slot not in h.closed_h[-3:],(h.opened-o2,h.closed-c2)
+ h.foreign=set();h.fail=0;n0=h.opened;assert h.call('_VXLock@4',(lock,))==0;h.call('_VXUnlock@4',(unlock,));assert h.opened==n0,'the fresh handle kept in the slot'
+ cases.append('.707: a slot value that does not answer as this driver (another program\'s handle under a reused process ID) is replaced and left open')
  # a slot left under this process's ID by an ended process (Windows 98 gives the ID again) is forgotten at attach, not closed
  h.call('_DllMain@12',(h.base,1,0));c1=h.closed;h.fail=0;assert h.call('_VXLock@4',(lock,))==0;h.call('_VXUnlock@4',(unlock,))
  assert h.closed==c1 and h.opened==n0+1,'after attach the stale slot is not closed; a new handle is opened'

@@ -934,6 +934,24 @@ class Contract(unittest.TestCase):
   for x in (0x307001A0,0x00A80009,0x030A0908,0x25F6E000):self.assertIn(x,w)
   self.assertTrue(any(v>>24==1 and v&0xFF==0x22 for v in w))
   self._reset_stages()
+ def test_projected_q1_as_plain(self):
+  # .723: a projected set (COUNT3 | PROJECTED) whose q is exactly 1 at every vertex goes in the plain layout (s, t as they are, no S T R
+  # mode, no projected sampler word): the same picture, the engine's projected layout drew Dragothic's q = 1 water wrong (T721). A q other
+  # than 1 anywhere keeps the projected layout; VX_D3D_TestSet 2 (vx_d3d_q1on 0) keeps it too.
+  on=U.in_dll(lib,'vx_d3d_q1on');n=(U*2).in_dll(lib,'vx_d3d_q1');f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]
+  for q1,sw,want in [((1.,1.,1.),1,0),((1.,1.,2.),1,2),((1.,1.,1.),0,2)]:
+   pts=[(8,8,.25,.5,q1[0]),(56,8,.75,.5,q1[1]),(8,56,.25,.9,q1[2])]
+   vb=b''.join(struct.pack('<4fII3f',x,y,.5,1.,0xFFFFFFFF,0xFF000000,u,v,q) for x,y,u,v,q in pts)
+   self._stages([(5,2,2,0,2,2,0,0)]);self.context.state.tss[0][24]=0x103;on.value=sw;a=(n[0],n[1])
+   try:
+    self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb,stride=36,fvf=0x101C4),(0,0));p=self.calls[0]
+   finally:on.value=1
+   self.assertEqual(p.stages.layout,want,(q1,sw));self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0)
+   self.assertEqual(sorted((round(f(p.tex.uv[k][0]),3),round(f(p.tex.uv[k][1]),3)) for k in range(3)),[(.25,.5),(.25,.9),(.75,.5)])
+   w=self._trace(p)
+   self.assertEqual(0x307001A0 in w,want==2,(q1,sw));self.assertEqual(any(v>>24==1 and v&0xFF==0x22 for v in w),want==2,(q1,sw))
+   if sw:self.assertEqual((n[0]-a[0],n[1]-a[1]),(1,0) if want==0 else (0,1))
+   self._reset_stages()
  def test_premodulate_and_three_units(self):
   # v10.206: PREMODULATE (T144) multiplies the next stage's texture in: t1 * t0 out, alpha t0
   T,D,CUR=2,0,1
@@ -1131,14 +1149,15 @@ class Contract(unittest.TestCase):
   # v10.367 (GTA3: one bad vertex failed the whole DrawPrimitives2 call): a primitive using a vertex that is not finite or has rhw <= 0 is
   # left out and counted (drop reason 2000); the call succeeds and its other primitives are drawn; nothing bad reaches a packet
   bad=U.in_dll(lib,'vx_d3d_bad_vertex_prims')
-  for at,value in [(0,0x7fc00000),(4,0x7f800000),(8,0xffc00000),(12,0),(12,0xbf800000)]: # .642: z a NaN (an infinite z is drawn, held to the range: tests/tnl_dense_cases.py)
+  for at,value in [(0,0x7fc00000),(4,0x7f800000),(8,0xffc00000),(12,0),(12,0xbf800000),(12,0xffc00000),(12,0x7f800000)]: # .722: rhw NaN, +infinity
+   # .642: z a NaN (an infinite z is drawn, held to the range: tests/tnl_dense_cases.py)
    v=bytearray(vertices());v[at:at+4]=pack(value);b0=bad.value;d0=dropped().value;self.calls.clear()
    self.assertEqual(self.run_dp2(self.tri(),v),(0,0));self.assertFalse(self.calls);self.assertEqual(bad.value,b0+1);self.assertEqual(dropped().value,d0+1)
    # the same bad vertex 0 in a line list, a point, a fan and an indexed list, then a good triangle (vertices 2, 3, 4) in the same call
    good=cmd(26,1,struct.pack('<H',0)+struct.pack('<3H',2,3,4))
    stream=cmd(15,1,struct.pack('<H',0))+cmd(1,1,struct.pack('<HH',1,0))+cmd(21,1,struct.pack('<H',0))+self._itl([(0,1,2)])+good
    # .531: rhw 0 alone in the point (every vertex of it rhw 0, nothing reads rhw) is drawn with rhw 1; the rest are mixed and left out
-   z=at==12 and value==0
+   z=at==12 and value in (0,0xffc00000,0x7f800000) # .722: rhw NaN or infinite as rhw 0
    self.calls.clear();self.assertEqual(self.run_dp2(stream,v),(0,0));self.assertEqual(bad.value,b0+(4 if z else 5))
    self.assertEqual([(c.ext.prim,c.vertex_count) for c in self.calls][-1:],[(0,3)]);self.assertEqual(len(self.calls),2 if z else 1)
    for c in self.calls:self.assertEqual(lib.vx3dn_validate(C.byref(c),C.byref(self.info)),0)
@@ -1164,7 +1183,7 @@ class Contract(unittest.TestCase):
    U.in_dll(lib,'vx_d3d_feat').value=ALLF if batch else ALLF&~128
    for name,s in streams:
     self.calls.clear();self.assertEqual(self.run_dp2(s,vb(one)),(0,0));ref=sig(self.calls);self.assertTrue(ref[0] if batch else ref,name)
-    for z in (0,0x80000000):
+    for z in (0,0x80000000,0xffc00000,0x7fc00000,0x7f800000,0xff800000): # .722: rhw NaN or infinite on every vertex too
      a=n0.value;b=bad.value;self.calls.clear();self.assertEqual(self.run_dp2(s,vb(z)),(0,0))
      self.assertEqual(sig(self.calls),ref,(name,hex(z),batch));self.assertTrue(n0.value>a,name);self.assertEqual(bad.value,b,name)
      for c in self.calls:self.assertEqual(lib.vx3dn_validate(C.byref(c),C.byref(self.info)),0)
@@ -1172,7 +1191,7 @@ class Contract(unittest.TestCase):
    self._stages([(5,4,2,0,4,2,0,0)])
    for name,s in streams:
     self.calls.clear();self.assertEqual(self.run_dp2(s,vb(one)),(0,0));ref=sig(self.calls);self.assertTrue(ref[0] if batch else ref,name)
-    for z in (0,0x80000000):
+    for z in (0,0x80000000,0xffc00000,0x7f800000): # .722
      a=n0.value;b=bad.value;self.calls.clear();self.assertEqual(self.run_dp2(s,vb(z)),(0,0))
      self.assertEqual(sig(self.calls),ref,('textured',name,hex(z),batch));self.assertTrue(n0.value>a,name);self.assertEqual(bad.value,b,name)
      for c in self.calls:self.assertEqual(lib.vx3dn_validate(C.byref(c),C.byref(self.info)),0)
@@ -1180,7 +1199,8 @@ class Contract(unittest.TestCase):
    # left out: one vertex rhw 1 (mixed), table fog, a w-buffer
    for name,setup,v in [('mixed',lambda:None,vb(0,one)),('mixed textured',lambda:self._stages([(5,4,2,0,4,2,0,0)]),vb(0,one)),
                         ('table fog',lambda:(self.context.state.rs.__setitem__(28,1),self.context.state.rs.__setitem__(35,3)),vb(0)),
-                        ('w-buffer',lambda:self.context.state.rs.__setitem__(7,2),vb(0))]:
+                        ('w-buffer',lambda:self.context.state.rs.__setitem__(7,2),vb(0)),
+                        ('mixed NaN',lambda:None,vb(0xffc00000,one)),('table fog NaN',lambda:(self.context.state.rs.__setitem__(28,1),self.context.state.rs.__setitem__(35,3)),vb(0xffc00000))]: # .722: still left out
     setup();a=n0.value;b=bad.value;self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),v),(0,0))
     self.assertFalse(self.calls,name);self.assertEqual(n0.value,a,name);self.assertEqual(bad.value,b+(name!='w-buffer'),name) # (a w-buffer: the whole state is refused before the vertices)
     self._stages([]);self.context.state.rs[28]=0;self.context.state.rs[35]=0;self.context.state.rs[7]=0

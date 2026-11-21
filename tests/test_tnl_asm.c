@@ -14,10 +14,11 @@ void *memcpy(void *d,const void *s,size_t n){uint8_t *p=d;const uint8_t *q=s;whi
 /* the board's */
 extern void tnk_pos_asm(tnk_frame *f) __asm__("_tnk_pos");
 extern void tnk_light_asm(tnk_frame *f) __asm__("_tnk_light");
-extern void tnk_plight_asm(tnk_frame *f) __asm__("_tnk_plight"); /* .647 */
+extern void tnk_light_k_asm(tnk_frame *f) __asm__("_tnk_light_k"); /* .707: clang's build of tnk_light */
 extern void tnk_spec_asm(tnk_frame *f) __asm__("_tnk_spec"); /* .651: compiled by clang from the C */
 extern void tnk_cv_asm(tnk_frame *f,float (*b)[4]) __asm__("_tnk_cv"); /* .652 */
 extern void tnk_splight_asm(tnk_frame *f) __asm__("_tnk_splight"); /* .653 */
+extern void tnk_plight_asm(tnk_frame *f) __asm__("_tnk_plight"); /* .647: hand-written (point lights alone) */
 extern void tnk_vcodes_asm(tnk_frame *f) __asm__("_tnk_vcodes"); /* .702 */
 
 static uint32_t seed=12345;
@@ -86,6 +87,11 @@ __attribute__((force_align_arg_pointer)) void _start(void){
   fb=fa;fb.cc=cc[1];fb.rec=rec[1];
   tnk_light(&fa);tnk_light_asm(&fb);cases++;
   if(cmp(fa.od,fb.od,16)||cmp(fa.os,fb.os,16)){out("light: words differ, case ");outn(t);out(" (lit ");outn(fa.lit);out(" lights ");outn(fa.nl);out(" fog ");outn(fa.fogmode);out(")\n");bad++;}
+  /* .707: clang's build of tnk_light (the groups lit by point lights): the whole frame, with the normals and position kept or not */
+  fa.nready=(t>>1)&1;fa.eready=(t>>2)&1;fb=fa;fb.cc=cc[1];fb.rec=rec[1];
+  tnk_light(&fa);tnk_light_k_asm(&fb);cases++;
+  fb.cc=fa.cc;fb.rec=fa.rec;
+  if(cmp(&fa,&fb,sizeof(fa))){out("light_k: the frame differs, case ");outn(t);out(" (lit ");outn(fa.lit);out(" fog ");outn(fa.fogmode);out(")\n");bad++;}
   /* .647: the point lights on the same four lanes: 0-8 lights, near and past the range, attenuation above and at or below 0, a light on a vertex (d 0) */
   {uint32_t q;fa.npl=t%9;
    for(k=0;k<8;k++){for(i=0;i<3;i++){splat(fa.pp[k][i],frnd(-60,60));}
@@ -95,7 +101,7 @@ __attribute__((force_align_arg_pointer)) void _start(void){
     splat(fa.e[8],0);splat(fa.e[9],0);splat(fa.e[10],1);splat(fa.e[12],0);splat(fa.e[13],0);splat(fa.e[14],0);}
    for(q=0;q<4;q++)for(i=0;i<4;i++)fa.base[i][q]=frnd(-0.2f,1.3f);
    fb=fa;fb.cc=cc[1];fb.rec=rec[1];
-   tnk_plight(&fa);tnk_plight_asm(&fb);cases++;
+   tnk_plight(&fa);tnk_plight_asm(&fb);cases++; /* .647; .707: kept for point lights alone */
    if(cmp(fa.base,fb.base,sizeof(fa.base))){out("plight: colours differ, case ");outn(t);out(" (point lights ");outn(fa.npl);out(" normals ");outn(fa.haveN);out(")\n");bad++;}
    fb.cc=fa.cc;fb.rec=fa.rec;memset(fa.scratch,0,sizeof(fa.scratch));memset(fb.scratch,0,sizeof(fb.scratch)); /* .647 (board): nothing else in the frame may change */
    if(cmp(&fa,&fb,sizeof(fa))){out("plight: the frame differs beyond the colours, case ");outn(t);out("\n");bad++;}
@@ -105,7 +111,8 @@ __attribute__((force_align_arg_pointer)) void _start(void){
      for(i=0;i<3;i++)d[i]=frnd(-1,1);l=d[0]*d[0]+d[1]*d[1]+d[2]*d[2];if(l<0.01f){d[2]=1;l=1;}
      {float r=1.0f/_mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(l)));for(i=0;i<3;i++)splat(fa.psd[k][i],d[i]*r);}
      {float ct=frnd(0.0f,0.99f),cp=(rnd()&3)?frnd(-0.5f,ct):ct,fl=fo[rnd()&3];splat(fa.pcone[k][0],cp);splat(fa.pcone[k][1],ct);splat(fa.pcone[k][2],fl);fa.pmode[k]=fl==1.0f?1:!(fl>0.0f)?2:0;}}
-    for(q=0;q<4;q++)for(i=0;i<4;i++)fa.base[i][q]=frnd(-0.2f,1.3f);
+    for(q=0;q<4;q++)for(i=0;i<4;i++){fa.base[i][q]=frnd(-0.2f,1.3f);fa.lbase[i][q]=frnd(-0.2f,1.3f);} /* .707: the kernel starts from lbase */
+    fa.nready=0;fa.eready=0;
     fa.spec=(t>>5)&1; /* .659: with specular lighting it keeps the lights for tnk_spec (.697: makes the specular sums) */
     fa.pamb=rnd()&0xFF; /* .697: point lights whose ambient adds (the rest skipped) */
     splat(fa.spcut,(t&8)?frnd(0,0.8f):0.0f); /* .697: the specular cutoff */
@@ -125,6 +132,7 @@ __attribute__((force_align_arg_pointer)) void _start(void){
    for(k=0;k<3;k++)for(q=0;q<4;q++)fa.sacc[k][q]=frnd(0,2.0f);
    for(k=0;k<16;k++)for(i=0;i<3;i++)for(q=0;q<4;q++)fa.sdc[k][i][q]=frnd(0,1.1f);
    for(k=0;k<4;k++)fa.os[k]=rnd();
+   fa.nready=(t>>8)&1;fa.eready=(t>>2)&1; /* .707: the normals and position kept by an earlier kernel, or made here */
    fb=fa;fb.cc=cc[1];fb.rec=rec[1];
    tnk_spec(&fa);tnk_spec_asm(&fb);cases++;
    fb.cc=fa.cc;fb.rec=fa.rec;

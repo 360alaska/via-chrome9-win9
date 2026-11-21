@@ -1,6 +1,6 @@
 {
   "scope": "Execute the linked Win32 D3D callbacks with synthetic runtime/VxD services.",
-  "passed": 95,
+  "passed": 96,
   "cases": [
     "linked ContextCreate takes an IDirectDrawSurface interface from a pre-DirectX 7 runtime call",
     "linked Miscellaneous2Callbacks offers CreateSurfaceEx, GetDriverState and DestroyDDLocal",
@@ -90,6 +90,7 @@
     "32bpp Win16 bridge advertises 4-byte target/texture/depth alignment with D3D disabled",
     "v10.319 (audit H3): an IOCTL that fails on the slot handle and on a fresh one closes the fresh one and keeps the slot (no handle leaked a call)",
     "v10.322 (review): a call that fails only on the slot handle: the fresh one replaces it and the replaced one is closed (5 retries: 5 opens, 5 closes)",
+    ".707: a slot value that does not answer as this driver (another program's handle under a reused process ID) is replaced and left open",
     "v10.322: at a process attach a slot under its ID (an ended process's) is forgotten, its value not closed",
     "v10.319 (audit H2): the HAL callback lock held by an ended process (or by this ID before it attached again) is taken over and released; held by a running process or this one it is not; a process detaching lets it go",
     "v10.319 (audit H1): a DXT1 Blt with an empty clip list touches nothing; a partial list is refused with nothing written; the whole surface (clipped to itself or not) copies",

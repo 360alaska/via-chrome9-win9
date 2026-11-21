@@ -2114,7 +2114,9 @@ static void control_body(uint32_t value,uint32_t *out) {
   * the XMM registers at a task switch), out[1] 'SSE1', out[2]/out[3] CPUID 1 EDX/ECX. CR4 can be read only at ring 0, so the VxD answers */
  /* v10.363: 0xFFFFFE36 the display FIFO's registers as the mode set left them: out[0] SR16 | SR17 << 8 | SR18 << 16 | SR22 << 24, out[1] CR68 |
   * CR94 << 8 | CR95 << 16 | SR21 << 24, out[2] 'FIFO', out[3] ACCEL_3D_ZFIX | draws that sent it << 8 */
- /* v10.364: the display FIFO live (VXFIFO.EXE), no mode set: 0xFFFFFE37 writes openchrome's VX855 values (SR17 C7: 400 entries; SR16, SR18
+ /* .713 (VX800 hand-off, "the display-queue field reads 7F where the VX855 uses FF"): checked: no path of the driver writes SR16-SR18,
+  * SR22 or CR68/94/95 on any chip; both boards' BIOSes leave SR17 7F (VX855 below). The v10.364 test write is gone; its note kept for history:
+  * v10.364: the display FIFO live (VXFIFO.EXE), no mode set: 0xFFFFFE37 wrote openchrome's VX855 values (SR17 C7: 400 entries; SR16, SR18
   * 90: thresholds 320, bit 6 kept; SR22 28: expire 160, bits 7:5 kept), the values found first kept; 0xFFFFFE38 puts those back. Then
   * answers as 0xFFFFFE36. Board, v10.363: the BIOS leaves SR16 20 SR17 7F SR18 60 SR22 10 (slanted rows under heavy 2D fills). */
  if(value==0xFFFFFE36UL) {unsigned char si=inp(0x3C4),s10,ci=inp(0x3D4);

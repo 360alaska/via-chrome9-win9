@@ -726,11 +726,16 @@ BOOL VESA_setmode_phy(DWORD w, DWORD h, DWORD bpp, DWORD rr_min, DWORD rr_max)
 	regs.Client_EBX = vesa_modes[mode].mode_id | VESA_SETMODE_LFB;
 	if(crtc_info)
 	{
-		regs.Client_EBX |= VESA_SETMODE_CRTC; /* without bit 11 the BIOS ignores the timing block */
-		regs.Client_ES  = V86_SEG(vesa_buf_v86+CRTC_OFFSET);
-		regs.Client_EDI = V86_OFF(vesa_buf_v86+CRTC_OFFSET);
-		
-		if(pr_take(2)) {pr_set[9] = 1; vesa_bios_V86(&regs);} else vesa_bios(&regs); /* v10.333 (VXPROBE refresh, review #172) */
+		/* .713 (review): the timing block (bit 11, ES:DI) only through vesa_bios_V86, the one path that hands the BIOS ES: vesa_bios
+		 * (Exec_VxD_Int) passes the general registers alone, so with bit 11 the BIOS read its block at whatever ES the VM had. Through
+		 * vesa_bios a plain mode set (no bit 11): the BIOS's own timing, which it kept with the block too (v10.44), and the driver then
+		 * programs its own timing above 1024x768 (VX_fix_timing) as before. */
+		if(pr_take(2)) {
+			regs.Client_EBX |= VESA_SETMODE_CRTC; /* without bit 11 the BIOS ignores the timing block */
+			regs.Client_ES  = V86_SEG(vesa_buf_v86+CRTC_OFFSET);
+			regs.Client_EDI = V86_OFF(vesa_buf_v86+CRTC_OFFSET);
+			pr_set[9] = 1; vesa_bios_V86(&regs); /* v10.333 (VXPROBE refresh, review #172) */
+		} else {regs.Client_ES = 0; regs.Client_EDI = 0; vesa_bios(&regs);}
 		pr_set[7] = regs.Client_EAX & 0xFFFF;
 		if(!VESA_SUCC(regs))
 		{

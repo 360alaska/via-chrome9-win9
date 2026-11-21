@@ -857,7 +857,8 @@ static void build_vertex(const vx3dn_packet *p,const vx_vfmt *f,uint32_t i,uint3
   uint32_t rhw=a->rhw,sp=p->shader.spec[i],u=f->tx?p->tex.uv[i][0]:0,t=f->tx?p->tex.uv[i][1]:0,u1=f->un>1?p->stages.uv1[i][0]:u,t1=f->un>1?p->stages.uv1[i][1]:t,w6,w7,w8,w9;
   if(f->m3){uint32_t n=8;w[0]=x;w[1]=y;w[2]=z;w[3]=rhw;w[4]=c;w[5]=sp;w[6]=u;w[7]=t; /* v10.321: S_A T_A [R_A] S_B T_B [R_B] */
    if(f->m3&1)w[n++]=p->stages.q[i];w[n++]=u1;w[n++]=t1;if(f->m3&2)w[n++]=p->stages.r1[i];return;}
-  if(f->stq){w6=u;w7=t;w8=p->stages.q[i];w9=0;} /* v10.208: s t q */
+  if(f->stq){w6=u;w7=t;w8=p->stages.q[i];w9=0;} /* v10.208: s t q (.717, VXTLP 6M: the engine corrects these for perspective itself, from W; a
+   * driver-side multiply by rhw broke every projected case, 69-81% of the pixels: they go as they are) */
   else {w6=u;w7=t;w8=u1;w9=t1;}
   w[0]=x;w[1]=y;w[2]=z;w[3]=rhw;w[4]=c;w[5]=sp;w[6]=w6;w[7]=w7;w[8]=w8;
   if(f->stq)return;

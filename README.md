@@ -2,9 +2,9 @@
 
 A from-scratch Windows 98 display driver for the VIA VX800, VX855 and VX900 integrated graphics: accelerated 2D, DirectDraw, Direct3D and OpenGL from one set of files. VIA never shipped a Windows 9x driver for these chips.
 
-Current build: **.706**: tested on the VX855 / VX875; checks on the VX800 and VX900 are pending (see [Checking an install](#checking-an-install)).
+Current build: **.723**: tested on the VX800, VX855 and VX900 up to build .715 (full test runs on each board); builds .716-.723, including the 3DMark 2001 Dragothic water fix and the Hellbender fog fix, on the VX855 (see [Checking an install](#checking-an-install)).
 
-**Download:** [`VIA_Chrome9_706.zip`](downloads/VIA_Chrome9_706.zip) (the driver) and [`VIA_Chrome9_706_tools.zip`](downloads/VIA_Chrome9_706_tools.zip) (optional test tools).
+**Download:** [`VIA_Chrome9_723.zip`](downloads/VIA_Chrome9_723.zip) (the driver) and [`VIA_Chrome9_723_tools.zip`](downloads/VIA_Chrome9_723_tools.zip) (optional test tools), also on the [releases page](https://github.com/360alaska/via-chrome9-win9/releases) with the source and the changes since .637.
 
 **Support the project:** if this driver is useful to you, you can [donate through PayPal](https://www.paypal.com/donate/?hosted_button_id=45HAEA4K4KTXU).
 
@@ -102,7 +102,7 @@ To update an existing install, replace the same five files and restart. All five
 
 ## Checking an install
 
-The test set is a separate download (`downloads/VIA_Chrome9_706_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
+The test set is a separate download (`downloads/VIA_Chrome9_723_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
 
 | Tool | What it checks |
 |---|---|
@@ -119,7 +119,7 @@ The test set is a separate download (`downloads/VIA_Chrome9_706_tools.zip`) and 
 
 A report that ends in PASS or `failures=0` is good. `LOGS\RUNALL.TXT` names the last test started if one hangs.
 
-`REGRESS.TXT` in the tools lists every change since build .694 that has so far run only on VX855 boards, with the test that checks it. VX800 and VX900 owners: a `RUNALL.BAT` report from your board is welcome.
+`REGRESS.TXT` in the tools lists every change since build .694 with the test that checks it; builds .716-.723 have so far run only on VX855 boards. VX800 and VX900 owners: a `RUNALL.BAT` report from your board is welcome.
 
 ## Settings
 

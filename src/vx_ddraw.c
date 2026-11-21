@@ -205,6 +205,7 @@ const DWORD VXDDABI[]={sizeof(VMDAHAL_t),offsetof(VMDAHAL_t,cb32),offsetof(VMDAH
  * it works; see ioctl). */
 /* v10.234: the handle comes from this process's slot on every call (the shared device/device_pid pair could be overwritten by another
  * process between two lines); the Direct3D HAL uses this too (VX_DD_call) instead of opening and closing a handle per call. */
+static DWORD stale_kept; /* .707: slot values found not to be this driver's handle: dropped, not closed */
 static int ioctl(DWORD code,const void *in,DWORD n,void *out,DWORD z) {
  DWORD got=0,pid=GetCurrentProcessId();int temp;HANDLE h;BOOL ok;
  /* v10.58n: the DLL may sit in the shared arena (one copy for DDHELP and every application),
@@ -228,7 +229,15 @@ static int ioctl(DWORD code,const void *in,DWORD n,void *out,DWORD z) {
  if(lock_wanted(pid)&&code!=0x85500028UL)lock_on(h); /* v10.435: the new handle holds the lock too before the old one's close drops its hold */
  /* v10.322 (review: five retries, six opens and no close): the slot's handle is this process's own (a slot left under this ID by an ended
   * process is forgotten when this process attaches, dev_attach), so it is closed as the new one takes its place */
- {int i;for(i=0;i<DEV_SLOTS;i++)if(dev_pid[i]==pid){HANDLE old=dev_h[i];dev_h[i]=h;if(old&&old!=INVALID_HANDLE_VALUE&&old!=h)CloseHandle(old);reopened++;return 1;}}
+ /* .707 (board, T700, T702, T706: VXNOSYNC run after 3DMark lost its log after its first line, though every pass ran): the slot can hold
+  * an ended process's value under a reused ID (DirectDraw calls the HAL in a process this DLL was never attached to, so dev_attach did
+  * not forget it). In this process that number may be one of the program's own handles (VXNOSYNC's log file), and closing it broke the
+  * program. The old value is closed only when it answers the VxD's identity query (0xFFFFFE50: 'VXD3') as our device: then it is a
+  * handle to this driver (v10.322's rule: no handle leaked a retry); anything else is dropped, never closed. */
+ {int i;for(i=0;i<DEV_SLOTS;i++)if(dev_pid[i]==pid){HANDLE old=dev_h[i];dev_h[i]=h;
+   if(old&&old!=INVALID_HANDLE_VALUE&&old!=h){DWORD q=0xFFFFFE50UL,o[4],g=0;o[1]=0;
+    if(DeviceIoControl(old,0x85500012UL,&q,4,o,16,&g,NULL)&&g==16&&o[1]==0x56584433UL)CloseHandle(old);else stale_kept++;}
+   reopened++;return 1;}}
  CloseHandle(h);return 1; /* the slot went meanwhile: not kept */
 }
 int VX_DD_call(DWORD code,const void *in,DWORD n,void *out,DWORD z) {return ioctl(code,in,n,out,z);}

@@ -171,6 +171,8 @@ for point,nl,sl in ((3,1,None),(3,2,None),(3,4,None),(4,3,None),(4,6,None),(3,2,
 # .653: generated and transformed coordinate sets, and a set the vertex lacks, in the group path against the one-vertex code (words
 # 6-9 exact): stage 0 (and stage 1) TEXCOORDINDEX camera-space normal (0x10000), position (0x20000), reflection (0x30000), set 1 of a
 # one-set vertex; TEXTURETRANSFORMFLAGS 2 and 3 | PROJECTED (256) with a texture matrix
+TC_ABS=1.0/65536;ulps=[0.0]
+F=lambda w:struct.unpack('<f',struct.pack('<I',w))[0]
 def texcase(name,tci0,ttf0,tci1=None,lit=1,lv=0,m=(12,12,-.9,-.9,1.8,1.8,.15,.85)):
  global fails
  vs,ix=mesh(*m);vb=b''
@@ -197,10 +199,12 @@ def texcase(name,tci0,ttf0,tci1=None,lit=1,lv=0,m=(12,12,-.9,-.9,1.8,1.8,.15,.85
     if p==q:continue
     if k in (4,5):
      d=max(abs(((p>>(8*s))&255)-((q>>(8*s))&255)) for s in range(4));worst=max(worst,d);bad|=d>1
+    elif k>=6 and abs(F(p)-F(q))<=TC_ABS: # .709: a generated set made from the group's SIMD normal and position (the owner accepted
+     ulps[0]=max(ulps[0],abs(F(p)-F(q)))  # last-bit differences): each coordinate within TC_ABS (a 64th of a texel of a 1024-texel texture)
     else:bad=True
  nz=sum(1 for x in b[1] if x[-16:-8]!=bytes(8));nz1=sum(1 for x in b[1] if x[-8:]!=bytes(8))
  ok=a[0]==(0,0)==b[0] and not bad and one==0 and nz>len(b[1])//2 # .658: a set the vertex lacks reads set 0 (non-zero) too
- print(('ok   ' if ok else 'FAIL ')+name,'vertices',len(a[1]),len(b[1]),'worst colour byte difference',worst,'draws refused',one,'non-zero sets',nz,nz1);fails+=not ok
+ print(('ok   ' if ok else 'FAIL ')+name,'vertices',len(a[1]),len(b[1]),'worst colour byte difference',worst,'draws refused',one,'non-zero sets',nz,nz1,'largest coordinate difference %.3g'%ulps[0]);fails+=not ok
 for tci,ttf,nm in ((0x10000,0,'camera-space normal'),(0x20000,0,'camera-space position'),(0x30000,0,'reflection'),(0x30000,0,'reflection, LOCALVIEWER'),(0,2,'set 0 transformed (count 2)'),
                    (0x20000,3|256,'position transformed, projected (count 3)'),(1,0,'set 1 of a one-set vertex')):
  texcase('coordinates: '+nm,tci,ttf,lv=1 if 'LOCALVIEWER' in nm else 0)

@@ -1,4 +1,6 @@
-/* VXRHW v1.6 (driver .548): the list's vertices drawn by index, each triangle paired with the one 100 further on (sparse runs: the
+/* VXRHW v1.7 (driver .722): test_nan, a primitive whose vertices all have rhw NaN or +infinity drawn as rhw 1 (diffuse and
+ * textured, counted in QueryPhases 242); table fog and a triangle mixing NaN with rhw 1 still left out.
+ * VXRHW v1.6 (driver .548): the list's vertices drawn by index, each triangle paired with the one 100 further on (sparse runs: the
  * pass-through hands them to the indexed loop and comes back, QueryPhases 313 grows), against the list drawn in order; 0 pixels may differ.
  * VXRHW v1.5 (driver .547): the on-screen grid with culling off is checked once (its token's range proven, the pass-through's spans
  * inside it not checked again: QueryPhases 311 grows, spans checked by the kernel stay at the proof's one).
@@ -157,17 +159,20 @@ typedef struct {float x,y,z,w;U32 c;float u,v;} TL; /* FVF 0x144: XYZRHW, DIFFUS
 #define NQ 8
 #define NL 8
 #define NTL (NQ*6+NL*2)
-static void *tlv[4]; /* 0: every rhw 0, 1: every rhw 1, 2: each triangle's first vertex rhw 1, the rest 0 (mixed), 3: unused */
+static void *tlv[6]; /* 0: every rhw 0, 1: every rhw 1, 2: each triangle's first vertex rhw 1, the rest 0 (mixed); v1.7: 3 every rhw NaN (FFC00000, Hellbender's), 4 every rhw +infinity, 5 each triangle's first vertex rhw 1, the rest NaN */
 static U32 grad(U32 k,U32 j) {static const U32 c0[4]={0xFFFF2020UL,0xFF20FF20UL,0xFF2020FFUL,0xFFFFFF20UL};return c0[(k+j)&3]^((k*37UL)<<8&0xFF00UL);}
 static int make_tl(void) {
  TL v[NTL];U32 k,j,n=0,f;unsigned char *p;
  for(k=0;k<NQ;k++){float x=12.0f+(k&3)*60.0f,y=12.0f+(k>>2)*60.0f;static const float qx[6]={0,48,0,48,48,0},qy[6]={0,0,48,0,48,48};
   for(j=0;j<6;j++){TL *t=&v[n++];t->x=x+qx[j]+(float)(k&1)*0.25f;t->y=y+qy[j];t->z=0.0f;t->w=0.0f;t->c=grad(k,j==4?3:j%3);t->u=qx[j]/48.0f;t->v=qy[j]/48.0f;}}
  for(k=0;k<NL;k++){float y=140.0f+k*13.0f;for(j=0;j<2;j++){TL *t=&v[n++];t->x=16.0f+j*(200.0f+k*3.0f)+(float)k;t->y=y+j*(float)(k*2);t->z=0.0f;t->w=0.0f;t->c=j?0xFF080000UL:0xFF310000UL+k*0x0400UL;t->u=(float)j;t->v=0.0f;}}
- for(f=0;f<3;f++){
+ for(f=0;f<6;f++){
   if(((FCREATEVB)VT(dev,DEV_CREATEVB))(dev,NTL*sizeof(TL),0,TLF,1,&tlv[f])||!tlv[f]){say("CreateVertexBuffer (TL) failed\n");return 0;}
   if(((FBLOCK)VT(tlv[f],BUF_LOCK))(tlv[f],0,0,&p,0)){say("vertex buffer lock failed\n");return 0;}
-  for(k=0;k<NTL;k++){TL t=v[k];t.w=f==1?1.0f:(f==2&&k<NQ*6&&k%3==0)?1.0f:0.0f;memcpy(p+k*sizeof(TL),&t,sizeof(TL));}
+  for(k=0;k<NTL;k++){TL t=v[k];U32 nan=0xFFC00000UL,inf=0x7F800000UL;
+   t.w=f==1?1.0f:(f==2&&k<NQ*6&&k%3==0)?1.0f:0.0f;
+   if(f==3||(f==5&&!(k<NQ*6&&k%3==0)))memcpy(&t.w,&nan,4);else if(f==4)memcpy(&t.w,&inf,4);else if(f==5)t.w=1.0f; /* v1.7 */
+   memcpy(p+k*sizeof(TL),&t,sizeof(TL));}
   ((F0)VT(tlv[f],BUF_UNLOCK))(tlv[f]);}
  return 1;
 }
@@ -217,6 +222,31 @@ static void test_rhw(void) {
    say("   %-30s lit %d, counted %ld\n",nm[m],ln,m==1?(long)a1-NL:(long)a1); /* v1.1: signed */
    if(ln||(m==1?a1!=NL:a1!=0)){say("   WRONG: drawn or counted\n");fails++;}}
   tl_mode=0;tl_set=0;}
+}
+/* v1.7 (driver .722): a primitive whose vertices all have a NaN or infinite rhw (x, y, z usable) is drawn with rhw 1, as rhw 0
+ * (Hellbender: 4,326 primitives with rhw FFC00000 on every vertex left out in 72 s, its fog and parts of the picture missing); the same
+ * picture as rhw 1, diffuse and textured, counted in QueryPhases 242. Table fog, and a triangle mixing NaN with a real rhw, still left out. */
+static void test_nan(void) {
+ static const char *const nm[2]={"rhw NaN (FFC00000)","rhw +infinity"};int m,t,k,d[4],bad;DWORD a0,a1;
+ if(!hal_phases||qw(0)!=0x431)return;
+ for(m=0;m<2;m++)for(t=0;t<2;t++){
+  say("%s, %s, drawn with rhw 1 (driver .722):\n",nm[m],t?"a texture bound (MODULATE)":"diffuse only");
+  tl_mode=t;bad=0;
+  for(k=0;k<4;k++){tl_set=k&1?3+m:1;if(!shot_tl(k?cur:ref))return;d[k]=k?ndiff2(ref,cur):0;if(d[k]){bad++;if(!saved){bmp("VXRHW_A.BMP",ref);bmp("VXRHW_B.BMP",cur);saved=1;}}}
+  say("   pixels differing from the first rhw 1: %s %d, rhw 1 %d, %s %d; lit %d\n",nm[m],d[1],d[2],nm[m],d[3],lit(ref));
+  if(!lit(ref)){say("   WRONG: nothing drawn with rhw 1\n");fails++;}
+  if(bad){say("   WRONG: drawn differently from rhw 1 (VXRHW_A/B.BMP: A rhw 1, B the shot that differed)\n");fails++;}
+  tl_set=3+m;a0=qw(242);for(k=0;k<10;k++){draw_tl();present();}a1=qw(242)-a0;
+  say("   10 frames: %lu primitives drawn with rhw 1 (%d expected)\n",a1,10*(NQ*2+NL));
+  if(a1!=10UL*(NQ*2+NL)){say("   WRONG: not every primitive was drawn\n");fails++;}}
+ {static const char *const nm2[2]={"rhw NaN with table fog (linear)","one vertex rhw 1, two rhw NaN"};
+  say("still left out (nothing drawn, nothing counted):\n");
+  for(m=0;m<2;m++){int ln;tl_mode=m==0?2:0;tl_set=m==0?3:5;
+   a0=qw(242);if(!shot_tl(cur))return;a1=qw(242)-a0;
+   ln=m==1?lit_rows(cur,0,136):lit(cur); /* the mixed set changes only the triangles: its lines (rhw NaN) are still drawn */
+   say("   %-32s lit %d, counted %ld\n",nm2[m],ln,m==1?(long)a1-NL:(long)a1);
+   if(ln||(m==1?a1!=NL:a1!=0)){say("   WRONG: drawn or counted\n");fails++;}}}
+ tl_mode=0;tl_set=0;
 }
 /* 2. 384 vertices an indexed packet */
 static void test_big(void) {
@@ -283,7 +313,7 @@ static LRESULT CALLBACK wp(HWND h,UINT m,WPARAM w,LPARAM l) {return DefWindowPro
 int main(void) {
  HMODULE d8;void *(__stdcall *create)(U32);void *d3d;MODE mode;PP pp;HWND wnd;WNDCLASS wc;HRESULT hr;char path[MAX_PATH],*s;
  GetModuleFileName(0,path,sizeof(path));s=strrchr(path,'\\');if(s)strcpy(s+1,"VXRHW.LOG");logf=fopen(path,"w");
- say("VXRHW v1.6 (driver .548): rhw-0 primitives drawn (textured too), the pass-through's span kernels, the culled indexed loop\n");
+ say("VXRHW v1.7 (driver .722): rhw-0, NaN and infinite rhw primitives drawn with rhw 1 (textured too), the pass-through's span kernels, the culled indexed loop\n");
  {char dll[MAX_PATH];UINT n=GetSystemDirectoryA(dll,MAX_PATH-16);HMODULE h=0;
   if(n&&n<MAX_PATH-16){strcpy(dll+n,dll[n-1]=='\\'?"VXDDRAW.DLL":"\\VXDDRAW.DLL");h=LoadLibraryA(dll);}
   hal_phases=h?(DWORD (WINAPI *)(DWORD *,DWORD))GetProcAddress(h,"VX_D3D_QueryPhases"):0;}
@@ -300,8 +330,8 @@ int main(void) {
  if(hr||!dev){((F0)VT(d3d,D3D_REL))(d3d);if(logf)fclose(logf);return 1;}
  build_mesh();
  if(make_texture()&&make_buffers()){
-  test_rhw();test_big();}else fails++;
- {int k;for(k=0;k<3;k++)if(tlv[k])((F0)VT(tlv[k],D3D_REL))(tlv[k]);}
+  test_rhw();test_nan();test_big();}else fails++;
+{int k;for(k=0;k<6;k++)if(tlv[k])((F0)VT(tlv[k],D3D_REL))(tlv[k]);}
  if(tex)((F0)VT(tex,D3D_REL))(tex);
  if(vb)((F0)VT(vb,D3D_REL))(vb);if(ib)((F0)VT(ib,D3D_REL))(ib);if(lvb)((F0)VT(lvb,D3D_REL))(lvb);
  ((F0)VT(dev,D3D_REL))(dev);((F0)VT(d3d,D3D_REL))(d3d);DestroyWindow(wnd);

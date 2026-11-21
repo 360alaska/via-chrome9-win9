@@ -107,7 +107,7 @@ int main(void) {
   in[0]=1;in[1]=0;in[2]=0;in[3]=clk;
   if(!DeviceIoControl(vxd,VX_IOCTL_SAMPLE,in,16,o,8,&got,0)||got!=8||o[0]!=VX_SMP_VERSION||!o[1]){say("FAIL: the sampler did not start (a driver before .521, VXD3DMON running, or IRQ 8 / the RTC's periodic interrupt taken)\n");return 1;}
   if(!smp_read(&s0)){say("FAIL: the sampler could not be read\n");return 1;}
-  rtc=s0.clk==1;khz=s0.tsc_khz?s0.tsc_khz:1000000UL;
+  rtc=(s0.clk&0xFF)==1; /* driver .706 fix: bits above 7 carry the NMI state */khz=s0.tsc_khz?s0.tsc_khz:1000000UL;
   if(clk==1&&!rtc){say("the RTC's interrupt: not available (IRQ 8 taken, or its periodic interrupt in use); the time-outs judged instead\n");in[0]=0;DeviceIoControl(vxd,VX_IOCTL_SAMPLE,in,12,o,8,&got,0);judge=2;continue;}
   judge=clk==1||judge==2;
   say("\n%s (TSC %.1f MHz, measured by the VxD)%s:\n",clk==1?"THE SAMPLER ON THE RTC'S INTERRUPT (IRQ 8, 1024 a second)":"THE SAMPLER ON THE VMM'S TIME-OUTS",khz/1000.0,judge?"":", reported only");

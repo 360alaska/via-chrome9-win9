@@ -14,7 +14,7 @@
   "le": {
     "format": "LE",
     "objects": 2,
-    "internal_fixups": 8402,
+    "internal_fixups": 8426,
     "device_id": "4333",
     "device_name": "VX85598",
     "ddb_ordinal": 1,
@@ -54,6 +54,7 @@
       "VX_D3D_QueryTrace",
       "VX_D3D_Record",
       "VX_D3D_RecordFrame",
+      "VX_D3D_TestSet",
       "VX_DD_Present",
       "VX_DD_QueryBltSigs",
       "VX_DD_QueryBlts",
@@ -3005,7 +3006,7 @@
     "modified_files": {
       "build.py": {
         "baseline_sha256": "f4fb90bde751305c785a88533cd712e3aba8686b1a4a5853d7046bfd4cec6b5a",
-        "current_sha256": "ef7a3720df33a092e8aa99844a1cc8a781b62177f32ead169e1a12abcf083157"
+        "current_sha256": "939a8879d9500851c1d740814c1b6b9c92dd423055827fe961fa8c05f4da1738"
       },
       "src/dddrv.c": {
         "baseline_sha256": "6d5a2456a4643b9ba6db2e4c34eed33057ea93f0bb8514a2e320fb2fc92cce4c",
@@ -3013,7 +3014,7 @@
       },
       "src/vx855_2d.c": {
         "baseline_sha256": "c1f1f0dc5eb4f3a6b19ccafc077387adbed7e86391adda2e9d43bf48c29575d3",
-        "current_sha256": "fedc6989b27d16d399c5afa45f84f858cc3533783ce50e872e6511d6a84fd09d"
+        "current_sha256": "7bdb90541bf4d15687c942034a8ebd15e0a56218c8a9ce4018c4045987b85962"
       },
       "src/vx855_2d.h": {
         "baseline_sha256": "a5e8f866b5cb9cb029c2a36af5fe7aae74d981324287dc53873b6187ce1907d8",
@@ -3029,15 +3030,15 @@
       },
       "src/vx_ddraw.c": {
         "baseline_sha256": "6f615cca66ae742b28cc412f9ab42c04ed11642390576cd7362fe5669dc28d29",
-        "current_sha256": "f480d833b910c8cc163f6e66fce35576a3708e843a0a4128bfd2cfc01c4afe5e"
+        "current_sha256": "dcc5c75ecb4bd3437767f2e38fc9ebea4d76a9edb7befc756fdef7d10168d580"
       },
       "src/vxd_main.c": {
         "baseline_sha256": "c457b4c71299c0d10ba748d7bf994f2045c69b032869d3d41db779c71e228aa7",
-        "current_sha256": "f5663ca1e840bc8f652af0980c681c8e860f98e89e441b622cae7c7754fe1487"
+        "current_sha256": "8485c0084e9a4def31e07a66115a0c02442d57687f46338c83e5787565f6b7bf"
       },
       "src/vxd_vesa.c": {
         "baseline_sha256": "09a6ba3f12c8499c1daa252d0cfcaff7a86c111e70d176ef8c24c4c4a27b02c1",
-        "current_sha256": "f7d2f8ad070d6b90417e01014394961e9aee5401e389cb664a7c6724659bb56d"
+        "current_sha256": "ccc127aa5b35486ce6e1b39298b7a608f16b4861a819bae480543bb56c9b94fb"
       },
       "src/ddhal32/vmdahal32.h": {
         "baseline_sha256": "35cceccf472ba9c4b07498d18aa41ff41fe98f136f105b0b340b8e4d8d29cbdd",

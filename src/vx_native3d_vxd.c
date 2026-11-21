@@ -730,19 +730,33 @@ static void xr_noops(uint32_t from,uint32_t to) { /* 256-byte no-op blocks (the 
  volatile uint32_t *w=(volatile uint32_t*)xr_lin;uint32_t p,k;
  for(p=from;p<to;p+=256){w[p/4]=0xFE020420UL;w[p/4+1]=0x41C;w[p/4+2]=0x00300000UL;w[p/4+3]=0xCC000000UL;for(k=4;k<64;k++)w[p/4+k]=0xCCC00004UL;}
 }
+/* .713 (review: _PageAllocate under the engine lock): the ring's pages are allocated by xr_prealloc, which the submit entries call before
+ * they take the engine lock (cs_enter), not by xr_setup under it: _PageAllocate can block (fixed, aligned pages found by moving others)
+ * while the engine lock is held, the order .515 forbids (whatever the allocation waits for, then the engine lock). xr_pre: 0 not tried,
+ * 1 a thread allocating, 3 ready, 4 no pages (VX_XR_OFF_ALLOC), 5 pages not usable (VX_XR_OFF_PAGES); xr_setup under the lock only
+ * maps the table. One thread allocates (claimed with interrupts off); the others take one-shot groups until it is done. */
+static volatile uint32_t xr_pre;
+static void xr_prealloc(void) {
+ uint32_t k,j,r;unsigned long phys=0,f;
+ if(xr_pre||xr_state||!vx3dn_xr||fx_ring_dead)return;
+ if(!vx3dn_gart_off||!vx3dn_cmd_off||!vx_status.fb_linear||(vx3dn_gart_off&0xFFFUL))return; /* xr_setup says why (VX_XR_OFF_NOTABLE) */
+ f=VX_irq_save();if(xr_pre){VX_irq_restore(f);return;}xr_pre=1;VX_irq_restore(f);
+ if(vx3dn_xr_pages>XR_PAGES_MAX)vx3dn_xr_pages=XR_PAGES_MAX;if(vx3dn_xr_pages<64UL)vx3dn_xr_pages=64UL;
+ for(r=3;;){xr_alloc=_PageAllocate(XR_PAGES+1,PG_SYS,0,0,0x100,0xFFFFF,&phys,PAGEFIXED|PAGEUSEALIGN); /* .626: a smaller ring when the pages cannot be had */
+  if(xr_alloc&&xr_alloc!=0xFFFFFFFFUL&&!(xr_alloc&4095UL))break;
+  xr_alloc=0;if(vx3dn_xr_pages<=64UL){r=4;break;}
+  vx3dn_xr_pages>>=1;}
+ if(r==3){_CopyPageTable(xr_alloc>>12,XR_PAGES+1,(DWORD*)xr_pte,0);
+  for(k=0;k<=XR_PAGES;k++){if(!(xr_pte[k]&1)||(xr_pte[k]&0xFFFFF000UL)<0x100000UL)break;for(j=0;j<k;j++)if(!((xr_pte[k]^xr_pte[j])&0xFFFFF000UL))break;if(j<k)break;}
+  if(k<=XR_PAGES){_PageFree((void*)xr_alloc,0);xr_alloc=0;r=5;}}
+ xr_pre=r;
+}
 static int xr_setup(void) {
- uint32_t k,j;unsigned long phys=0;
  if(xr_state)return xr_state>0;
  vx3dn_xr_stat[23]=vx3dn_gart_off;
  if(!vx3dn_gart_off||!vx3dn_cmd_off||!vx_status.fb_linear||(vx3dn_gart_off&0xFFFUL)){xr_off(VX_XR_OFF_NOTABLE);return 0;}
- if(vx3dn_xr_pages>XR_PAGES_MAX)vx3dn_xr_pages=XR_PAGES_MAX;if(vx3dn_xr_pages<64UL)vx3dn_xr_pages=64UL;
- for(;;){xr_alloc=_PageAllocate(XR_PAGES+1,PG_SYS,0,0,0x100,0xFFFFF,&phys,PAGEFIXED|PAGEUSEALIGN); /* .626: a smaller ring when the pages cannot be had */
-  if(xr_alloc&&xr_alloc!=0xFFFFFFFFUL&&!(xr_alloc&4095UL))break;
-  xr_alloc=0;if(vx3dn_xr_pages<=64UL){xr_off(VX_XR_OFF_ALLOC);return 0;}
-  vx3dn_xr_pages>>=1;}
- _CopyPageTable(xr_alloc>>12,XR_PAGES+1,(DWORD*)xr_pte,0);
- for(k=0;k<=XR_PAGES;k++){if(!(xr_pte[k]&1)||(xr_pte[k]&0xFFFFF000UL)<0x100000UL)break;for(j=0;j<k;j++)if(!((xr_pte[k]^xr_pte[j])&0xFFFFF000UL))break;if(j<k)break;}
- if(k<=XR_PAGES){_PageFree((void*)xr_alloc,0);xr_alloc=0;xr_off(VX_XR_OFF_PAGES);return 0;}
+ if(xr_pre!=3){if(xr_pre==4)xr_off(VX_XR_OFF_ALLOC);else if(xr_pre==5)xr_off(VX_XR_OFF_PAGES);return 0;} /* .713: the pages come from
+  * xr_prealloc, outside the engine lock; not yet (another thread allocating, or no submit entry since): one-shot groups this time */
  xr_lin=xr_alloc;xr_noops(0,XR_BYTES+4096UL);xr_flush(0,XR_BYTES+4096UL);
  {unsigned long f=VX_irq_save();unsigned char old=inp(0x3C4);
   vx3dn_xr_stat[16]=(uint32_t)sr(0x68)|((uint32_t)sr(0x6A)<<8)|((uint32_t)sr(0x6B)<<16)|((uint32_t)sr(0x6C)<<24);vx3dn_xr_stat[17]=(uint32_t)sr(0x6D)|((uint32_t)sr(0x6E)<<8)|((uint32_t)sr(0x6F)<<16);
@@ -1071,6 +1085,7 @@ static uint32_t submit_impl(const vx3dn_packet *p) {
  vx3dn_info i;vx3dn_io io;uint32_t rc,base;unsigned long f;unsigned char old,unlock,a,b,locked;
  int excluded=0,opened=0;
  sub_t[0]=PT();sub_t[1]=sub_t[2]=sub_t[3]=0;
+ xr_prealloc(); /* .713: before the engine lock */
  cs_enter();
  if(p&&p->op==VX3DN_CLEAR){uint32_t r=ring_clear(p);if(r!=0xFFFFFFFFUL){cs_leave();return r;}} /* v10.418 */
  if(!(p&&p->op==VX3DN_DRAW&&vx3dn_fetch&&vx3dn_cmd_off)){uint32_t t=PT();if(fx_inflight){(void)fx_retire(1);vx3dn_rt_stat[2]++;vx3dn_rt_stat[3]+=(PT()-t+128)>>8;}else(void)fx_retire(1);} /* v10.231: a fetched draw retires the one before at its start */
@@ -1677,6 +1692,7 @@ static const vx3dn_packet *bad_src; /* .527 */
 static uint32_t batch_impl(const vx3dn_packet *ps,uint32_t n,uint32_t *done) {
  vx3dn_info i;vx3dn_io io;uint32_t rc=VX3DN_OK,r2,base,k,gfirst=0,gdone=0,gsub=0,gtri=0,cp_k=0xFFFFFFFFUL; /* .524: cp_k = the packet request_copy holds, validated */unsigned long f;unsigned char old,unlock,a,b,locked;int opened=0,async,grp=0,excluded=0;
  *done=0;sub_t[0]=PT();sub_t[1]=sub_t[2]=sub_t[3]=0;SMP_PH(VX_SMP_PH_B_ENTER); /* .526 */
+ xr_prealloc(); /* .713: before the engine lock */
  cs_enter();
  {int b3=VX3D_lab_busy()||(int)fault,b2=b3?0:VX2D_busy();
   if(b3||b2) {rc=(fault||VX2D_lost())?VX3DN_LOST:VX3DN_BUSY;if(rc==VX3DN_BUSY)last_result=VX3DN_BUSY|1UL<<8|(b3?1UL:2UL)<<16;cs_leave();return rc;}}
@@ -2178,7 +2194,7 @@ void VX3DN_ring_flip_wait(void) {
      /* .695 (review of .694): decided after the retire. A flip whose group finished while the hang record sampled (xr_retire's late
       * finish) ran: ring flips stay on and nothing is lost. A real hang (rc 0) ends ring flips for the session; a flip not run is lost */
      if(rc&&ran)vx3dn_fr_late++;else{fr_dead=1;if(!ran)fr_lost=1;}
-     cs_leave();vx3dn_fr_pend=0;break;}}}} /* .532 (B1): lost (fr_lost) */ /* a flip that never ran: the ring's hang handling, and no more ring flips this session */
+     vx3dn_fr_pend=0;cs_leave();break;}}}} /* .717 (review): cleared under the lock (after cs_leave another thread's new ring flip could set it first) */ /* .532 (B1): lost (fr_lost) */ /* a flip that never ran: the ring's hang handling, and no more ring flips this session */
  VX_smp_wait_end(w);
  d=(VX_tsc()-t)>>8;vx3dn_fr_stat[3]+=d;if(d>vx3dn_fr_stat[7])vx3dn_fr_stat[7]=d;
 }
@@ -2253,6 +2269,8 @@ static uint32_t ring_clear(const vx3dn_packet *p) { /* VX3DN_OK: done in the rin
  if(f&VX3DN_CLEAR_TARGET){cv=q->target.format==VX3DN_RGB565?rgb565(q->clear_color):q->clear_color;if(!rc_prep(&q->target,cv,(uint32_t)q->clip.right,(uint32_t)q->clip.bottom,bpp,oc))goto no;hc=1;}
  if(VX3D_lab_busy()||VX2D_busy())goto no;
  fl=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));a=sr(0x1A);b=sr(0x1E);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(fl);
+ if(hc&&VESA_draw_needs_exclusion(q->target.offset,q->target.pitch*q->target.height))goto no; /* .717 (review): a colour clear where the
+  * software cursor may be drawn goes the usual way (submit_impl brackets it with FBHDA_access_begin / end); the ring's fill did not */
  if(!(a&8)||!(b&1)||!xr_open())goto no;
  if(hz)rc_put(oz,bpp);
  if(hc)rc_put(oc,bpp);
@@ -2327,13 +2345,26 @@ static void vp_eoi(uint32_t h) {_asm{mov eax,[h]}VxDCall(VPICD,Phys_EOI)}
 static void vp_unmask(uint32_t h) {_asm{mov eax,[h]}VxDCall(VPICD,Physically_Unmask)}
 static void vp_mask(uint32_t h) {_asm{mov eax,[h]}VxDCall(VPICD,Physically_Mask)}
 static void vp_default(uint32_t h) {_asm{mov eax,[h]}VxDCall(VPICD,Force_Default_Behavior)}
-static unsigned char cmos_r(unsigned char i) {outp(0x70,i);return (unsigned char)inp(0x71);}
-static void cmos_w(unsigned char i,unsigned char v) {outp(0x70,i);outp(0x71,v);}
+/* .706 VX800 fix (board, HP thin client: the whole system froze while the sampler ran, under HarborBench; the freeze stopped with
+ * NMI kept masked): every RTC access writes the index with bit 7 set, NMI masked, for as long as the sampler runs. The index the
+ * handler wrote before (0x0C) cleared bit 7 about 1024 times a second. The VX800 raised an NMI under that load from a source of its
+ * own (port 61h's SERR# and IOCHK reporting are off on that board; Windows normally runs with NMI enabled, port 70h read 0B before
+ * the sampler); with NMI masked it is not taken. rtc_p70: port 70h as found before the sampler's first access, its bit 7 put back
+ * when the sampler stops (FF: the port does not read back; then NMI enabled, Windows' normal state). Where the port reads back, the
+ * handler also puts back the CMOS index it found (bit 7 set): code between its own index write and data read gets its register. */
+static unsigned char rtc_p70;
+/* .713 (VX800 hand-off), a known limit of the sampler: while it owns IRQ 8 the interrupt is not passed on to the VMs' INT 70h, so a BIOS
+ * timed wait started during sampling (INT 15h 83h/86h: the BIOS sets 40:A0 bit 0 and counts 40:9C down in its INT 70h) would not end until
+ * the sampler stops. Never seen; a wait already running when the sampler starts keeps it from starting (register B's PIE set: not available). */
+static unsigned char cmos_r(unsigned char i) {outp(0x70,(unsigned char)(i|0x80));return (unsigned char)inp(0x71);}
+static void cmos_w(unsigned char i,unsigned char v) {outp(0x70,(unsigned char)(i|0x80));outp(0x71,v);}
+static void rtc_nmi_restore(void) {outp(0x70,rtc_p70!=0xFF?rtc_p70:(unsigned char)0x0D);} /* port 70h as found (NMI and index); not readable: index D (read-only), NMI enabled */
 void __stdcall smp_tick(DWORD late,DWORD ref);
 static uint32_t smp_esp(void);
 #pragma aux smp_esp = "mov eax,esp" value [eax] modify exact [eax]; /* .549: the sampler's own stack pointer (the interrupted frame is above it) */
-void __stdcall rtc_irq(DWORD h) {(void)cmos_r(0x0C);if(smp_on&&smp_clk==1)smp_tick(0,0);vp_eoi(h);}
+void __stdcall rtc_irq(DWORD h) {unsigned char i0=(unsigned char)inp(0x70);(void)cmos_r(0x0C);if(rtc_p70!=0xFF)outp(0x70,(unsigned char)(i0|0x80));if(smp_on&&smp_clk==1)smp_tick(0,0);vp_eoi(h);}
 void __declspec(naked) rtc_hw(void) {_asm {pushad
+ cld /* .706 fix: the interrupted code may have the direction flag set (GDI's backward copies); the C code below assumes it clear. IRET restores the program's own */
  push eax
  call rtc_irq
  popad
@@ -2342,13 +2373,14 @@ void __declspec(naked) rtc_hw(void) {_asm {pushad
 static int rtc_start(void) { /* with interrupts off */
  if(!rtc_h){rtc_vid.IRQ_Number=8;rtc_vid.Options=0;rtc_vid.Hw_Int_Proc=(DWORD)rtc_hw;rtc_vid.Virt_Int_Proc=0;rtc_vid.EOI_Proc=0;rtc_vid.Mask_Change_Proc=0;
   rtc_vid.IRET_Proc=0;rtc_vid.IRET_Time_Out=500;rtc_vid.Hw_Int_Ref=0;rtc_h=vp_virt(&rtc_vid);if(!rtc_h)return 0;}
+ rtc_p70=(unsigned char)inp(0x70); /* .706 fix: NMI as found */
  rtc_a0=cmos_r(0x0A);rtc_b0=cmos_r(0x0B);
- if(rtc_b0&0x40){vp_default(rtc_h);rtc_h=0;return 0;} /* someone's periodic interrupt already */
+ if(rtc_b0&0x40){rtc_nmi_restore();vp_default(rtc_h);rtc_h=0;return 0;} /* someone's periodic interrupt already */
  cmos_w(0x0A,(unsigned char)((rtc_a0&0xF0)|6));cmos_w(0x0B,(unsigned char)(rtc_b0|0x40));(void)cmos_r(0x0C);vp_unmask(rtc_h);return 1;
 }
 static void rtc_stop(void) { /* with interrupts off */
  if(!rtc_h)return;
- cmos_w(0x0B,rtc_b0);cmos_w(0x0A,rtc_a0);(void)cmos_r(0x0C);vp_mask(rtc_h);vp_default(rtc_h);rtc_h=0;
+ cmos_w(0x0B,rtc_b0);cmos_w(0x0A,rtc_a0);(void)cmos_r(0x0C);rtc_nmi_restore();vp_mask(rtc_h);vp_default(rtc_h);rtc_h=0;
 }
 void __stdcall smp_tick(DWORD late,DWORD ref) {
  uint32_t t0=VX_tsc(),c,thr,eip=0,cs=0,efl=0,eng=0,w=1+late,pg=0xFFFFUL,dt;(void)ref;
@@ -2428,7 +2460,7 @@ DWORD VX_smp_ioctl(const DWORD *in,DWORD nin,DWORD *out,DWORD nout,DWORD hdev) {
    khz=(b-a)/((uint32_t)(Get_System_Time()-m));if(khz<10000)khz=1000000UL;smp.tsc_khz=khz;
    for(k=0;k<7;k++)smp_gb[k]=us[k]*(khz>>10)/1000UL;} /* no 64-bit arithmetic in the VxD */smp_fpgn=0;smp_flnn=0;smp_fvln=0;smp_lastpk=submitted;{extern uint32_t vx3dn_geo[4];smp_lasttri=vx3dn_geo[2];}smp_run_thr=0;smp_vxd_cyc=0;smp_tt_full=0;smp_blk=0;smp_blk_v86=0;smp_last_code=0;
   smp.start_ms=Get_System_Time();smp_owner=hdev;{unsigned long f=VX_irq_save();smp_prev=VX_tsc();smp_clk=0;
-   if(rtc_start()){smp_clk=1;smp.clk=1;smp_on=1;smp.on=1;} /* .521: the RTC; .524: the only clock (the VMM's time-outs, biased in-game, removed;
+   if(rtc_start()){smp_clk=1;smp.clk=1UL|0x100UL|((uint32_t)rtc_p70<<16);smp_on=1;smp.on=1;} /* .706 fix: clk bits 7:0 the clock (1 RTC), bit 8 NMI masked while sampling, bits 23:16 port 70h as found */ /* .521: the RTC; .524: the only clock (the VMM's time-outs, biased in-game, removed;
     * in[3] ignored): with IRQ 8 or the RTC's periodic interrupt taken the sampler does not start */
    VX_irq_restore(f);}} /* v10.436: armed with interrupts off */
  else if(in[0]==0){if(smp_on)smp_stop();}

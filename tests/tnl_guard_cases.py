@@ -8,6 +8,8 @@ perspective with vertices behind the near plane (.699): edges within 2% of the p
 screen-linear between the CPU's new vertices). Every packet must pass
 vx3dn_validate (with the guard bit) and every vertex lie inside the VxD's +-4096. .701: every fourth scene has a projected set
 (u v q in the record), drawn in plain packets; .703: those carry the band too (VX3DN_EXT_GUARD) and are compared the same way (u left out).
+.721: no longer: the engine draws a projected (S, T, Q kept) set wrong past the viewport (VXTLP 6Q), so with the band on such a set's
+packets must not carry VX3DN_EXT_GUARD and every vertex must lie inside the viewport (its sides clipped there, as the runtime does).
 usage: tnl_guard_cases.py [core.so] [scenes] [seed]"""
 import sys,os,struct,ctypes as C
 HERE=os.path.dirname(os.path.abspath(__file__))
@@ -49,13 +51,18 @@ def packets(sc,gb,persp=0,proj=0):
   b0=p.bursts.b[0];w=list(p.pre_w)
   if p.pre_on!=2: # .703: a plain or prepacked triangle packet (the records indexed packets cannot take): VX3DN_EXT_GUARD carries the band
    if p.ext.prim!=0:why='not triangles';break
-   if gb and not p.ext.dither&0x100:why='plain packet without VX3DN_EXT_GUARD';break
-   if gb:
+   if gb and proj: # .721: a projected set: clipped to the viewport, no band
+    if p.ext.dither&0x100:why='projected packet with VX3DN_EXT_GUARD';break
+    cl=(p.clip.left,p.clip.top,p.clip.right,p.clip.bottom);m0=p.vertex_count;w0=list(p.pre_w)
+    xy=[(u2f(w0[i*10]),u2f(w0[i*10+1])) for i in range(m0)] if p.pre_on else [(u2f(q.x),u2f(q.y)) for q in p.vertices[:m0]]
+    if any(not(cl[0]-0.5<=x<=cl[2]+0.5 and cl[1]-0.5<=y<=cl[3]+0.5) for x,y in xy):why='projected vertex outside the viewport';break
+   elif gb and not p.ext.dither&0x100:why='plain packet without VX3DN_EXT_GUARD';break
+   if gb and not proj:
     ON('vx3dn_gband').value=0;r0=lib.vx3dn_validate(C.byref(p),C.byref(t.info));ON('vx3dn_gband').value=1
     if not r0:why='VX3DN_EXT_GUARD taken with ACCEL_D3D_GUARDBAND off';break
    n=p.vertex_count
-   if p.pre_on:vx=[(u2f(w[i*10]),u2f(w[i*10+1]),u2f(w[i*10+2]),w[i*10+4],0.0,u2f(w[i*10+3])) for i in range(n)]
-   else:vx=[(u2f(q.x),u2f(q.y),u2f(q.z),q.color,0.0,u2f(q.rhw)) for q in p.vertices[:n]] # (u left out: a projected set's u/q)
+   if p.pre_on:vx=[(u2f(w[i*10]),u2f(w[i*10+1]),u2f(w[i*10+2]),w[i*10+4],0.0 if proj else u2f(w[i*10+6]),u2f(w[i*10+3])) for i in range(n)] # .718: u taken
+   else:vx=[(u2f(q.x),u2f(q.y),u2f(q.z),q.color,0.0 if proj else u2f(p.tex.uv[i][0]),u2f(q.rhw)) for i,q in enumerate(p.vertices[:n])] # (u left out for a projected set: its u/q; .718: taken otherwise)
    if any(not(-4096<=a[0]<=4095 and -4096<=a[1]<=4095) for a in vx):why='vertex outside -4096 .. +4095';break
    bl=[p.bursts.b[k] for k in range(p.bursts.n)] or [n]
    at=0
@@ -77,7 +84,8 @@ def packets(sc,gb,persp=0,proj=0):
     if not(-4096<=x<=4095 and -4096<=y<=4095):why='vertex outside -4096 .. +4095';break
     tri.append((x,y,z,w[i*sd+4],u2f(w[i*sd+6]),rhw))
    tris.append(tri)
- if gb and why is None and (GB[1]-gb0[1] if proj else GB[0]-gb0[0])==0 and t.calls:why='band set-up count (.701): proj %d, with %d, without %d'%(proj,GB[0]-gb0[0],GB[1]-gb0[1])
+ if gb and why is None and proj and (GB[0]-gb0[0] or GB[1]-gb0[1]):why='a projected set took the band (.721: clipped to the viewport): with %d, without %d'%(GB[0]-gb0[0],GB[1]-gb0[1])
+ if gb and why is None and not proj and GB[0]-gb0[0]==0 and t.calls:why='band set-up count (.701): proj %d, with %d, without %d'%(proj,GB[0]-gb0[0],GB[1]-gb0[1])
  return rc,tris,why,(p.clip.left,p.clip.top,p.clip.right,p.clip.bottom) if t.calls else (0,0,64,64),raw
 def raster(tris,clip):
  l,t_,r,b=clip;img={}
@@ -131,6 +139,6 @@ def main():
    if fails>10:break
  print('scenes compared',scenes,'pixels compared',cmp_px,'pixels covered by one side only',edge_px,'failures',fails)
  print('.702: scenes drawn again without the viewport codes',M2[0],'triangles they sent that the codes drop',M2[1])
- print('.703: scenes with a projected set (plain packets with VX3DN_EXT_GUARD), compared as the rest',PJ[0],'packets',sum(PJ[2:]))
+ print('.721: scenes with a projected set (plain packets clipped to the viewport, no VX3DN_EXT_GUARD), compared as the rest',PJ[0],'packets',sum(PJ[2:]))
  return 1 if fails else 0
 sys.exit(main())

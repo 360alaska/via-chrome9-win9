@@ -1663,7 +1663,16 @@ static void desc_line(const char *who,LPD3DDEVICEDESC d) {
  if(d->dwSize>=200)fprintf(logfile,"       textures %lux%lu .. %lux%lu\n",(unsigned long)d->dwMinTextureWidth,(unsigned long)d->dwMinTextureHeight,(unsigned long)d->dwMaxTextureWidth,(unsigned long)d->dwMaxTextureHeight);
 }
 static HRESULT CALLBACK legacy_dev(GUID *g,LPSTR desc,LPSTR name,LPD3DDEVICEDESC hal,LPD3DDEVICEDESC hel,LPVOID tag) {
- (void)g;fprintf(logfile,"   %s device \"%s\" / \"%s\"\n",(const char*)tag,name?name:"",desc?desc:"");desc_line("HAL",hal);desc_line("HEL",hel);fflush(logfile);return D3DENUMRET_OK;
+ (void)g;fprintf(logfile,"   %s device \"%s\" / \"%s\"\n",(const char*)tag,name?name:"",desc?desc:"");desc_line("HAL",hal);desc_line("HEL",hel);
+ /* v2.98 (driver .722): Hellbender's own device test (HELLBEND.EXE 0x402E40, on the HAL description): triangles CULLNONE; FOGVERTEX,
+  * FOGFLAT and FOGGOURAUD for fog ("Your 3D adapter will not allow you to see fog" when one is missing); COLORFLATRGB, COLORGOURAUDRGB and
+  * PERSPECTIVE required ("does not support these required Direct3D features"). */
+ if(hal&&hal->dwFlags){const D3DPRIMCAPS *t=&hal->dpcTriCaps;const char *miss[7];int n=0,fog,k;
+  if(!(t->dwMiscCaps&0x10))miss[n++]="CULLNONE";if(!(t->dwShadeCaps&2))miss[n++]="COLORFLATRGB";if(!(t->dwShadeCaps&8))miss[n++]="COLORGOURAUDRGB";if(!(t->dwTextureCaps&1))miss[n++]="PERSPECTIVE";
+  fog=n;if(!(t->dwRasterCaps&0x80))miss[n++]="FOGVERTEX";if(!(t->dwShadeCaps&0x40000))miss[n++]="FOGFLAT";if(!(t->dwShadeCaps&0x80000))miss[n++]="FOGGOURAUD";
+  fprintf(logfile,"       Hellbender's device test: %s",n==0?"passed, fog on":fog?"FAILED (the game refuses the device):":"passed, but fog off (the game's \"will not allow you to see fog\" box):");
+  for(k=0;k<n;k++)fprintf(logfile," %s",miss[k]);fprintf(logfile,"\n");if(n)failures++;}
+ fflush(logfile);return D3DENUMRET_OK;
 }
 /* v2.9: Open Watcom's dxguid.lib has IID_IDirect3D2 wrong (6AAE1EC1-622A-..., the real one is 6AAE1EC1-662A-...), so v2.8's
  * IDirect3D2 query failed with E_NOINTERFACE. The real values, and IDirect3D (DirectX 3) as well. */
@@ -2363,7 +2372,7 @@ int main(int argc,char **argv) {
  {int k;for(k=1;k<argc;k++)if(!strcmp(argv[k],"--nohang"))no_hang=1;} /* v2.72 */
  if(argc==2&&no_hang)do_tex=1; /* VXDX7 --nohang: the texture tests without the hang */
  logfile=fopen("VXDX7.TXT","w");if(!logfile)return 1;
- fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.97); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
+ fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.98); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
  code_probe("at start, before DirectDraw");
  ddlib=LoadLibraryA("DDRAW.DLL");if(!ddlib){fprintf(logfile,"DDRAW.DLL missing\n");failures++;goto done;}
  create=(HRESULT (WINAPI *)(GUID *,void **,REFIID,IUnknown *))GetProcAddress(ddlib,"DirectDrawCreateEx");

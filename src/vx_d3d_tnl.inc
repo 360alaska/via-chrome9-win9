@@ -298,11 +298,32 @@ static float tn_pow(float x,float p) {
  return tn_exp((float)y);
 }
 /* the scratch buffer: TN_MAX pretransformed vertices (at most 40 bytes), their clip-space positions and clip codes */
+#ifndef TN_MAX /* .718: a host test builds a small scratch (tests/run.py: the deferred side planes taken on every clipped scene) */
 #define TN_MAX 16384 /* the HAL image stays under the VxD lock's 2048 pages (ACCEL_LOCK_HAL; 1028 at .663) */
+#endif
 #define TN_TRIS 8192 /* triangles in; .540: out at most 3 a triangle in (two planes cut it to a pentagon): tn_tok holds TN_OUT (.539 held
  * TN_TRIS and dropped the rest of a draw whose clipping made more) */
 #define TN_OUT (TN_TRIS*3)
 static uint8_t tn_buf[(TN_MAX+8)*44],tn_cc[TN_MAX+8];static uint16_t tn_tok[3+TN_OUT*3]; /* .544: eight places of slack: the group kernels write whole groups of four */
+
+/* .707 (a review of .703: three byte-at-a-time passes over a draw's places after the SIMD kernels): the clip codes and viewport codes
+ * read four places a word. tn_w4 reads four bytes (any alignment: the x86 allows it); tn_hasb, some byte of w equals b (the exact
+ * zero-byte test on w ^ b x 0x01010101: it can mark the wrong byte, so a hit is checked byte by byte); tn_nz4, how many of w's bytes
+ * are not 0; tn_orand, the OR and the AND of n bytes from p. */
+#ifdef __WATCOMC__
+static uint32_t tn_w4(const uint8_t *p) {return *(const uint32_t*)(const void*)p;} /* the board: one load (Watcom made the 4-byte memcpy a rep movsb) */
+#else
+static uint32_t tn_w4(const uint8_t *p) {uint32_t w;memcpy(&w,p,4);return w;}
+#endif
+static int tn_hasb(uint32_t w,uint32_t b4) {w^=b4;return ((w-0x01010101UL)&~w&0x80808080UL)!=0;}
+static uint32_t tn_nz4(uint32_t w) {uint32_t x=(((w&0x7F7F7F7FUL)+0x7F7F7F7FUL)|w)&0x80808080UL;return (uint32_t)((x>>7)*0x01010101UL)>>24;} /* the product held to 32 bits (unsigned long is 64 on the host) */
+static void tn_orand(const uint8_t *p,uint32_t n,uint32_t *por,uint32_t *pand) {
+ uint32_t o=0,a=0xFFFFFFFFUL,k=0,w;
+ for(;k+4<=n;k+=4){w=tn_w4(p+k);o|=w;a&=w;}
+ o|=o>>16;o|=o>>8;a&=a>>16;a&=a>>8;o&=0xFF;a&=0xFF;
+ for(;k<n;k++){o|=p[k];a&=p[k];}
+ *por=o;*pand=a;
+}
 /* .540: tn_ref, the vertices a draw's triangles use (stamped with tn_epoch: only those are transformed, not every vertex between the
  * lowest and highest index); tn_uvq, a projected set's u, v and q before the divide (clipping interpolates them, then divides) */
 static uint32_t tn_ref[TN_MAX],tn_epoch;static uint16_t tn_map[TN_MAX];static float tn_uvq[TN_MAX][2][3];static uint32_t tn_proj[2];
@@ -559,8 +580,13 @@ static int tn_prepare_full(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s
  tn_fvf=0xC4|(tn_sets<<8)|(((tn_qs|tn_r3)&1)?0x10000UL:0)|(((tn_qs|tn_r3)&2)?0x40000UL:0);tn_ostride=24+tn_sets*8+((tn_qs|tn_r3)?4:0); /* .656: TEXCOORDSIZE3 of the q set (.663: or the r set) */
  /* .698: the guard band: clip x and y halved (exact: a power of two) and the viewport's scales doubled, so the side planes lie at twice
   * the viewport; its edges for TN_OK a pixel wider, inside the VxD's +-4096. .701: only for records the indexed packets take (tn_gb) */
- tn_gb=vx_d3d_gband!=0; /* .703: every form again: the plain packets carry the band too (VX3DN_EXT_GUARD; .701-.702 left it off for these) */
- if(tn_gb)vx_d3d_gbs[!(tn_qs|tn_r3)&&tn_sets<=2?0:1]++; /* [1]: records only plain packets take (a third coordinate, three sets) */
+ tn_gb=vx_d3d_gband!=0&&!(tn_qs|tn_r3); /* .703: every form again: the plain packets carry the band too (VX3DN_EXT_GUARD; .701-.702 left it off for these).
+  * .721 (board, VXTLP 6Q on .720, VX855): except a set with a third coordinate (q kept, or r): the engine draws the S, T, R layouts wrong
+  * with vertices past the viewport (6P NC, a COUNT3 PROJECTED floor across the sides, 35% of its pixels off, the far squares as stripes;
+  * 48% across the sides alone, 0% across the near plane alone; the same floor clipped to the viewport: right; strips or lists: no
+  * difference). Dragothic's water (3DMark 2001) is such a set: replayed with the band, 3,366 of its 3,414 vertices lay past the viewport.
+  * These records' sides are clipped to the viewport, as the runtime does. */
+ if(tn_gb)vx_d3d_gbs[tn_sets<=2?0:1]++; /* [1]: records only plain packets take (three sets; .721: a third coordinate takes no band) */
  if(tn_gb){for(k=0;k<16;k+=4){s->wvp[k]*=0.5f;s->wvp[k+1]*=0.5f;}
   s->vxs*=2.0f;s->vys*=2.0f;
   tn_gxl=s->vx0-s->vxs-1.0f;tn_gxr=s->vx0+s->vxs+1.0f;tn_gyt=s->vy0+s->vys-1.0f;tn_gyb=s->vy0-s->vys+1.0f;
@@ -727,6 +753,13 @@ static float tn_lerp_float(float a,float b,float t) {
   value=(float)((double)a+((double)b-(double)a)*(double)t);
  return value;
 }
+/* .718 (outside review, reproduced on the host with .716's core): tn_lm, the planes the clip in progress clips (its masked codes). When scratch
+ * room is short the triangle and line paths clip near and far only (mask 07) and leave the side planes to the per-primitive path; tn_lerp
+ * then held a near-plane vertex beyond a side inside the viewport, x and y moved to the edge while its depth, rhw, coordinates and colour
+ * stayed the off-screen point's, and the later clipper took that as an intersection (a corner 32 pixels off, s 19 texels off on a
+ * 256-wide texture: a reflection-mapped triangle across the near plane and a screen edge). Now x is held only when the x planes are clipped
+ * here, y only when the y planes are (the hold is for 1/w's rounding at an edge just clipped); depth is always held (near and far are). */
+static uint32_t tn_lm=0x7F;uint32_t vx_d3d_tn_dfr[4]; /* .718: [0] draws whose triangles clipped near and far only (the side planes deferred), [1] their lines' too, [2] new vertices beyond an x edge there (.716 moved them), [3] beyond a y edge */
 /* a vertex made by clipping, between scratch vertices a and b at t (clip space, before the divide) */
 static uint32_t tn_lerp(vx_d3d_context *c,uint32_t a,uint32_t b,float tt,uint32_t pl) {
  uint32_t o=tn_P++,k;const uint8_t *A=tn_buf+a*tn_ostride,*B=tn_buf+b*tn_ostride;uint8_t *w=tn_buf+o*tn_ostride;float p[4],rw,sx,sy,sz,l0,h0;
@@ -741,8 +774,8 @@ static uint32_t tn_lerp(vx_d3d_context *c,uint32_t a,uint32_t b,float tt,uint32_
  /* .543: as tn_pos, then held inside the viewport and the depth range (1/w's rounding put a vertex on an edge just past it: the packet's
   * check would have sent its triangle to the per-triangle path) */
  sx=tn_s.vx0+p[0]*rw*tn_s.vxs;sy=tn_s.vy0+p[1]*rw*tn_s.vys;sz=tn_s.z0+p[2]*rw*tn_s.zs;
- l0=tn_s.vx0-tn_s.vxs;h0=tn_s.vx0+tn_s.vxs;if(sx<l0)sx=l0;if(sx>h0)sx=h0;
- l0=tn_s.vy0+tn_s.vys;h0=tn_s.vy0-tn_s.vys;if(sy<l0)sy=l0;if(sy>h0)sy=h0;
+ l0=tn_s.vx0-tn_s.vxs;h0=tn_s.vx0+tn_s.vxs;if(tn_lm&(8|16)){if(sx<l0)sx=l0;if(sx>h0)sx=h0;}else if(sx<l0||sx>h0)vx_d3d_tn_dfr[2]++; /* .718: held only when the x planes are clipped here */
+ l0=tn_s.vy0+tn_s.vys;h0=tn_s.vy0-tn_s.vys;if(tn_lm&(32|64)){if(sy<l0)sy=l0;if(sy>h0)sy=h0;}else if(sy<l0||sy>h0)vx_d3d_tn_dfr[3]++;
  l0=tn_s.zs<0?tn_s.z0+tn_s.zs:tn_s.z0;h0=tn_s.zs<0?tn_s.z0:tn_s.z0+tn_s.zs;if(sz<l0)sz=l0;if(sz>h0)sz=h0;
  if(tn_bits(sx)==0x80000000UL)sx=0.0f;if(tn_bits(sy)==0x80000000UL)sy=0.0f;if(tn_bits(sz)==0x80000000UL)sz=0.0f;
  *(vx_f32a*)w=sx;*(vx_f32a*)(w+4)=sy;*(vx_f32a*)(w+8)=sz;*(vx_f32a*)(w+12)=rw;
@@ -794,7 +827,7 @@ static uint32_t tn_clip(vx_d3d_context *c,uint32_t a,uint32_t b,uint32_t d,uint1
 static uint32_t tn_clip_b(vx_d3d_context *c,uint32_t a,uint32_t b,uint32_t d,uint16_t *ix,uint32_t m,uint32_t u) {
  static const uint8_t bit[6]={1,2,8,16,32,64};
  uint32_t pa[9],pb[9],na=3,pl,k;uint8_t ea[9],eb[9]; /* .663: ea[k], the edge from pa[k] to the next: original edge 0..2, or 3 along a plane */
- pa[0]=a;pa[1]=b;pa[2]=d;ea[0]=0;ea[1]=1;ea[2]=2;
+ pa[0]=a;pa[1]=b;pa[2]=d;ea[0]=0;ea[1]=1;ea[2]=2;tn_lm=u; /* .718 */
  for(pl=0;pl<6;pl++)if(u&bit[pl]){
   uint32_t i=pa[0],nb=0,crossings=0;
   float di=tn_pd(pl,i);
@@ -950,7 +983,7 @@ static int tn_draw_pl(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uin
  /* the side planes when every crossing line's six possible cuts fit; else near and far only (the room for those was checked above) and the
   * rest to the per-primitive path, which clips a line on the screen */
  {uint32_t nc=0;for(i=0;i<np;i++){const uint32_t a=st[i*2],b=st[i*2+1];if(((tn_cc[a]|tn_cc[b])&0x7F)&&!(tn_cc[a]&tn_cc[b]&0x7F))nc++;}
-  if(tn_P+nc*6>TN_MAX)mask=0x07;}
+  if(tn_P+nc*6>TN_MAX){mask=0x07;vx_d3d_tn_dfr[1]++;}}
  {uint16_t *out=tn_tok+3;
   for(i=0;i<np;i++){uint32_t a=st[i*2],b=st[i*2+1];const uint32_t all=(tn_cc[a]|tn_cc[b])&0x7F,u=all&mask;int gone=0,cut=0;
    if((tn_cc[a]&tn_cc[b]&0x7F)||(all&4)){vx_d3d_tn_pl[5]++;continue;} /* both ends outside one plane, or a position not finite */
@@ -959,7 +992,7 @@ static int tn_draw_pl(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uin
     for(pl=0;pl<6&&!gone;pl++)if(u&bit[pl]){const float da=tn_pd(pl,a),db=tn_pd(pl,b);
      if(da<0&&db<0)gone=1;
      else if(da<0||db<0){if(tn_P>=TN_MAX){gone=1;break;}
-      if(da<0)a=tn_lerp(c,a,b,tn_clip_fraction(pl,a,b,da,db),pl);else b=tn_lerp(c,a,b,tn_clip_fraction(pl,a,b,da,db),pl);cut=1;}}
+      tn_lm=u; /* .718 */if(da<0)a=tn_lerp(c,a,b,tn_clip_fraction(pl,a,b,da,db),pl);else b=tn_lerp(c,a,b,tn_clip_fraction(pl,a,b,da,db),pl);cut=1;}}
     if(gone){vx_d3d_tn_pl[5]++;continue;}}
    else if(all){tn_fin(a);tn_fin(b);} /* the side planes left to the per-primitive path: its ends finished as they are */
    if(cut)vx_d3d_tn_pl[4]++;
@@ -970,6 +1003,9 @@ static int tn_draw_pl(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uin
 }
 /* .676: cull before lighting: back faces culled (D3DCULL_CW or CCW) and the switch on */
 static int tn_pcull_on(const vx_d3d_context *c) {const uint32_t cm=c->state.rs[22];return cm==2||cm==3;} /* .682: ACCEL_D3D_PRECULL removed, always on (T681 GRID 6l: off, through .680's engine cull, 32% slower) */
+/* .714: TN_OK's test on one record r (a pointer variable: each use reads it, no multiply): window x and y inside the clip or the guard
+ * band, 0 <= z <= 1, 1/w positive and finite. A macro: Watcom called a static function for it (T714: driver T&L 1.5% slower) */
+#define TN_OKR(r) (TN_GX(u32(r),tf(r),tc.bxl,tc.bxr,tn_gxl,tn_gxr)&&TN_GX(u32((r)+4),tf((r)+4),tc.byt,tc.byb,tn_gyt,tn_gyb)&&u32((r)+8)<=0x3F800000UL&&u32((r)+12)-1UL<0x7F7FFFFFUL)
 static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32_t *n,const uint8_t **p) {
  uint32_t o=*op,cnt=*n,base=0,lo=0xFFFFFFFFUL,hi=0,i,m=0,nv,need,mask,used=0,P0,k0=0,wide;uint16_t dlv=0;const uint8_t *data=*p;uint16_t *tri;int soa,pcull=0;
  if(o==1||o==2||o==15||o==16||o==17||o==27)return tn_draw_pl(c,src,op,n,p); /* .640 */
@@ -1033,7 +1069,8 @@ static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32
    for(q=0;q<nv;q++,v+=st){const uint32_t pl=P0+q,ln=q&(TN_CH-1);tn_pf((uintptr_t)v+ah);tn_sp[pl]=v;tn_sx[ln]=tf(v);tn_sy[ln]=tf(v+4);tn_sz[ln]=tf(v+8);if(ln==TN_CH-1)tn_soa_pos(pl+1-TN_CH,TN_CH);}}
   if(nv&(TN_CH-1))tn_soa_pos(P0+(nv&~(TN_CH-1)),nv&(TN_CH-1));
   tn_vdone(P0,nv); /* .702 */
-  used=nv;for(q=0;q<nv;q++){const uint32_t cc=tn_cc[P0+q];oo|=cc;oa&=cc;}
+  used=nv;{uint32_t o4,a4;tn_orand(tn_cc+P0,nv,&o4,&a4);oo|=o4;oa&=a4;} /* .707: four places a word (tn_orand; .711: always, board T710 A-B-A-B:
+   * 0.3-1.0% faster in every GRID scene than .706's byte loops) */
   if(tn_vany&&!oa){uint32_t va=15;for(q=0;q<nv&&va;q++)va&=tn_vc[P0+q];if(va)oa=0x80;} /* .698: every vertex beyond one side of the viewport (inside the guard band): dropped as before */
   if(tn_split){tn_k0+=cnt;tn_more=tn_k0<*n;vx_d3d_tn_split[1]++;}
   vx_d3d_tn[0]++;vx_d3d_tn[1]+=cnt;vx_d3d_tn[2]+=used;tn_P+=used;tn_lz0=P0;vx_d3d_tn_dense[0]++;vx_d3d_tn_dense[3]+=used;
@@ -1088,7 +1125,7 @@ tn_tris:
   uint32_t nc=0;
   for(i=0;i<cnt;i++){const uint32_t x=(uint16_t)(tri[i*3]+dlv),y=(uint16_t)(tri[i*3+1]+dlv),z=(uint16_t)(tri[i*3+2]+dlv),u=tn_cc[x]|tn_cc[y]|tn_cc[z];
    if(u&&!(tn_cc[x]&tn_cc[y]&tn_cc[z]))nc++;}
-  if(tn_P+nc*12>TN_MAX||cnt+nc*6>TN_OUT)mask=0x07;}
+  if(tn_P+nc*12>TN_MAX||cnt+nc*6>TN_OUT){mask=0x07;vx_d3d_tn_dfr[0]++;}}
  /* the triangles: kept whole (their places marked for phase L), dropped, or clipped (their vertices finished one by one first, as the
   * clipper interpolates finished records) */
  if(soa)memset(tn_nd+P0,0,used);
@@ -1119,7 +1156,7 @@ tn_tris:
     * it, so its vertices are lit only if a kept triangle uses them; its places marked for tn_ix (tn_ok: tests done) */
    if(pcull&&!(tn_cc[x]|tn_cc[y]|tn_cc[z])){const float *f0=(const float*)(const void*)(tn_buf+x*tn_ostride),*f1=(const float*)(const void*)(tn_buf+y*tn_ostride),*f2=(const float*)(const void*)(tn_buf+z*tn_ostride);
     const double area=((double)f1[0]-f0[0])*((double)f2[1]-f0[1])-((double)f1[1]-f0[1])*((double)f2[0]-f0[0]);const uint32_t cm=c->state.rs[22];
-    if(area==0||(cm==2&&area>0)||(cm==3&&area<0)){vx_d3d_tn_pcull[1]++;continue;}
+    if(vx_area_cull(area,cm)){vx_d3d_tn_pcull[1]++;continue;}
     tn_ok[x]=1;tn_ok[y]=1;tn_ok[z]=1;} /* .682: ACCEL_D3D_IXSKIP removed, always on */
    if(!u&&tn_vany&&(tn_vc[x]&tn_vc[y]&tn_vc[z])){vx_d3d_tn[4]++;continue;} /* .698: wholly beyond one side of the viewport, inside the guard band: dropped as before */
    if(!u){if(m>=TN_OUT){vx_d3d_tn[7]++;break;}if(tn_efon)tn_tef[m]=(uint8_t)tn_clip_ef;ix[m*3]=(uint16_t)x;ix[m*3+1]=(uint16_t)y;ix[m*3+2]=(uint16_t)z;m++;
@@ -1157,6 +1194,7 @@ static void tn_fin_all(void) {uint32_t o;for(o=tn_lz0;o<tn_P;o++)tn_fin(o);tn_la
 static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv,const uint8_t *q,uint32_t ist,uint32_t base,uint32_t n,uint32_t *completed,uint32_t *rc);
 static uint32_t tn_ix(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv,const uint8_t *q,uint32_t ist,uint32_t base,uint32_t n,uint32_t *completed,uint32_t *rc) {uint32_t o=TNP(6),r=tn_ix_b(c,in,sv,q,ist,base,n,completed,rc);TNP_BACK(o);return r;}
 static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv,const uint8_t *q,uint32_t ist,uint32_t base,uint32_t n,uint32_t *completed,uint32_t *rc) {
+ const uint8_t *tn_okp; /* .714: TN_OK's record */
  const uint8_t *const vb=in->vertices;const uint32_t st=in->vertex_stride,cull=c->state.rs[22];
  const int noarea=cull==1&&vx_d3d_ixpass;
  uint32_t k=0,drawn=0,culled=0,newv=0;int cur;
@@ -1172,7 +1210,7 @@ static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_se
  cur=bq_on&&bq_tid==tc.id&&bq.pre.on==2&&ix_vb==vb&&ix_stride==st&&ix_fvf==in->fvf;
  if(cur&&tn_slot_g!=ix_g)tn_slot_reset();
  if(cur&&tn_gb)bq.bursts.b[0]|=VX3DN_IX_GUARD; /* .698: the packet may carry guard-band vertices (ix_open sets it on a new one below) */
- #define TN_OK(i) (TN_GX(u32(tn_buf+(i)*tn_ostride),tf(tn_buf+(i)*tn_ostride),tc.bxl,tc.bxr,tn_gxl,tn_gxr)&&TN_GX(u32(tn_buf+(i)*tn_ostride+4),tf(tn_buf+(i)*tn_ostride+4),tc.byt,tc.byb,tn_gyt,tn_gyb)&&u32(tn_buf+(i)*tn_ostride+8)<=0x3F800000UL&&u32(tn_buf+(i)*tn_ostride+12)-1UL<0x7F7FFFFFUL) /* (.680: defined before the block path) */
+ #define TN_OK(i) (tn_okp=tn_buf+(i)*tn_ostride,TN_OKR(tn_okp)) /* .714: the record's address made once (Watcom multiplied tn_ostride four times a test: board, T713 pursuit, tn_ix_b's hottest lines) */ /* (.680: defined before the block path) */
  /* .680 (PLAN_SPEED.md I, the first step of the kernels' direct output; ACCEL_D3D_TNFASTIX, a feature under work): a run of triangles
   * whose places span at most 3 a triangle and 32 more, every place of the span finished and inside the screen and the depth range (the
   * loop's TN_OK), goes in as a block: the span's records copied in place order to the packet's next slots, each index one addition
@@ -1227,7 +1265,7 @@ static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_se
   else{
   if(!noarea){double area;const vx_f32a *const f0=(const vx_f32a *)(vb+i0*st),*const f1=(const vx_f32a *)(vb+i1*st),*const f2=(const vx_f32a *)(vb+i2*st);
    area=((double)f1[0]-f0[0])*((double)f2[1]-f0[1])-((double)f1[1]-f0[1])*((double)f2[0]-f0[0]);
-   if(area==0||(cull==2&&area>0)||(cull==3&&area<0)){culled++;continue;}}
+   if(vx_area_cull(area,cull)){culled++;continue;}}
   else if(i0==i1||i1==i2||i0==i2){culled++;continue;}}
 #undef TN_OK
   if(!cur||bq.vertex_count+3>VX3DN_IX_VERTICES||ix_ni+3>VX3DN_MAX_INDICES) {

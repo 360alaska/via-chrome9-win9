@@ -1,4 +1,4 @@
-/* VXTLP v1.36 (driver .704: VP, every scene through a viewport at (40, 40), the guard band across a clip edge that is not 0). VXTLP v1.35 (driver .699: 6l writes its depth too, ZWRITEENABLE). VXTLP v1.34 (driver .696: 6l depth-tested, so its CULL_NONE frame hides the back faces; T682-T694 failed only because ZENABLE was off). VXTLP v1.33 (driver .682: 6l checked against its own frame with CULL_NONE; v1.32's 6k comparison was wrong, the views differ). VXTLP v1.32 (driver .680: 6l's picture against 6k's, the engine's back-face cull checked without the software device). VXTLP v1.31 (driver .677: 6l, 6k with back faces culled (D3DCULL_CCW) and the screen's sides crossing the outer tori: the driver's culling before lighting, .676, on a picture compared with the software device's; GRID 6L alone). VXTLP v1.30 (driver .668: 10, what the review of .667 found: a state block past 1,024 bytes of T&L state, 65 light indices with the first
+/* VXTLP v1.42 (driver .723: 6W, the water against a reference drawn here, variants). VXTLP v1.41 (driver .721: 6Q the guard band on and off only, the floors judged). VXTLP v1.40 (driver .720: 6Q, the clipped projected floor and the water with strips and the guard band switched). VXTLP v1.39 (driver .719: 6P NA, a clipped blended floor with a strong vertex alpha gradient against the software device's). VXTLP v1.38 (driver .718: 6P, deep floors and a floor across the near plane, 2 huge triangles against a grid; 6N, a Dragothic-like water scene against the software device's, 24 frames; 6M in one round, .717's rhw switch gone; PROJ runs 6M and 6N). VXTLP v1.37 (driver .717: 6M, projected texture coordinates on large triangles against the software device's, the driver's rhw multiply off and on (see test_proj); VXTLP PROJ runs 6M alone). VXTLP v1.36 (driver .704: VP, every scene through a viewport at (40, 40), the guard band across a clip edge that is not 0). VXTLP v1.35 (driver .699: 6l writes its depth too, ZWRITEENABLE). VXTLP v1.34 (driver .696: 6l depth-tested, so its CULL_NONE frame hides the back faces; T682-T694 failed only because ZENABLE was off). VXTLP v1.33 (driver .682: 6l checked against its own frame with CULL_NONE; v1.32's 6k comparison was wrong, the views differ). VXTLP v1.32 (driver .680: 6l's picture against 6k's, the engine's back-face cull checked without the software device). VXTLP v1.31 (driver .677: 6l, 6k with back faces culled (D3DCULL_CCW) and the screen's sides crossing the outer tori: the driver's culling before lighting, .676, on a picture compared with the software device's; GRID 6L alone). VXTLP v1.30 (driver .668: 10, what the review of .667 found: a state block past 1,024 bytes of T&L state, 65 light indices with the first
  * switched on again, transformed vertices with three coordinate sets). VXTLP v1.29 (driver .663: 9, what the review of .661 found in the driver's T&L, each picture against the software device's: flat-shaded
  * triangles whose first vertex is clipped away, fog with flat shading, a texture matrix that reads a third coordinate, a cube map read by
  * three coordinates). VXTLP v1.28 (driver .658: a fault written to the log with its place, and the program ended, no dialog). VXTLP v1.27 (driver .657: the window has the arrow pointer, and its messages are read in the warm-up frames too). VXTLP v1.26 (driver .655, diagnosis: the board's 6k as a program's first scene gave NaN frame times and hung (and the software
@@ -133,7 +133,7 @@ typedef struct {float x,y,z,nx,ny,nz;U32 c;} UV;  /* FVF 0x52: XYZ, NORMAL, DIFF
 /* v1.36 (driver .704): VXTLP VP: every scene through a viewport at (40, 40), 176 x 176 (the whole target cleared first), so the guard
  * band's vertices lie on both sides of a clip edge that is not 0: .698-.703's VxD refused those between 0 and the edge (the packet left
  * out: the driver's picture misses triangles against the software device's) */
-static int g_vp;
+static int g_vp,g_proj; /* v1.37: PROJ, 6M alone */
 static void viewport(U32 x,U32 y,U32 w,U32 h) {U32 v[6];float mz=0.0f,xz=1.0f;v[0]=x;v[1]=y;v[2]=w;v[3]=h;memcpy(&v[4],&mz,4);memcpy(&v[5],&xz,4);((HRESULT(__stdcall*)(void*,void*))VT(dev,DEV_SETVP))(dev,v);}
 static HRESULT clear(void) {HRESULT r;
  if(g_vp)viewport(0,0,WIN,WIN);
@@ -705,6 +705,307 @@ static void tor_frame(void) {
  rs(22,1);
  rs(137,0);((F2P)VT(dev,DEV_SETXF))(dev,256,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)id);
 }
+/* v1.37 (driver .717): 6M. projected texture coordinates on large triangles, each case drawn projected and again in a form that gives
+ * the same coordinates without the projected layout (both of VXTLP's devices end in the driver's rasterizer, so the software device is no
+ * reference for the rasterizer): A camera-space position COUNT3 | PROJECTED q = 1 against the floor's plain coordinates; R the reflection
+ * vector COUNT3 | PROJECTED q = 1 with LOCALVIEWER (3DMark 2001's water) against COUNT2; B q = the depth against pretransformed u/q, v/q
+ * with one rhw; D stage 1 projected against COUNT2. A floor of two triangles from 1.2 to 40 deep, checkered; a case matches at 2% of the
+ * reference's lit pixels or fewer. v1.38 (.718): one round, no switch (.717's rhw multiply, TEXDBG BC 44D000x, broke every case on the
+ * board, 69-81% of the pixels, and is gone: the engine corrects projected coordinates for perspective itself). Pictures 6M<case><S|H>R.BMP
+ * and 6M<case><S|H>.BMP when a case differs. VXTLP PROJ runs 6M and 6N alone. */
+typedef struct {float x,y,z,nx,ny,nz;U32 c;float u,v;} FV; /* FVF 0x152 */
+static void *pm_tex(U32 a,U32 b) {void *tx=0;LR lr;int x,y; /* 64x64, 8x8 squares */
+ if(((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,U32,U32,void**))VT(dev,20))(dev,64,64,1,0,22,1,&tx)||!tx)return 0;
+ if(!((HRESULT(__stdcall*)(void*,U32,LR*,void*,U32))VT(tx,16))(tx,0,&lr,0,0)){for(y=0;y<64;y++){U32 *r=(U32*)((char*)lr.bits+y*lr.pitch);for(x=0;x<64;x++)r[x]=((x>>3)^(y>>3))&1?a:b;}((F1)VT(tx,17))(tx,0);}
+ return tx;}
+static const float pm_fx[4]={-1.1f,1.1f,-35.0f,35.0f},pm_fz[4]={1.2f,1.2f,40.0f,40.0f};static const int pm_tri[6]={0,2,3,0,3,1};
+static void pm_draw(int c,int ref,void *t0,void *t1) { /* c: 0 A, 1 R, 2 B, 3 D; ref: the reference form */
+ static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};float pr[16],ma[16],mr[16],mb[16],m1[16];FV v[6];TL t[6];
+ int k;const float zn=0.5f,zf=100.0f,Q=zf/(zf-zn);
+ memset(pr,0,sizeof(pr));pr[0]=1;pr[5]=1;pr[10]=Q;pr[11]=1;pr[14]=-Q*zn; /* 90 degrees, near 0.5, far 100 */
+ memset(ma,0,sizeof(ma));ma[0]=0.5f;ma[9]=0.5f;ma[14]=1; /* (x, y, z, 1) -> (x/2, z/2, 1) */
+ memset(mr,0,sizeof(mr));mr[0]=2;mr[9]=2;mr[12]=0.5f;mr[13]=0.5f;mr[14]=1; /* R -> (2 Rx + 0.5, 2 Rz + 0.5, 1) */
+ memset(mb,0,sizeof(mb));mb[0]=4;mb[5]=4;mb[10]=1; /* (4x, 4y, z): divided by the depth */
+ memcpy(m1,ma,sizeof(m1));m1[12]=0.25f; /* stage 1: A's mapping moved half a check */
+ for(k=0;k<6;k++){FV *q=&v[k];int i=pm_tri[k];q->x=pm_fx[i];q->y=-1.0f;q->z=pm_fz[i];q->nx=0;q->ny=1;q->nz=0;q->c=0xFFFFFFFFUL;q->u=pm_fx[i]*0.5f;q->v=pm_fz[i]*0.5f;}
+ p7_begin();((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)pr);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,t0);tss(0,1,2);tss(0,2,2);tss(0,16,2);tss(0,17,2);tss(0,18,0);
+ if(c==0&&!ref){tss(0,11,0x20000UL);tss(0,24,3|256);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)ma);}
+ if(c==1){tss(0,11,0x30000UL);tss(0,24,ref?2:3|256);rs(142,1);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)mr);}
+ if(c==2&&!ref){tss(0,11,0x20000UL);tss(0,24,3|256);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)mb);}
+ if(c==3){((F2P)VT(dev,DEV_SETTEX))(dev,1,t1);tss(1,1,4);tss(1,2,2);tss(1,3,1);tss(1,16,2);tss(1,17,2);tss(1,18,0);tss(1,11,0x20000UL);tss(1,24,ref?2:3|256);((F2P)VT(dev,DEV_SETXF))(dev,17,(void*)m1);}
+ if(c==2&&ref){U32 vx=0,vy=0,vw=WIN,vh=WIN; /* the screen position of each corner (this projection, the viewport), u v = 4x/z, 4y/z, one rhw */
+  if(g_vp){vx=40;vy=40;vw=WIN-80;vh=WIN-80;}
+  for(k=0;k<6;k++){TL *q=&t[k];int i=pm_tri[k];float x=pm_fx[i],y=-1.0f,z=pm_fz[i];q->x=(float)vx+(x/z+1.0f)*0.5f*(float)vw;q->y=(float)vy+(1.0f-y/z)*0.5f*(float)vh;q->z=(Q*z-Q*zn)/z;q->w=1.0f;q->c=0xFFFFFFFFUL;q->u=4.0f*x/z;q->v=4.0f*y/z;}
+  ((F1)VT(dev,DEV_SETVS))(dev,0x144);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,4,2,t,sizeof(TL));}
+ else{((F1)VT(dev,DEV_SETVS))(dev,0x152);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,4,2,v,sizeof(FV));}
+ tss(0,11,0);tss(0,24,0);tss(1,11,1);tss(1,24,0);tss(1,1,1);rs(142,0);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,17,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)id);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F2P)VT(dev,DEV_SETTEX))(dev,1,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);
+ ((F0)VT(dev,DEV_END))(dev);}
+static void test_proj(int sw) {
+ static const char *const nm[4]={"A (camera-space position, COUNT3 PROJECTED, q = 1)","R (reflection vector, COUNT3 PROJECTED, q = 1: the water)","B (camera-space position projected, q = the depth: 6i's form)","D (two stages, stage 1 projected, q = 1)"},lt[4]={'A','R','B','D'};
+ static U32 rf[WIN*WIN];int lr,d,c,ok;char nmb[16];
+ void *t0=pm_tex(0xFFF0C040UL,0xFF3050E0UL),*t1=pm_tex(0xFFFFFFFFUL,0xFF808080UL);
+ say("6M. %s: projected texture coordinates on large triangles (a floor from 1.2 to 40 deep), each against the same coordinates drawn without the projected layout\n",sw?"software vertex processing (the runtime's s t q to the driver)":"hardware vertex processing (the driver's T&L)");
+ if(!t0||!t1){wrong("6M: the checker textures were not made");goto out;}
+ for(c=0;c<4;c++){pm_draw(c,1,t0,t1);ok=read_bb(rf);present();lr=ok?lit(rf):0;if(!lr){say("   %s: the reference lit 0\n",nm[c]);wrong("6M: the reference drew nothing");continue;}
+  pm_draw(c,0,t0,t1);ok=read_bb(cur);present();d=ok?ndiff(rf,cur):-1;
+  say("   %s: lit %d, %d pixels differ (%.1f%%)\n",nm[c],lr,d,d<0?0.0:100.0*d/lr);
+  if(d<0||d*100>lr*2){sprintf(nmb,"6M%c%cR.BMP",lt[c],sw?'S':'H');bmp(nmb,rf);sprintf(nmb,"6M%c%c.BMP",lt[c],sw?'S':'H');if(d>=0)bmp(nmb,cur);wrong("6M: a projected case is not its reference's picture");}}
+ out:if(t0)((F0)VT(t0,D3D_REL))(t0);if(t1)((F0)VT(t1,D3D_REL))(t1);
+}
+/* v1.38 (driver .718): 6P. deep floors: depth varying thousands of times across one triangle, the case two outside reviews named (VXTLP
+ * 6M's floor varied 33 times; Dragothic's water near the camera far more), and a floor across the near plane and the screen's sides (the
+ * third review: the clipper's new vertices). Each case drawn as 2 huge triangles and again as a 32x32 grid of the same plane (rows even in
+ * screen height), the grid the reference; and, on the hardware device, against the software device's 2-triangle picture (the runtime clips).
+ *   P2 plain coordinates (u = x/4, v = z/4) from 1.02 to 3,000 deep        P3 the same through COUNT3 | PROJECTED, q = 1 (the water's layout)
+ *   PB P3 blended (SRCALPHA / INVSRCALPHA, alpha 0x80)                       PM P2 with a mip chain (a colour a level: the level picked shows)
+ *   PQ P3 with the mip chain                                                 NC P3 across the near plane and every side, -3 to 60 deep
+ *   NA (.719) NC blended with a strong vertex alpha and colour gradient and no texture: the clipper's new vertices' colour and alpha (an
+ *      outside review: tn_lerp takes them at the clip-space fraction, the engine shades screen-linearly); judged only against the
+ *      software device's (the runtime's own clipping), the grid differing by design
+ * A case matches at 2% of its reference's lit pixels or fewer. Pictures 6P<case><S|H><G|T>.BMP (grid, two triangles) when one differs. */
+typedef struct {float x,y,z;U32 c;float u,v;} DV; /* FVF 0x142 */
+static DV dp_v[33*33];static unsigned short dp_ix[32*32*6];static U32 dp_sw[7][WIN*WIN];static int dp_have[7];
+static void *dp_tex(int mips) {void *tx=0;int lv,x,y,n=mips?7:1;static const U32 lc[7]={0,0xFF20C020UL,0xFFC02020UL,0xFF2020C0UL,0xFFC0C020UL,0xFF20C0C0UL,0xFFC020C0UL}; /* 64x64; level k > 0 a flat colour of its own */
+ if(((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,U32,U32,void**))VT(dev,20))(dev,64,64,(U32)n,0,22,1,&tx)||!tx)return 0;
+ for(lv=0;lv<n;lv++){LR lr;int w=64>>lv;if(((HRESULT(__stdcall*)(void*,U32,LR*,void*,U32))VT(tx,16))(tx,(U32)lv,&lr,0,0))continue;
+  for(y=0;y<w;y++){U32 *r=(U32*)((char*)lr.bits+y*lr.pitch);for(x=0;x<w;x++)r[x]=lv?lc[lv]:((x>>3)^(y>>3))&1?0xFFF0C040UL:0xFF3050E0UL;}((F1)VT(tx,17))(tx,(U32)lv);}
+ return tx;}
+static void dp_draw(int c,int grid,void *tx) {
+ static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};float pr[16],ma[16];const float zn=1.0f,zf=5000.0f,Q=zf/(zf-zn);
+ const int nc=c>=5,N=grid?32:1,proj=c==1||c==2||c==4||c==5||c==7||c==8;const float y0=nc?-0.3f:-1.0f,z0=c==7?1.02f:c==8?0.8f:nc?-3.0f:1.02f,z1=nc?60.0f:3000.0f,xs=nc?80.0f:0.95f,xn=c==8?0.05f:xs,xf=c==8?40.0f:xs;int i,j,k=0;
+ /* .720: 7 NS across the sides only (1.02 to 60 deep), 8 NN across the near plane only (0.8 to 60, a trapezoid inside the sides), 9 NC with plain coordinates */
+ memset(pr,0,sizeof(pr));pr[0]=1;pr[5]=1;pr[10]=Q;pr[11]=1;pr[14]=-Q*zn;
+ memset(ma,0,sizeof(ma));ma[0]=0.25f;ma[9]=0.25f;ma[14]=1; /* (x, y, z, 1) -> (x/4, z/4, 1) */
+ for(j=0;j<=N;j++)for(i=0;i<=N;i++){DV *q=&dp_v[j*(N+1)+i];float t=(float)j/N,s=(float)i/N,z=nc?z0+(z1-z0)*t:1.0f/(1.0f/z0+(1.0f/z1-1.0f/z0)*t),x=nc?(2*s-1)*(xn+(xf-xn)*t):(2*s-1)*xs*z;
+  q->x=x;q->y=y0;q->z=z;q->c=c==2?0x80FFFFFFUL:0xFFFFFFFFUL;q->u=x*0.25f;q->v=z*0.25f;
+  if(c==6){U32 a=(U32)(255.0f-215.0f*t),r=(U32)(255.0f*s),g=(U32)(255.0f*(1.0f-s));q->c=(a<<24)|(r<<16)|(g<<8)|0x40UL;}} /* .719: alpha 255 near to 40 far, red to green across */
+ for(j=0;j<N;j++)for(i=0;i<N;i++){unsigned short a=(unsigned short)(j*(N+1)+i);dp_ix[k++]=a;dp_ix[k++]=(unsigned short)(a+N+1);dp_ix[k++]=(unsigned short)(a+N+2);dp_ix[k++]=a;dp_ix[k++]=(unsigned short)(a+N+2);dp_ix[k++]=(unsigned short)(a+1);}
+ ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);rs(22,1);
+ ((F2P)VT(dev,DEV_SETXF))(dev,256,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)pr);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,tx);tss(0,1,4);tss(0,2,2);tss(0,3,0);tss(0,4,2);tss(0,5,0);tss(0,16,2);tss(0,17,2);tss(0,18,c==3||c==4?2:0);
+ if(c==2||c==6){rs(27,1);rs(19,5);rs(20,6);}
+ if(c==6){tss(0,1,2);tss(0,2,0);tss(0,4,2);tss(0,5,0);} /* .719: the diffuse colour and alpha alone (no texture read), blended over black */
+ if(proj&&!grid){tss(0,11,0x20000UL);tss(0,24,3|256);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)ma);} /* the grid, the reference, has the same values plain */
+ ((F1)VT(dev,DEV_SETVS))(dev,0x142);
+ ((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,const void*,U32,const void*,U32))VT(dev,DEV_DIPUP))(dev,4,0,(U32)((N+1)*(N+1)),(U32)(N*N*2),dp_ix,101,dp_v,sizeof(DV));
+ tss(0,11,0);tss(0,24,0);tss(0,18,0);rs(27,0);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)id);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);
+ ((F0)VT(dev,DEV_END))(dev);}
+static void test_deep(int sw) {
+ static const char *const nm[7]={"P2 plain coordinates, 1.02 to 3000 deep","P3 COUNT3 PROJECTED q = 1, 1.02 to 3000 deep","PB P3 blended, alpha 0x80","PM P2 with a mip chain","PQ P3 with a mip chain","NC P3 across the near plane and every side","NA NC blended, a strong vertex alpha and colour gradient"},*const ab[7]={"P2","P3","PB","PM","PQ","NC","NA"};
+ static U32 g[WIN*WIN];void *t0=dp_tex(0),*t1=dp_tex(1);int c,lg,d,ds,ok;char n[16];
+ say("6P. %s: deep floors (2 huge triangles against a 32x32 grid of the same plane)%s\n",sw?"software vertex processing":"hardware vertex processing (the driver's T&L)",sw?"":", and against the software device's 2 triangles");
+ if(!t0||!t1){wrong("6P: the textures were not made");goto out;}
+ for(c=0;c<7;c++){void *tx=c==3||c==4?t1:t0;
+  dp_draw(c,1,tx);ok=read_bb(g);present();lg=ok?lit(g):0;
+  dp_draw(c,0,tx);ok=ok&&read_bb(cur);present();d=ok?ndiff(g,cur):-1;
+  if(sw){memcpy(dp_sw[c],cur,sizeof(cur));dp_have[c]=ok;}
+  ds=!sw&&dp_have[c]?ndiff(dp_sw[c],cur):-1;
+  say("   %-44s grid lit %6d; 2 triangles: %6d differ (%5.1f%%)",nm[c],lg,d,lg&&d>=0?100.0*d/lg:0.0);if(ds>=0)say("; against the software device's: %6d (%5.1f%%)",ds,lg?100.0*ds/lg:0.0);say("\n");
+  if(!lg){wrong("6P: the grid drew nothing");continue;}
+  if(c==6)d=0; /* .719: NA's grid is no reference (Gouraud is screen-linear, so 2 triangles and a grid differ by design): the software device's clipping is */
+  if(d<0||d*100>lg*2||(ds>=0&&ds*100>lg*2)){sprintf(n,"6P%s%cG.BMP",ab[c],sw?'S':'H');bmp(n,g);sprintf(n,"6P%s%cT.BMP",ab[c],sw?'S':'H');bmp(n,cur);
+   wrong(d<0||d*100>lg*2?"6P: the 2 huge triangles are not the grid's picture":"6P: the driver's 2 triangles are not the software device's");}}
+ out:if(t0)((F0)VT(t0,D3D_REL))(t0);if(t1)((F0)VT(t1,D3D_REL))(t1);
+}
+/* v1.38 (driver .718): 6N. a water scene of 3DMark 2001's Dragothic kind, the driver's T&L against the runtime's (software vertex
+ * processing: the runtime transforms, generates the coordinates and clips; both then go through the same rasterizer, which 6M checks).
+ * Dragothic's water was large flat wrong-coloured triangles near the camera on the board while far water looked right. The scene: a
+ * water plane of 32 large triangles in 8 draws (4 triangles each, tiles 120 units across), alpha-blended (SRCALPHA / INVSRCALPHA, the
+ * vertex's diffuse alpha 0x57-0xB7), depth test LESSEQUAL, no depth write, stage 0 the camera-space reflection vector with LOCALVIEWER
+ * through Dragothic's own texture matrix (COUNT3 | PROJECTED, q = 1), the normals slightly tilted per vertex as the recording's; an opaque
+ * textured octahedron (the dragon) flying close in front of the camera, through the near plane and the screen's edges; the camera
+ * coming down from 12 units to 0.25 over the water, pitching up and turning, over 24 frames: the water's triangles cross the near plane
+ * and the sides more and more. Each frame compared with the software device's (pixels off by more than 8 in a channel); a frame matches at
+ * 1% of its lit pixels or fewer. Pictures of the three worst frames: 6N<nn>S.BMP the software device's, 6N<nn>H.BMP the driver's. */
+#define WN_FR 24
+typedef struct {float x,y,z,nx,ny,nz;U32 c;float u,v;} WV;
+static U32 wn_sw[WN_FR][WIN*WIN];static int wn_have;
+static void *wn_tex(void) {void *tx=0;LR lr;int x,y; /* 256x256: a sky gradient (orange at the top to blue) crossed by a 32-texel checker */
+ if(((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,U32,U32,void**))VT(dev,20))(dev,256,256,1,0,22,1,&tx)||!tx)return 0;
+ if(!((HRESULT(__stdcall*)(void*,U32,LR*,void*,U32))VT(tx,16))(tx,0,&lr,0,0)){for(y=0;y<256;y++){U32 *r=(U32*)((char*)lr.bits+y*lr.pitch);for(x=0;x<256;x++){
+   U32 R=240-y*3/4,G=140-y/4+(x>>3),B=40+y*3/4;if(((x>>5)^(y>>5))&1){R=R*3/4;G=G*3/4;B=B*3/4;}r[x]=0xFF000000UL|(R<<16)|(G<<8)|B;}}((F1)VT(tx,17))(tx,0);}
+ return tx;}
+static void wn_cam(int f,float *vw) { /* the view matrix of frame f */
+ float t=(float)f/(WN_FR-1),cy=12.0f*(1.0f-t)+0.25f,cz=-60.0f+70.0f*t,cx=6.0f*t,pit=0.45f*(1.0f-t)-0.03f,yaw=0.35f*t,sp,cp,sy,cy2,F[3],R[3],U[3],E[3];int k;
+ t_sincos(pit,&sp,&cp);t_sincos(yaw,&sy,&cy2);
+ F[0]=sy*cp;F[1]=-sp;F[2]=cy2*cp;R[0]=cy2;R[1]=0;R[2]=-sy;U[0]=F[1]*R[2]-F[2]*R[1];U[1]=F[2]*R[0]-F[0]*R[2];U[2]=F[0]*R[1]-F[1]*R[0];E[0]=cx;E[1]=cy;E[2]=cz;
+ memset(vw,0,64);for(k=0;k<3;k++){vw[k*4]=R[k];vw[k*4+1]=U[k];vw[k*4+2]=F[k];}
+ vw[12]=-(R[0]*E[0]+R[1]*E[1]+R[2]*E[2]);vw[13]=-(U[0]*E[0]+U[1]*E[1]+U[2]*E[2]);vw[14]=-(F[0]*E[0]+F[1]*E[1]+F[2]*E[2]);vw[15]=1;}
+static U32 wn_ttf=3|256,wn_filt=2,wn_blend=1; /* v1.42: 6W's variants (TEXTURETRANSFORMFLAGS, MAG/MINFILTER, ALPHABLENDENABLE of the water) */
+static void wn_frame(int f,void *tx) {
+ static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ static const float tm[16]={0.373904f,0.0305479f,0,0, 0.039355f,-0.368455f,0,0, 0.0391257f,0.0786848f,0,0, 0.5f,0.5f,1,1}; /* Dragothic's */
+ float pr[16],vw[16],w[16];WV v[24];int k,i,j,d;const float zn=1.0f,zf=1000.0f,Q=zf/(zf-zn),t=(float)f/(WN_FR-1);
+ memset(pr,0,sizeof(pr));pr[0]=1.3f;pr[5]=1.3f;pr[10]=Q;pr[11]=1;pr[14]=-Q*zn;wn_cam(f,vw);
+ ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);rs(22,1);
+ ((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)vw);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)pr);((F2P)VT(dev,DEV_SETXF))(dev,256,(void*)id);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,tx);tss(0,1,4);tss(0,2,2);tss(0,3,0);tss(0,4,2);tss(0,5,0);tss(0,16,wn_filt);tss(0,17,wn_filt);tss(0,18,0);
+ { /* the dragon: an octahedron 2.4 across, its own plain coordinates, opaque, close in front of the camera */
+  static const float o[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};static const int fc[8][3]={{0,2,4},{2,1,4},{1,3,4},{3,0,4},{2,0,5},{1,2,5},{3,1,5},{0,3,5}};
+  float s1,c1,s2,c2,P[3];t_sincos(t*7.0f,&s1,&c1);t_sincos(t*5.0f,&s2,&c2);
+  P[0]=s1*2.2f;P[1]=-0.4f+c2*0.9f;P[2]=1.8f+1.6f*s2; /* in camera space: crosses the near plane (1) and the sides */
+  for(k=0;k<8;k++)for(j=0;j<3;j++){WV *q=&v[k*3+j];const float *a=o[fc[k][j]];float cs[3];int m;for(m=0;m<3;m++)cs[m]=P[m]+a[m]*1.2f;
+   q->x=cs[0];q->y=cs[1];q->z=cs[2];q->nx=a[0];q->ny=a[1];q->nz=a[2];q->c=0xFFFFFFFFUL;q->u=0.5f+0.5f*a[0];q->v=0.5f+0.5f*a[1]+0.25f*a[2];}
+  ((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)id); /* given in camera space */
+  ((F1)VT(dev,DEV_SETVS))(dev,0x152);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,4,8,v,sizeof(WV));
+  ((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)vw);}
+ /* the water */
+ rs(27,wn_blend);rs(19,5);rs(20,6);rs(14,0);rs(23,4);rs(142,1);
+ tss(0,11,0x30000UL);tss(0,24,wn_ttf);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)tm);
+ for(d=0;d<8;d++){int n=0;for(k=0;k<2;k++){int tile=d*2+k,tx0=tile%4,tz0=tile/4;float x0=-240.0f+tx0*120.0f,z0=-120.0f+tz0*120.0f;float cx[4],cz[4];static const int qi[6]={0,2,3,0,3,1};
+   cx[0]=x0;cz[0]=z0;cx[1]=x0+120;cz[1]=z0;cx[2]=x0;cz[2]=z0+120;cx[3]=x0+120;cz[3]=z0+120;
+   for(i=0;i<6;i++){WV *q=&v[n++];float x=cx[qi[i]],z=cz[qi[i]],sx,cxs,sz,czs,nx,ny,nz,l;U32 a;
+    t_sincos(x*0.013f,&sx,&cxs);t_sincos(z*0.011f,&sz,&czs);nx=-0.07f+0.03f*sx;ny=0.976f;nz=-0.20f+0.03f*czs;l=(float)sqrt(nx*nx+ny*ny+nz*nz);
+    a=0x57UL+((U32)((int)(x+300)*7+(int)(z+300)*3)%0x61UL);
+    q->x=x;q->y=0;q->z=z;q->nx=nx/l;q->ny=ny/l;q->nz=nz/l;q->c=(a<<24)|0xFFFFFFUL;q->u=0;q->v=0;}}
+  ((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,4,4,v,sizeof(WV));}
+ tss(0,11,0);tss(0,24,0);rs(142,0);rs(27,0);rs(14,1);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)id);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);
+ ((F0)VT(dev,DEV_END))(dev);}
+static void test_water(int sw) {
+ void *tx=wn_tex();int f,ok,d[WN_FR],l[WN_FR],bad=0,worst[3]={-1,-1,-1};char n[16];
+ say("6N. %s: a Dragothic-like water scene, 24 frames, the camera coming down to the water with a flying object through the near plane\n",sw?"software vertex processing (the runtime's T&L and clipping: the reference)":"hardware vertex processing (the driver's T&L), each frame against the software device's");
+ if(!tx){wrong("6N: the texture was not made");return;}
+ for(f=0;f<WN_FR;f++){wn_frame(f,tx);ok=read_bb(cur);present();l[f]=ok?lit(cur):0;
+  if(sw){if(ok)memcpy(wn_sw[f],cur,sizeof(cur));d[f]=0;continue;}
+  d[f]=ok&&wn_have?ndiff(wn_sw[f],cur):-1;}
+ if(sw){wn_have=1;say("   frames drawn, lit pixels:");for(f=0;f<WN_FR;f++)say(" %d",l[f]);say("\n");for(f=0;f<WN_FR;f++)if(!l[f])wrong("6N: a frame drew nothing");((F0)VT(tx,D3D_REL))(tx);return;}
+ if(!wn_have){say("   no software pictures to compare\n");((F0)VT(tx,D3D_REL))(tx);return;}
+ say("   frame: pixels differing (%% of the software device's lit pixels)\n  ");
+ for(f=0;f<WN_FR;f++){int ls=lit(wn_sw[f]);say(" %2d:%6d (%4.1f%%)%s",f,d[f],ls?100.0*d[f]/ls:0.0,f%6==5?"\n  ":"");
+  if(d[f]<0||d[f]*100>ls){bad++;}
+  {int k,m=f;for(k=0;k<3;k++){if(worst[k]<0||d[m]>d[worst[k]]){int tmp=worst[k];worst[k]=m;m=tmp;if(m<0)break;}}}}
+ say("\n");
+ for(f=0;f<3;f++)if(worst[f]>=0&&d[worst[f]]>0){wn_frame(worst[f],tx);if(read_bb(cur)){sprintf(n,"6N%02dH.BMP",worst[f]);bmp(n,cur);sprintf(n,"6N%02dS.BMP",worst[f]);bmp(n,wn_sw[worst[f]]);}present();}
+ say("   %d of %d frames differ by more than 1%%%s\n",bad,WN_FR,bad?" (pictures of the worst three: 6N<frame>S.BMP the software device's, 6N<frame>H.BMP the driver's)":"");
+ if(bad)wrong("6N: the driver's water scene is not the software device's picture");
+ ((F0)VT(tx,D3D_REL))(tx);
+}
+/* v1.42 (driver .723): 6W. the water scene (6N's) judged against a picture drawn by Direct3D's rules in this program (wr_frame: no
+ * runtime, no driver: the transform, the reflection vector with LOCALVIEWER, the texture matrix, clipping in clip space with the
+ * attributes interpolated there, perspective-correct coordinates divided by q at each pixel, the texture's bilinear or point WRAP read,
+ * SRCALPHA blending over black and the dragon). T721 (VX855): both devices' 6N pictures had large triangles in blue and orange stripes
+ * (the texture read near t = 1) where this reference is the water's smooth brown (t 0.3-0.44). A pixel is counted wrong when its blue
+ * minus red is more than 32 from the reference's (the stripes' signature; the 565 back buffer and rounding stay well inside it); a frame
+ * is wrong past 3% of its lit pixels. Variants: the driver as it is (.723: a projected set with q = 1 everywhere sent plain), the same
+ * with that off (VX_D3D_TestSet 2: the projected layout as .722 sent it), the application's own two-coordinate form (TEXTURETRANSFORMFLAGS
+ * COUNT2, no divide: the same coordinates, q = 1), and with the old layout: point filtering, and the water opaque. The old-layout rows
+ * are shown, not judged: they say what the engine's projected layout trips on. */
+#define WR_W WIN
+static U32 wr_tex(int x,int y){U32 R=240-y*3/4,G=140-y/4+(x>>3),B=40+y*3/4;if(((x>>5)^(y>>5))&1){R=R*3/4;G=G*3/4;B=B*3/4;}return (R<<16)|(G<<8)|B;}
+static int wr_fl(double v){int i=(int)v;return (double)i>v?i-1:i;}
+static void wr_sample(double u,double v,int pt,double *c){
+ double x=u*256-0.5,y=v*256-0.5;int x0,y0,k;
+ if(pt){int xi=wr_fl(u*256)&255,yi=wr_fl(v*256)&255;U32 t=wr_tex(xi,yi);c[0]=(t>>16)&255;c[1]=(t>>8)&255;c[2]=t&255;return;}
+ x0=wr_fl(x);y0=wr_fl(y);{double fx=x-x0,fy=y-y0;U32 a=wr_tex(x0&255,y0&255),b=wr_tex((x0+1)&255,y0&255),cc=wr_tex(x0&255,(y0+1)&255),d=wr_tex((x0+1)&255,(y0+1)&255);
+  for(k=0;k<3;k++){int sh=16-8*k;c[k]=((a>>sh)&255)*(1-fx)*(1-fy)+((b>>sh)&255)*fx*(1-fy)+((cc>>sh)&255)*(1-fx)*fy+((d>>sh)&255)*fx*fy;}}}
+typedef struct {double c[4],a[4];} WRV;
+static double wr_pl(const WRV *v,int k){const double *c=v->c;switch(k){case 0:return c[2];case 1:return c[3]-c[2];case 2:return c[3]+c[0];case 3:return c[3]-c[0];case 4:return c[3]+c[1];default:return c[3]-c[1];}}
+static int wr_clip(WRV *p,int n){WRV o[16];int k,i,m;
+ for(k=0;k<6&&n;k++){m=0;for(i=0;i<n;i++){const WRV *a=&p[i],*b=&p[(i+1)%n];double da=wr_pl(a,k),db=wr_pl(b,k);
+   if(da>=0&&m<16)o[m++]=*a;
+   if((da>=0)!=(db>=0)&&m<16){double t=da/(da-db);int j;for(j=0;j<4;j++){o[m].c[j]=a->c[j]+(b->c[j]-a->c[j])*t;o[m].a[j]=a->a[j]+(b->a[j]-a->a[j])*t;}m++;}}
+  n=m;for(i=0;i<n;i++)p[i]=o[i];}
+ return n;}
+static double wr_img[WR_W*WR_W][3];
+static void wr_tri(const WRV *t0,const WRV *t1,const WRV *t2,int water,int pt,int blend){
+ double sx[3],sy[3],rw[3],ar;const WRV *t[3];int k,xa,xb,ya,yb,x,y;t[0]=t0;t[1]=t1;t[2]=t2;
+ for(k=0;k<3;k++){double w=t[k]->c[3];sx[k]=(t[k]->c[0]/w+1)*WR_W/2;sy[k]=(1-t[k]->c[1]/w)*WR_W/2;rw[k]=1/w;}
+ ar=(sx[1]-sx[0])*(sy[2]-sy[0])-(sx[2]-sx[0])*(sy[1]-sy[0]);if(ar<1e-9&&ar>-1e-9)return;
+ xa=wr_fl(sx[0]);xb=xa;ya=wr_fl(sy[0]);yb=ya;for(k=1;k<3;k++){int a=wr_fl(sx[k]),b=wr_fl(sy[k]);if(a<xa)xa=a;if(a>xb)xb=a;if(b<ya)ya=b;if(b>yb)yb=b;}
+ xb++;yb++;if(xa<0)xa=0;if(ya<0)ya=0;if(xb>WR_W-1)xb=WR_W-1;if(yb>WR_W-1)yb=WR_W-1;
+ for(y=ya;y<=yb;y++)for(x=xa;x<=xb;x++){double w0=((sx[1]-x)*(sy[2]-y)-(sx[2]-x)*(sy[1]-y))/ar,w1=((sx[2]-x)*(sy[0]-y)-(sx[0]-x)*(sy[2]-y))/ar,w2=1-w0-w1,r,c[3],*o=wr_img[y*WR_W+x];
+  if(w0<0||w1<0||w2<0)continue;
+  r=w0*rw[0]+w1*rw[1]+w2*rw[2];
+  #define PC(i) ((w0*t[0]->a[i]*rw[0]+w1*t[1]->a[i]*rw[1]+w2*t[2]->a[i]*rw[2])/r)
+  if(water){double q=PC(2),al=blend?(w0*t[0]->a[3]+w1*t[1]->a[3]+w2*t[2]->a[3])/255.0:1.0;wr_sample(PC(0)/q,PC(1)/q,pt,c);for(k=0;k<3;k++)o[k]=c[k]*al+o[k]*(1-al);}
+  else{wr_sample(PC(0),PC(1),pt,c);for(k=0;k<3;k++)o[k]=c[k];}
+  #undef PC
+ }}
+static void wr_frame(int f,int pt,int blend,U32 *out){
+ static const float tm[16]={0.373904f,0.0305479f,0,0, 0.039355f,-0.368455f,0,0, 0.0391257f,0.0786848f,0,0, 0.5f,0.5f,1,1};
+ static const float o6[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};static const int fc[8][3]={{0,2,4},{2,1,4},{1,3,4},{3,0,4},{2,0,5},{1,2,5},{3,1,5},{0,3,5}};
+ static const int qi[6]={0,2,3,0,3,1};
+ float vw[16];const double zn=1.0,zf=1000.0,Q=zf/(zf-zn),t=(double)f/(WN_FR-1);WRV p[16];int k,j,d,i,n,m;
+ #define PRJ(cs,o) {o[0]=1.3*cs[0];o[1]=1.3*cs[1];o[2]=Q*cs[2]-Q*zn;o[3]=cs[2];}
+ memset(wr_img,0,sizeof(wr_img));wn_cam(f,vw);
+ {float s1,c1,s2,c2;double P[3];t_sincos((float)(t*7.0),&s1,&c1);t_sincos((float)(t*5.0),&s2,&c2);P[0]=s1*2.2;P[1]=-0.4+c2*0.9;P[2]=1.8+1.6*s2;
+  for(k=0;k<8;k++){for(j=0;j<3;j++){const float *a=o6[fc[k][j]];double cs[3];int q;for(q=0;q<3;q++)cs[q]=P[q]+a[q]*1.2;PRJ(cs,p[j].c);p[j].a[0]=0.5+0.5*a[0];p[j].a[1]=0.5+0.5*a[1]+0.25*a[2];p[j].a[2]=1;p[j].a[3]=255;}
+   n=wr_clip(p,3);for(i=1;i+1<n;i++)wr_tri(&p[0],&p[i],&p[i+1],0,pt,0);}}
+ for(d=0;d<8;d++)for(k=0;k<2;k++){int tile=d*2+k,tx0=tile%4,tz0=tile/4;double x0=-240.0+tx0*120.0,z0=-120.0+tz0*120.0,cx[4],cz[4];WRV v6[6];
+  cx[0]=x0;cz[0]=z0;cx[1]=x0+120;cz[1]=z0;cx[2]=x0;cz[2]=z0+120;cx[3]=x0+120;cz[3]=z0+120;
+  for(i=0;i<6;i++){double x=cx[qi[i]],z=cz[qi[i]],nx,ny,nz,l,pc[3],nc[3],E[3],R[3],ne,el;float sx,cxs,sz,czs;U32 a;int q;
+   t_sincos((float)(x*0.013),&sx,&cxs);t_sincos((float)(z*0.011),&sz,&czs);nx=-0.07+0.03*sx;ny=0.976;nz=-0.20+0.03*czs;l=sqrt(nx*nx+ny*ny+nz*nz);nx/=l;ny/=l;nz/=l;
+   a=0x57UL+((U32)((int)(x+300)*7+(int)(z+300)*3)%0x61UL);
+   for(q=0;q<3;q++){pc[q]=x*vw[q]+0*vw[4+q]+z*vw[8+q]+vw[12+q];nc[q]=nx*vw[q]+ny*vw[4+q]+nz*vw[8+q];}
+   el=sqrt(pc[0]*pc[0]+pc[1]*pc[1]+pc[2]*pc[2]);for(q=0;q<3;q++)E[q]=-pc[q]/el;ne=E[0]*nc[0]+E[1]*nc[1]+E[2]*nc[2];for(q=0;q<3;q++)R[q]=2*ne*nc[q]-E[q];
+   PRJ(pc,v6[i].c);for(q=0;q<3;q++)v6[i].a[q]=R[0]*tm[q]+R[1]*tm[4+q]+R[2]*tm[8+q]+tm[12+q];v6[i].a[3]=(double)a;}
+  for(i=0;i<6;i+=3){p[0]=v6[i];p[1]=v6[i+1];p[2]=v6[i+2];n=wr_clip(p,3);for(m=1;m+1<n;m++)wr_tri(&p[0],&p[m],&p[m+1],1,pt,blend);}}
+ #undef PRJ
+ for(k=0;k<WR_W*WR_W;k++){U32 c=0;for(j=0;j<3;j++){double v=wr_img[k][j]+0.5;int iv=v<0?0:v>255?255:(int)v;c|=(U32)iv<<(16-8*j);}out[k]=c;}
+}
+static int wr_bad(const U32 *b,const U32 *r){int n=0,k;for(k=0;k<WIN*WIN;k++){int hb=(int)(b[k]&255)-(int)((b[k]>>16)&255),hr=(int)(r[k]&255)-(int)((r[k]>>16)&255),d=hb-hr;if(d>32||d<-32)n++;}return n;}
+static U32 wr_ref[WIN*WIN];
+static void test_wref(int sw) {
+ static const int fr0=10,fr1=23;
+ static const struct {const char *nm;int dev,q1,ttf,pt,bl,judge;} vr[]={
+  {"as it is (.723: q = 1 sent plain)",0,1,0x103,0,1,1},{"the projected layout (.722)",0,0,0x103,0,1,0},{"the application's COUNT2 form",0,1,2,0,1,1},
+  {"projected layout, point filter",0,0,0x103,1,1,0},{"projected layout, water opaque",0,0,0x103,0,0,0},
+  {"as it is (.723: q = 1 sent plain)",1,1,0x103,0,1,1},{"the projected layout (.722)",1,0,0x103,0,1,0}};
+ DWORD (WINAPI *ts)(DWORD,DWORD)=0;HMODULE h=GetModuleHandleA("VXDDRAW.DLL");void *tx=wn_tex();int v,f,ok;char n[16];DWORD q0=1;
+ say("6W. %s: the water scene against a reference drawn by Direct3D's rules in this program (pixels whose blue minus red is more than 32 off, %% of the lit ones), frames %d-%d\n",sw?"software vertex processing (the runtime's T&L, the driver's rasterizer)":"hardware vertex processing (the driver's T&L)",fr0,fr1);
+ if(!tx){wrong("6W: the texture was not made");return;}
+ ts=h?(DWORD (WINAPI *)(DWORD,DWORD))GetProcAddress(h,"VX_D3D_TestSet"):0;
+ if(ts){q0=ts(2,0xFFFFFFFFUL);if(q0==0xFFFFFFFFUL)ts=0;}
+ for(v=0;v<(int)(sizeof(vr)/sizeof(vr[0]));v++){int bad=0,worst=-1,wd=-1,d[WN_FR];
+  if(vr[v].dev!=sw)continue;
+  if(!vr[v].q1&&!ts){say("   %-36s not run (VX_D3D_TestSet 2: a driver before .723)\n",vr[v].nm);continue;}
+  if(ts)ts(2,(DWORD)vr[v].q1);wn_ttf=vr[v].ttf;wn_filt=vr[v].pt?1:2;wn_blend=vr[v].bl;
+  say("   %-36s",vr[v].nm);
+  for(f=fr0;f<=fr1;f++){int l;wr_frame(f,vr[v].pt,vr[v].bl,wr_ref);l=lit(wr_ref);wn_frame(f,tx);ok=read_bb(cur);present();
+   d[f]=ok?wr_bad(cur,wr_ref):-1;say(" %2d:%4.1f%%",f,ok&&l?100.0*d[f]/l:-1.0);if(f==16)say("\n   %-36s","");
+   if(ok&&d[f]*100>l*3)bad++;if(ok&&d[f]>wd){wd=d[f];worst=f;}}
+  say("\n");
+  if(worst>=0&&wd>0){wr_frame(worst,vr[v].pt,vr[v].bl,wr_ref);wn_frame(worst,tx);if(read_bb(cur)){sprintf(n,"6W%c%d%02d.BMP",sw?'S':'H',v,worst);bmp(n,cur);sprintf(n,"6WR%d%02d.BMP",v,worst);bmp(n,wr_ref);}present();}
+  if(vr[v].judge&&bad){char m[96];sprintf(m,"6W: %s: %d frame(s) past 3%% wrong (%s)",vr[v].nm,bad,sw?"software":"hardware");wrong(m);}}
+ if(ts)ts(2,q0);wn_ttf=3|256;wn_filt=2;wn_blend=1;
+ ((F0)VT(tx,D3D_REL))(tx);
+}
+/* v1.40 (driver .720): 6Q. which part of the driver's path breaks a clipped projected floor (T719 on the VX855: 6P NC, P3 across the
+ * near plane and every side, 35% of its pixels off against the software device's, far squares turned to stripes; 6N frames 14-22 the
+ * same; host packets of that floor checked right vertex by vertex). Each case and four 6N frames drawn by the hardware device with the
+ * T&L's guard band on and off (VXDDRAW.DLL VX_D3D_TestSet 1 in this process; off clips the sides to the viewport as the runtime does),
+ * on / off / on / off / on; each picture against the software device's. T720 (VX855): NC 35.5% and NS 48.3% off with the band, 1.9% and
+ * 0% without; NN 0%; strips or lists made no difference (.720's TEXDBG BC 44E switch, removed in .721). .721 leaves the band off for
+ * records with a third coordinate: both settings must now match (a floor case past 3% is wrong). The 6N frames are shown, not judged:
+ * reflection coordinates interpolated across triangles this large make the runtime's own picture differ from a reference. Cases: NC (P3 across near and sides), NS (P3 across the sides only), NN
+ * (P3 across the near plane only), N2 (NC with plain coordinates: is it the projected layout?). Both switches put back as they were. */
+static U32 cq_sw[4][WIN*WIN];static int cq_have;
+static void test_clipab(int sw) {
+ static const int cs[4]={5,7,8,9};static const char *const nm[4]={"NC (P3, near plane and sides)","NS (P3, sides only)","NN (P3, near plane only)","N2 (NC, plain coordinates)"};
+ static const int fr[4]={14,16,19,22};static const int cf[5]={1,0,1,0,1};static const char *const cfn[5]={"band","no band","band","no band","band"};
+ DWORD (WINAPI *ts)(DWORD,DWORD)=0;void *t0=dp_tex(0),*wt=wn_tex();DWORD b0=1;int c,k,r,ok,d[8][5];char n[16];HMODULE h=GetModuleHandleA("VXDDRAW.DLL");
+ say("6Q. %s: a clipped projected floor and the water scene with the guard band switched\n",sw?"software vertex processing (the reference)":"hardware vertex processing (the driver's T&L)");
+ if(!t0||!wt){wrong("6Q: the textures were not made");goto out;}
+ if(sw){for(c=0;c<4;c++){dp_draw(cs[c],0,t0);ok=read_bb(cq_sw[c]);present();if(!ok)wrong("6Q: back buffer lock failed");}cq_have=1;say("   the software device's pictures kept\n");goto out;}
+ ts=h?(DWORD (WINAPI *)(DWORD,DWORD))GetProcAddress(h,"VX_D3D_TestSet"):0;
+ if(!ts){say("   VX_D3D_TestSet not there (a driver before .720): 6Q not run\n");goto out;}
+ b0=ts(1,0xFFFFFFFFUL);
+ for(r=0;r<5;r++){ts(1,(DWORD)cf[r]);
+  for(c=0;c<4;c++){dp_draw(cs[c],0,t0);ok=read_bb(cur);present();d[c][r]=ok&&cq_have?ndiff(cq_sw[c],cur):-1;if(ok&&r<4&&d[c][r]>0){sprintf(n,"6Q%c%d.BMP",'A'+c,r);bmp(n,cur);}}
+  for(k=0;k<4;k++){wn_frame(fr[k],wt);ok=read_bb(cur);present();d[4+k][r]=ok&&wn_have?ndiff(wn_sw[fr[k]],cur):-1;if(ok&&r<4&&d[4+k][r]>0){sprintf(n,"6QW%d%d.BMP",k,r);bmp(n,cur);}}}
+ ts(1,b0);
+ if(cq_have)for(c=0;c<4;c++){sprintf(n,"6Q%cS.BMP",'A'+c);bmp(n,cq_sw[c]);}
+ say("   pixels differing from the software device's picture:\n   %-34s","");for(r=0;r<5;r++)say(" %12s",cfn[r]);say("\n");
+ for(c=0;c<8;c++){int ls=c<4?lit(cq_sw[c]):lit(wn_sw[fr[c-4]]);char lb[40];if(c<4)sprintf(lb,"%s",nm[c]);else sprintf(lb,"6N frame %d",fr[c-4]);say("   %-34s",lb);
+  for(r=0;r<5;r++){if(d[c][r]<0)say("        -    ");else say(" %6d %4.1f%%",d[c][r],ls?100.0*d[c][r]/ls:0.0);}say("\n");}
+ say("   (the guard band was %lu before; put back)\n",b0);
+ for(c=0;c<4;c++){int ls=lit(cq_sw[c]);for(r=0;r<5;r++)if(d[c][r]>=0&&d[c][r]*100>ls*3){wrong("6Q: a clipped floor is not the software device's picture (past 3%)");break;}}
+ out:if(t0)((F0)VT(t0,D3D_REL))(t0);if(wt)((F0)VT(wt,D3D_REL))(wt);
+}
 static void test_grid(int sw) {
  void *tx=0;LR lr;int i,j,k,l;LARGE_INTEGER f,a,b,prev;FILE *csv;
  static const char *const gname[12]={"6. ","6b. a point light: ","6c. 720 draws of 48 triangles: ","6d. a second stage on and off between grids: ","6e. a GTA3-like frame: ","6f. a second stage on for every grid: ","6g. a second stage set off for every grid: ","6h. eight lights with specular lighting: ","6i. spot lights and generated coordinates: ","6j. 30 tori, one light: ","6k. 30 tori, eight lights with specular lighting: ","6l. 30 tori, eight lights with specular lighting, back faces culled: "},*const gcsv[12][2]={{"VXG_HW.CSV","VXG_SW.CSV"},{"VXP_HW.CSV","VXP_SW.CSV"},{"VXS_HW.CSV","VXS_SW.CSV"},{"VXD_HW.CSV","VXD_SW.CSV"},{"VXA_HW.CSV","VXA_SW.CSV"},{"VXF_HW.CSV","VXF_SW.CSV"},{"VXH_HW.CSV","VXH_SW.CSV"},{"VXL_HW.CSV","VXL_SW.CSV"},{"VXI_HW.CSV","VXI_SW.CSV"},{"VXJ_HW.CSV","VXJ_SW.CSV"},{"VXK_HW.CSV","VXK_SW.CSV"},{"VXC_HW.CSV","VXC_SW.CSV"}};
@@ -851,6 +1152,7 @@ static void test_d3d8(void) {
    if(!lit(cur))wrong("the lit square was not drawn");else{memcpy(sw_lit,cur,sizeof(cur));have_lit=1;}
    if(qb[271]!=qa[271]||qb[272]!=qa[272])wrong("the probe counted a software-processed draw");}
   if(six_tl("software vertex processing")){memcpy(sw_ref,ref,sizeof(ref));have_sw=1;}
+  if(g_proj){test_proj(1);test_deep(1);test_water(1);test_wref(1);test_clipab(1);}else{ /* v1.37: VXTLP PROJ, 6M alone */
   test_textures(); /* v1.2 */
   test_540(1); /* v1.7 */
   test_640(1); /* v1.15 */
@@ -858,13 +1160,16 @@ static void test_d3d8(void) {
   test_649(1); /* v1.20 */
   test_663(1); /* v1.29 */
   test_668(1); /* v1.30 */
+  test_proj(1); /* v1.37 */
+  test_deep(1);test_water(1);test_wref(1);test_clipab(1); /* v1.38; v1.40 6Q; v1.42 6W */
   test_grid(1); /* v1.8 */
-  g_mode=1;test_grid(1);g_mode=2;test_grid(1);g_mode=3;test_grid(1);g_mode=4;test_grid(1);g_mode=5;test_grid(1);g_mode=6;test_grid(1);g_mode=7;test_grid(1);g_mode=8;test_grid(1);g_mode=9;test_grid(1);g_mode=10;test_grid(1);g_mode=11;test_grid(1);g_mode=0; /* v1.17; v1.18 6d; v1.19 6e; v1.21 6f 6g; v1.22 6h */
+  g_mode=1;test_grid(1);g_mode=2;test_grid(1);g_mode=3;test_grid(1);g_mode=4;test_grid(1);g_mode=5;test_grid(1);g_mode=6;test_grid(1);g_mode=7;test_grid(1);g_mode=8;test_grid(1);g_mode=9;test_grid(1);g_mode=10;test_grid(1);g_mode=11;test_grid(1);g_mode=0; /* v1.17; v1.18 6d; v1.19 6e; v1.21 6f 6g; v1.22 6h */}
   ((F0)VT(dev,D3D_REL))(dev);dev=0;}
  else wrong("no software-processing device");
  say("4. hardware vertex processing\n");
  if(!make_device(0x40)){if(probe)wrong("the probe is on but the hardware-processing device was refused");else say("   refused, as expected with the probe off\n");}
  else{
+  if(g_proj){test_proj(0);test_deep(0);test_water(0);test_wref(0);test_clipab(0);((F0)VT(dev,D3D_REL))(dev);dev=0;}else{ /* v1.37 */
   if(!probe)wrong("a hardware-processing device with the probe off");
   q_read(qa);draw_lit();if(!read_bb(cur))wrong("back buffer lock failed");else{present();q_read(qb);
    say("   the lit square, untransformed, transformed and lit by the driver: lit %d; counted: %lu calls with untransformed vertices, %lu draws (%lu primitives); "
@@ -899,10 +1204,12 @@ static void test_d3d8(void) {
   test_649(0); /* v1.20 */
   test_663(0); /* v1.29 */
   test_668(0); /* v1.30 */
+  test_proj(0); /* v1.37 */
+  test_deep(0);test_water(0);test_wref(0);test_clipab(0); /* v1.38; v1.40 6Q; v1.42 6W */
   test_grid(0); /* v1.8 */
   g_mode=1;test_grid(0);g_mode=2;test_grid(0);g_mode=3;test_grid(0);g_mode=4;test_grid(0);g_mode=5;test_grid(0);g_mode=6;test_grid(0);g_mode=7;test_grid(0);g_mode=8;test_grid(0);g_mode=9;test_grid(0);g_mode=10;test_grid(0);g_mode=11;test_grid(0);g_mode=0; /* v1.17; v1.18 6d; v1.19 6e; v1.21 6f 6g; v1.22 6h */
   if(six_tl("hardware vertex processing")&&have_sw){int d=ndiff(sw_ref,ref);say("   against the software device's picture: %d pixels differ\n",d);if(d){bmp("VXTLP_A.BMP",sw_ref);bmp("VXTLP_B.BMP",ref);wrong("not the software device's picture");}}
-  ((F0)VT(dev,D3D_REL))(dev);dev=0;}
+  ((F0)VT(dev,D3D_REL))(dev);dev=0;}}
  ((F0)VT(d3d,D3D_REL))(d3d);d3d=0;
 }
 static void cpuid1(unsigned long *out); /* v1.9: CPUID leaf 1 into out[0..3] (the driver's bytes: its build refuses the mnemonic) */
@@ -912,7 +1219,7 @@ int main(void) {
  char path[MAX_PATH],*s;WNDCLASS wc;
  SetUnhandledExceptionFilter(crash_log); /* v1.28 */
  GetModuleFileName(0,path,sizeof(path));s=strrchr(path,'\\');if(s)strcpy(s+1,"VXTLP.LOG");logf=fopen(path,"w");
- say("VXTLP v1.36 (driver .704; VP: a viewport at (40, 40)): the driver's T&L; 6b-6l timed scenes (6l: 6k with back faces culled) (a point light, small draws, a second stage on and off, a GTA3-like frame, the second stage always on, always off, eight lights with specular lighting, spot lights with generated coordinates, 30 tori with one light and with eight); 7. points, lines, large draws; 8. spot, specular, high light indices, a third stage's set; 9. depth surfaces swapped and released; 10. a state block past 1,024 bytes, 65 lights, three coordinate sets\n");
+ say("VXTLP v1.42 (driver .723; 6W: the water against its own reference; 6Q: guard band A/B; 6P NA: clipped vertex alpha; 6M: projected texture coordinates on large triangles; 6P: deep floors; 6N: a Dragothic-like water scene; PROJ: 6M, 6P and 6N alone; VP: a viewport at (40, 40)): the driver's T&L; 6b-6l timed scenes (6l: 6k with back faces culled) (a point light, small draws, a second stage on and off, a GTA3-like frame, the second stage always on, always off, eight lights with specular lighting, spot lights with generated coordinates, 30 tori with one light and with eight); 7. points, lines, large draws; 8. spot, specular, high light indices, a third stage's set; 9. depth surfaces swapped and released; 10. a state block past 1,024 bytes, 65 lights, three coordinate sets\n");
  {char dll[MAX_PATH];UINT n=GetSystemDirectoryA(dll,MAX_PATH-16);HMODULE h=0;
   if(n&&n<MAX_PATH-16){strcpy(dll+n,dll[n-1]=='\\'?"VXDDRAW.DLL":"\\VXDDRAW.DLL");h=LoadLibraryA(dll);}
   hal_phases=h?(DWORD (WINAPI *)(DWORD *,DWORD))GetProcAddress(h,"VX_D3D_QueryPhases"):0;}
@@ -928,8 +1235,9 @@ int main(void) {
   cpuid1(r);
   say("the CPU: SSE %s, SSE2 %s: the driver's T&L uses %s\n",(r[3]>>25)&1?"yes":"no",(r[3]>>26)&1?"yes":"no",((r[3]>>25)&3)==3?"SSE":"the x87");}
  g_vp=strstr(args(),"VP")!=0; /* v1.36 */
+ g_proj=strstr(args(),"PROJ")!=0; /* v1.37 */
  if(strstr(args(),"GRID"))g_secs=strstr(args(),"HW")?20:strstr(args(),"SW")?15:10; /* v1.25: 10 s a device (20 and 15 alone); v1.11: HW, the driver's alone, 60 s */ /* v1.10; v1.11: HW, the driver's alone, 60 s; v1.17: each of the three scenes */
- if(!g_secs)test_d3d7();
+ if(!g_secs&&!g_proj)test_d3d7();
  test_d3d8();
  DestroyWindow(wnd);
  say("%s: %d wrong\n",fails?"FAILED":"PASSED",fails);

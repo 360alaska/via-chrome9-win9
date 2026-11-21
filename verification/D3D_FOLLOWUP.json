@@ -360,11 +360,11 @@
   ],
   "probe_sha256": "b991925fa0a2b4c715e454563aef6973f66929d380fbf646c5703b7552fb06aa",
   "production_source_sha256": {
-    "src/vx_d3d_core.c": "62f83db02b23569ba2c1d0bbe0b4f272f00fe50fcbcbbd084f9b951694830fd0",
+    "src/vx_d3d_core.c": "145a7c1194201edf24afaebc09433c854c0b313fda2d85d96e57e63dfa63ba60",
     "src/vx_d3d_core.h": "edb72be383c3e16284b633c0b65df7141778334546cd00cd036c7914633cfa45",
-    "src/vx_d3d_hal.c": "9ccd163a71dc184b04a5b76db043def745794b94e68eef995456547f3b03ec46",
+    "src/vx_d3d_hal.c": "0e7c427f3454cd943779f29512ffb4dc437001c947f7612001011f17480f9320",
     "src/vx_d3d_legacy.inc": "8a980b4e187fab4f1bccb4addea20e6cf9504cdc401a1e8038221151d77f6ac5"
   },
-  "tested_hal_sha256": "524fd67ececb9b62aafc6b06cb9be1710485f6923a238102f304a2c504e2a24e",
-  "tested_host_library_sha256": "1ad2913276116d7a005f81a629a6444ecbed91fdd03984878dc8b1d9598b9ee5"
+  "tested_hal_sha256": "806bf6587099131b0d6ccc802fe76eac7d44228c69b9bdb0f9aedbf52b888cad",
+  "tested_host_library_sha256": "ffaf60813b20a0d54c51e5eefb854446e1a3cb9f7630ca2c870346ace96f55ca"
 }

@@ -33,7 +33,11 @@ int vxgl_batch_add(const vx3dn_packet *p) {
   * send ran after the lock was let go, so another thread could queue between (the callers hold it already: vxgl_hw_flush's core flush) */
  vxgl_engine_lock();
  if(qn>=VX3DN_BATCH_SEND)vxgl_batch_flush_why(0);
- vx_d3d_packet_copy(&q[qn],p);qn++;vxgl_seq_q++;full=qn>=m;
+ vx_d3d_packet_copy(&q[qn],p);
+ {extern uint32_t vx_d3d_same_tag(const vx3dn_packet *a,const vx3dn_packet *b);if(qn)q[qn].clear_depth=vx_d3d_same_tag(&q[qn],&q[qn-1]);} /* .713: always (T712 A-B-A-B: on and off within 0.2% in four HarborBench scenes; ACCEL_OPENGL_SAMETAG removed). .709: the ranges the
+  * packet before it already has, marked as the Direct3D HAL's queue marks them (the VxD copies and checks only the rest; it copies
+  * everything for the first packet of a call) */
+ qn++;vxgl_seq_q++;full=qn>=m;
  if(full)vxgl_batch_flush_why(0);
  vxgl_engine_unlock();
  return 1;

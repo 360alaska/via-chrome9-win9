@@ -74,6 +74,13 @@ typedef struct {
  /* 8992 */ float spcut[4]; /* .697: tn_setup's spcut (splat): an N.H at or below it adds no specular term */
  /* 9008 */ uint32_t vacc[4]; /* .702: tnk_pos ORs here, by lane, whether a vertex lies past the viewport's side (vc set: the guard band with its codes) */
  /* 9024 */ uint32_t kvc[4][4]; /* .702: 1 2 4 8 (the viewport codes' bits for tnk_vcodes: no constant in memory) */
+ /* .707 (a review of .703: the point-light kernel, tnk_light and tnk_spec each made the group's eye-space normals, normalized them with a
+  * square root and a divide, and made its eye-space position, again): the first kernel of a group that makes them keeps them here and
+  * sets nready / eready; the others load them (the same operations made once: the same bits). tn_soa_finish_b clears both each group. */
+ /* 9088 */ float nv[3][4];      /* the normals in eye space (normalized with NORMALIZENORMALS), x y z */
+ /* 9136 */ float ev[3][4];      /* the eye-space position x y z */
+ /* 9184 */ uint32_t nready,eready,pad20,pad21; /* .711: at 9184 (.707-.710 kept 128 free bytes before them, from a range-squared skip
+  * removed in .708) */
 } tnk_frame;
 #define TNK_OFF(f,o) typedef char tnk_off_##f[(offsetof(tnk_frame,f)==(o))?1:-1];
 TNK_OFF(m,0) TNK_OFF(vp,256) TNK_OFF(e,384) TNK_OFF(nm,640) TNK_OFF(ld,784) TNK_OFF(lc,1296) TNK_OFF(base,1808) TNK_OFF(fog,1872) TNK_OFF(nl,1936) TNK_OFF(stride,1960) TNK_OFF(first,1968) TNK_OFF(reuse_diffuse,1972) TNK_OFF(eye_z_ready,1976)
@@ -83,7 +90,7 @@ TNK_OFF(cx,2540) TNK_OFF(cc,2560) TNK_OFF(rec,2564) TNK_OFF(scratch,2576) TNK_OF
 TNK_OFF(sdc,4384) TNK_OFF(spow,5152) TNK_OFF(klog,5168) TNK_OFF(ksqrt2,5232) TNK_OFF(kmant,5248) TNK_OFF(spec,5264)
 TNK_OFF(cvn,5280) TNK_OFF(cvdir,5312) TNK_OFF(cvl,5376) TNK_OFF(cvm,7680) TNK_OFF(cvamb,7936) TNK_OFF(kff,7984)
 TNK_OFF(nspot,8000) TNK_OFF(pspot,8016) TNK_OFF(pmode,8048) TNK_OFF(psd,8080) TNK_OFF(pcone,8464) TNK_OFF(lbase,8848)
-TNK_OFF(sdone,8912) TNK_OFF(sacc,8928) TNK_OFF(cvvary,8976) TNK_OFF(vc,8980) TNK_OFF(spcut,8992) TNK_OFF(vacc,9008) TNK_OFF(kvc,9024)
+TNK_OFF(sdone,8912) TNK_OFF(sacc,8928) TNK_OFF(cvvary,8976) TNK_OFF(vc,8980) TNK_OFF(spcut,8992) TNK_OFF(vacc,9008) TNK_OFF(kvc,9024) TNK_OFF(nv,9088) TNK_OFF(ev,9136) TNK_OFF(nready,9184)
 #endif
 /* TNK KERNELS END 1 */
 /* TNK KERNELS BEGIN 2 */
@@ -167,21 +174,45 @@ static __m128 tnk_exp(const tnk_frame *f,__m128 x) {
  return r;
 }
 /* phase L for the four gathered lanes: the diffuse and specular words (od, os) */
+/* .707: the group's eye-space normals: made by the first kernel that needs them (the operations each kernel made before, in the same
+ * order: the same bits) and kept in the frame for the rest (nready) */
+static __inline void tnk_nrm(tnk_frame *f,__m128 zero,__m128 one,__m128 *px,__m128 *py,__m128 *pz) {
+ __m128 nx,ny,nz;
+ if(f->nready){*px=LD(f->nv[0]);*py=LD(f->nv[1]);*pz=LD(f->nv[2]);return;}
+ {const __m128 ux=LD(f->gnx),uy=LD(f->gny),uz=LD(f->gnz);
+  nx=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[0])),_mm_mul_ps(uy,LD(f->nm[3]))),_mm_mul_ps(uz,LD(f->nm[6])));
+  ny=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[1])),_mm_mul_ps(uy,LD(f->nm[4]))),_mm_mul_ps(uz,LD(f->nm[7])));
+  nz=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[2])),_mm_mul_ps(uy,LD(f->nm[5]))),_mm_mul_ps(uz,LD(f->nm[8])));}
+ if(f->nnorm){__m128 l=_mm_sqrt_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,nx),_mm_mul_ps(ny,ny)),_mm_mul_ps(nz,nz))),m=_mm_cmpgt_ps(l,zero),r;
+  r=_mm_and_ps(_mm_div_ps(one,l),m);nx=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nx,r),m),_mm_andnot_ps(m,nx));ny=_mm_or_ps(_mm_and_ps(_mm_mul_ps(ny,r),m),_mm_andnot_ps(m,ny));
+  nz=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nz,r),m),_mm_andnot_ps(m,nz));}
+ ST(f->nv[0],nx);ST(f->nv[1],ny);ST(f->nv[2],nz);f->nready=1;
+ *px=nx;*py=ny;*pz=nz;
+}
+/* .707: the group's eye-space position (world x view), made once and kept (eready) */
+static __inline void tnk_eyepos(tnk_frame *f,__m128 *pex,__m128 *pey,__m128 *pez) {
+ if(f->eready){*pex=LD(f->ev[0]);*pey=LD(f->ev[1]);*pez=LD(f->ev[2]);return;}
+ {const __m128 x=LD(f->gx),y=LD(f->gy),z=LD(f->gz);
+  const __m128 ex=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[0])),_mm_mul_ps(y,LD(f->e[4]))),_mm_mul_ps(z,LD(f->e[8]))),LD(f->e[12]));
+  const __m128 ey=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[1])),_mm_mul_ps(y,LD(f->e[5]))),_mm_mul_ps(z,LD(f->e[9]))),LD(f->e[13]));
+  const __m128 ez=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[2])),_mm_mul_ps(y,LD(f->e[6]))),_mm_mul_ps(z,LD(f->e[10]))),LD(f->e[14]));
+  ST(f->ev[0],ex);ST(f->ev[1],ey);ST(f->ev[2],ez);f->eready=1;*pex=ex;*pey=ey;*pez=ez;}
+}
 static void tnk_light(tnk_frame *f) {
- const __m128 zero=_mm_setzero_ps(),one=LD(f->kone),k255=LD(f->k255);
+ const __m128 zero=LD(f->vp[6]),one=LD(f->kone),k255=LD(f->k255); /* .707: 0 from the frame (vp[6]): the board's kernel is now clang's, which put literal zeros in memory */
  __m128 cb,cg,cr,ca,fa=one,nx=zero,ny=zero,nz=zero;
  if(f->fogmode){
   __m128 d;
   if(f->eye_z_ready)d=_mm_andnot_ps(LD(f->ksign),LD(f->gz));
+  else if(f->eready||f->rfog){__m128 ex,ey,ez; /* .707: the position the point-light kernel made (or made here and kept) */
+   tnk_eyepos(f,&ex,&ey,&ez);
+   d=_mm_andnot_ps(LD(f->ksign),ez); /* |z| */
+   if(f->rfog)d=_mm_sqrt_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(ex,ex),_mm_mul_ps(ey,ey)),_mm_mul_ps(ez,ez)));
+  }
   else{
    const __m128 x=LD(f->gx),y=LD(f->gy),z=LD(f->gz);
    const __m128 ez=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[2])),_mm_mul_ps(y,LD(f->e[6]))),_mm_mul_ps(z,LD(f->e[10]))),LD(f->e[14]));
    d=_mm_andnot_ps(LD(f->ksign),ez); /* |z| */
-   if(f->rfog){
-    const __m128 ex=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[0])),_mm_mul_ps(y,LD(f->e[4]))),_mm_mul_ps(z,LD(f->e[8]))),LD(f->e[12]));
-    const __m128 ey=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[1])),_mm_mul_ps(y,LD(f->e[5]))),_mm_mul_ps(z,LD(f->e[9]))),LD(f->e[13]));
-    d=_mm_sqrt_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(ex,ex),_mm_mul_ps(ey,ey)),_mm_mul_ps(ez,ez)));
-   }
   }
   if(f->fogmode==3)fa=_mm_div_ps(_mm_sub_ps(LD(f->fog[1]),d),LD(f->fog[2])); /* (fe - d) / (fe - fs), the divide as tn_fin_to's (a reciprocal moved a byte); fe <= fs: left to tn_fin_to */
   else if(f->fogmode==1)fa=tnk_exp(f,_mm_sub_ps(zero,_mm_mul_ps(LD(f->fog[0]),d)));
@@ -192,13 +223,7 @@ static void tnk_light(tnk_frame *f) {
    uint32_t k;
    cb=LD(f->base[0]);cg=LD(f->base[1]);cr=LD(f->base[2]);ca=LD(f->base[3]);
    if(f->haveN){
-    __m128 ux=LD(f->gnx),uy=LD(f->gny),uz=LD(f->gnz);
-    nx=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[0])),_mm_mul_ps(uy,LD(f->nm[3]))),_mm_mul_ps(uz,LD(f->nm[6])));
-    ny=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[1])),_mm_mul_ps(uy,LD(f->nm[4]))),_mm_mul_ps(uz,LD(f->nm[7])));
-    nz=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[2])),_mm_mul_ps(uy,LD(f->nm[5]))),_mm_mul_ps(uz,LD(f->nm[8])));
-    if(f->nnorm){__m128 l=_mm_sqrt_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,nx),_mm_mul_ps(ny,ny)),_mm_mul_ps(nz,nz))),m=_mm_cmpgt_ps(l,zero),r;
-     r=_mm_and_ps(_mm_div_ps(one,l),m);nx=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nx,r),m),_mm_andnot_ps(m,nx));ny=_mm_or_ps(_mm_and_ps(_mm_mul_ps(ny,r),m),_mm_andnot_ps(m,ny));
-     nz=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nz,r),m),_mm_andnot_ps(m,nz));}
+    tnk_nrm(f,zero,one,&nx,&ny,&nz); /* .707: made once a group (tnk_nrm) */
     for(k=0;k<f->nl;k++){ /* a directional light: N.L > 0 adds N.L x (diffuse x diffuse) */
      __m128 ndl=_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,LD(f->ld[k][0])),_mm_mul_ps(ny,LD(f->ld[k][1]))),_mm_mul_ps(nz,LD(f->ld[k][2])));
      ndl=_mm_and_ps(ndl,_mm_cmpgt_ps(ndl,zero));
@@ -206,17 +231,18 @@ static void tnk_light(tnk_frame *f) {
    }
    /* bytes: times 255, rounded to nearest, saturated to 0..255 (a NaN gives 0x80000000: 0 after the saturation), b | g << 8 | r << 16 | a << 24 */
    {__m128i b=_mm_cvtps_epi32(_mm_mul_ps(cb,k255)),g=_mm_cvtps_epi32(_mm_mul_ps(cg,k255)),r=_mm_cvtps_epi32(_mm_mul_ps(cr,k255)),a=_mm_cvtps_epi32(_mm_mul_ps(ca,k255)),w;
-    b=_mm_packus_epi16(_mm_packs_epi32(b,b),_mm_setzero_si128());g=_mm_packus_epi16(_mm_packs_epi32(g,g),_mm_setzero_si128());
-    r=_mm_packus_epi16(_mm_packs_epi32(r,r),_mm_setzero_si128());a=_mm_packus_epi16(_mm_packs_epi32(a,a),_mm_setzero_si128());
+    b=_mm_packs_epi32(b,b);b=_mm_packus_epi16(b,b);g=_mm_packs_epi32(g,g);g=_mm_packus_epi16(g,g);
+    r=_mm_packs_epi32(r,r);r=_mm_packus_epi16(r,r);a=_mm_packs_epi32(a,a);a=_mm_packus_epi16(a,a);
     w=_mm_unpacklo_epi8(_mm_unpacklo_epi8(b,r),_mm_unpacklo_epi8(g,a)); /* b g r a a lane */
     _mm_storeu_si128((__m128i*)f->od,w);}
   }
-  {__m128i a=_mm_cvtps_epi32(_mm_mul_ps(fa,k255));a=_mm_packus_epi16(_mm_packs_epi32(a,a),_mm_setzero_si128());a=_mm_unpacklo_epi8(_mm_setzero_si128(),a);
-   a=_mm_unpacklo_epi8(_mm_setzero_si128(),a); /* 0 0 0 a: the specular's colour is 0 (no specular lighting), the alpha the fog */
+  {__m128i a=_mm_cvtps_epi32(_mm_mul_ps(fa,k255));a=_mm_packs_epi32(a,a);a=_mm_packus_epi16(a,a);a=_mm_unpacklo_epi8(a,a);
+   a=_mm_slli_epi32(_mm_unpacklo_epi16(a,a),24); /* 0 0 0 a: the specular's colour is 0 (no specular lighting), the alpha the fog (.707: each
+    * lane's byte spread over its word and shifted up, the same word as 0-interleaving it, with no zero for clang to put in memory) */
    _mm_storeu_si128((__m128i*)f->os,a);}
  }
  else{ /* unlit: the words as they came, the specular's alpha the fog (255 without fog) */
-  __m128i a=_mm_cvtps_epi32(_mm_mul_ps(fa,k255));a=_mm_packus_epi16(_mm_packs_epi32(a,a),_mm_setzero_si128());a=_mm_unpacklo_epi8(_mm_setzero_si128(),a);a=_mm_unpacklo_epi8(_mm_setzero_si128(),a);
+  __m128i a=_mm_cvtps_epi32(_mm_mul_ps(fa,k255));a=_mm_packs_epi32(a,a);a=_mm_packus_epi16(a,a);a=_mm_unpacklo_epi8(a,a);a=_mm_slli_epi32(_mm_unpacklo_epi16(a,a),24); /* .707: as above */
   _mm_storeu_si128((__m128i*)f->od,_mm_loadu_si128((const __m128i*)f->gdc));
   _mm_storeu_si128((__m128i*)f->os,_mm_or_si128(_mm_and_si128(_mm_loadu_si128((const __m128i*)f->gsc),_mm_loadu_si128((const __m128i*)f->kmask24)),a));
  }
@@ -256,10 +282,11 @@ static __inline void tnk_view(const tnk_frame *f,__m128 ex,__m128 ey,__m128 ez,_
   *vx=_mm_or_ps(_mm_and_ps(m,_mm_mul_ps(ex,r)),_mm_andnot_ps(m,*vx));*vy=_mm_or_ps(_mm_and_ps(m,_mm_mul_ps(ey,r)),_mm_andnot_ps(m,*vy));
   *vz=_mm_or_ps(_mm_and_ps(m,_mm_mul_ps(ez,r)),_mm_andnot_ps(m,*vz));}
 }
-static __inline void tnk_plight_g(tnk_frame *f,const int cones) { /* .653: cones 1: tnk_splight (spot lights too; .697: and the specular sums) */
+static void tnk_plight(tnk_frame *f) { /* .647: point lights alone, no spot light, no specular lighting: the C of tools/tnl_asm.py's hand-written
+ * _tnk_plight, which the board runs (.707: kept as .706 had it: clang's tnk_splight ran 282 instructions a group for one light, the
+ * hand-written one 198). It makes its own normals and position and adds into base, which tn_soa_finish_b fills from lbase first. */
  const __m128 zero=LD(f->vp[6]), /* .653: 0 from the frame (vp[6]), as tnk_spec: clang made max(N.L, 0) of the select, with its 0 in memory */one=LD(f->kone),x=LD(f->gx),y=LD(f->gy),z=LD(f->gz);
- __m128 ex,ey,ez,nx=zero,ny=zero,nz=zero,cb=LD(f->base[0]),cg=LD(f->base[1]),cr=LD(f->base[2]),vx,vy,vz;uint32_t k;
- const int sp=cones&&f->spec&&f->haveN; /* .697: the specular sums here (tnk_spec's lights need the normal: f->spec is only set with one) */
+ __m128 ex,ey,ez,nx=zero,ny=zero,nz=zero,cb=LD(f->base[0]),cg=LD(f->base[1]),cr=LD(f->base[2]);uint32_t k;
  ex=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[0])),_mm_mul_ps(y,LD(f->e[4]))),_mm_mul_ps(z,LD(f->e[8]))),LD(f->e[12]));
  ey=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[1])),_mm_mul_ps(y,LD(f->e[5]))),_mm_mul_ps(z,LD(f->e[9]))),LD(f->e[13]));
  ez=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[2])),_mm_mul_ps(y,LD(f->e[6]))),_mm_mul_ps(z,LD(f->e[10]))),LD(f->e[14]));
@@ -272,6 +299,38 @@ static __inline void tnk_plight_g(tnk_frame *f,const int cones) { /* .653: cones
    r=_mm_and_ps(_mm_div_ps(one,l),m);nx=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nx,r),m),_mm_andnot_ps(m,nx));ny=_mm_or_ps(_mm_and_ps(_mm_mul_ps(ny,r),m),_mm_andnot_ps(m,ny));
    nz=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nz,r),m),_mm_andnot_ps(m,nz));}
  }
+ for(k=0;k<f->npl;k++){
+  __m128 lx=_mm_sub_ps(LD(f->pp[k][0]),ex),ly=_mm_sub_ps(LD(f->pp[k][1]),ey),lz=_mm_sub_ps(LD(f->pp[k][2]),ez),d,m,r,q,qm,att,okr;
+  /* .648 (board, VXTLP 6b on .647: a point light 38.6 ms a frame against the runtime's 36.1): no square root or divide. The reciprocal
+   * square root estimate (12 bits) and one Newton step, r = r0 - r0 (d2 r0 r0 - 1) / 2; then d = d2 r. A vertex on the light (d2 0) keeps
+   * its vector and a distance of 0, as before */
+  {const __m128 d2=_mm_add_ps(_mm_add_ps(_mm_mul_ps(lx,lx),_mm_mul_ps(ly,ly)),_mm_mul_ps(lz,lz)),r0=_mm_rsqrt_ps(d2);
+   r=_mm_sub_ps(r0,_mm_mul_ps(_mm_mul_ps(_mm_sub_ps(_mm_mul_ps(_mm_mul_ps(d2,r0),r0),one),LD(f->khalf)),r0));
+   m=_mm_cmplt_ps(zero,d2);d=_mm_and_ps(_mm_mul_ps(d2,r),m);}
+  okr=_mm_cmple_ps(d,LD(f->pr[k][0]));
+  {
+  lx=_mm_xor_ps(lx,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(lx,r),lx),m));
+  ly=_mm_xor_ps(ly,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(ly,r),ly),m));
+  lz=_mm_xor_ps(lz,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(lz,r),lz),m));} /* a vertex on the light keeps its way (d 0) */
+  q=_mm_add_ps(_mm_add_ps(_mm_mul_ps(LD(f->pr[k][2]),d),LD(f->pr[k][1])),_mm_mul_ps(_mm_mul_ps(d,LD(f->pr[k][3])),d));
+  qm=_mm_cmpgt_ps(q,zero);
+  {const __m128 y0=_mm_rcp_ps(q); /* .648: 1/q as the estimate and one Newton step, y0 - y0 (q y0 - 1) */
+   att=_mm_xor_ps(_mm_and_ps(_mm_xor_ps(_mm_sub_ps(y0,_mm_mul_ps(_mm_sub_ps(_mm_mul_ps(q,y0),one),y0)),one),qm),one);}
+  att=_mm_and_ps(att,okr);
+  cb=_mm_add_ps(cb,_mm_mul_ps(att,LD(f->pac[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(att,LD(f->pac[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(att,LD(f->pac[k][2])));
+  if(f->haveN){__m128 ndl=_mm_add_ps(_mm_add_ps(_mm_mul_ps(lx,nx),_mm_mul_ps(ly,ny)),_mm_mul_ps(lz,nz));
+   ndl=_mm_and_ps(ndl,_mm_cmpgt_ps(ndl,zero));ndl=_mm_mul_ps(ndl,att);
+   cb=_mm_add_ps(cb,_mm_mul_ps(ndl,LD(f->pdc[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(ndl,LD(f->pdc[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(ndl,LD(f->pdc[k][2])));}
+ }
+ ST(f->base[0],cb);ST(f->base[1],cg);ST(f->base[2],cr);
+ f->sdone=0;
+}
+static void tnk_splight(tnk_frame *f) { /* .653: the point and spot lights (.697: and the specular sums); .707: every group lit by point lights (the hand-written tnk_plight, point lights alone, retired) */
+ const __m128 zero=LD(f->vp[6]), /* .653: 0 from the frame (vp[6]), as tnk_spec: clang made max(N.L, 0) of the select, with its 0 in memory */one=LD(f->kone);
+ __m128 ex,ey,ez,nx=zero,ny=zero,nz=zero,cb=LD(f->lbase[0]),cg=LD(f->lbase[1]),cr=LD(f->lbase[2]),vx,vy,vz; /* .707: from lbase (the colour without the point lights): .647-.706 copied lbase into base first, every group */uint32_t k;
+ const int sp=f->spec&&f->haveN; /* .697: the specular sums here (tnk_spec's lights need the normal: f->spec is only set with one) */
+ tnk_eyepos(f,&ex,&ey,&ez); /* .707: made once a group and kept (tnk_light's fog and tnk_spec's view load it) */
+ if(f->haveN)tnk_nrm(f,zero,one,&nx,&ny,&nz); /* .707: made once a group and kept (tnk_light and tnk_spec load them) */
  if(sp){const __m128 all=_mm_cmpeq_ps(one,one); /* .697: the directional lights' specular terms first, as tnk_spec */
   ST(f->sacc[0],zero);ST(f->sacc[1],zero);ST(f->sacc[2],zero);
   tnk_view(f,ex,ey,ez,&vx,&vy,&vz);
@@ -287,26 +346,22 @@ static __inline void tnk_plight_g(tnk_frame *f,const int cones) { /* .653: cones
    r=_mm_sub_ps(r0,_mm_mul_ps(_mm_mul_ps(_mm_sub_ps(_mm_mul_ps(_mm_mul_ps(d2,r0),r0),one),LD(f->khalf)),r0));
    m=_mm_cmplt_ps(zero,d2);d=_mm_and_ps(_mm_mul_ps(d2,r),m);}
   okr=_mm_cmple_ps(d,LD(f->pr[k][0]));
-  if(cones&&!_mm_movemask_ps(okr))continue; /* .697 (tnk_splight; the hand-written tnk_plight does not skip): no lane inside the light's range: it adds nothing (the attenuation is masked to 0 below) */
-  if(cones){r=_mm_and_ps(r,m);lx=_mm_mul_ps(lx,r);ly=_mm_mul_ps(ly,r);lz=_mm_mul_ps(lz,r);} /* .697 (tnk_splight): a vertex on the light (d2 0: its
+  if(!_mm_movemask_ps(okr))continue; /* .697 (tnk_splight; the hand-written tnk_plight does not skip): no lane inside the light's range: it adds nothing (the attenuation is masked to 0 below) */
+  {r=_mm_and_ps(r,m);lx=_mm_mul_ps(lx,r);ly=_mm_mul_ps(ly,r);lz=_mm_mul_ps(lz,r);} /* .697 (tnk_splight): a vertex on the light (d2 0: its
    * way is 0 0 0, or so small its square is 0) gets the way 0 0 0, whose N.L and cone add nothing, as its kept way did; 4 operations, not 12 */
-  else{
-  lx=_mm_xor_ps(lx,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(lx,r),lx),m));
-  ly=_mm_xor_ps(ly,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(ly,r),ly),m));
-  lz=_mm_xor_ps(lz,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(lz,r),lz),m));}
   q=_mm_add_ps(_mm_add_ps(_mm_mul_ps(LD(f->pr[k][2]),d),LD(f->pr[k][1])),_mm_mul_ps(_mm_mul_ps(d,LD(f->pr[k][3])),d));
   qm=_mm_cmpgt_ps(q,zero);
   {const __m128 y0=_mm_rcp_ps(q); /* .648: 1/q as the estimate and one Newton step, y0 - y0 (q y0 - 1) */
    att=_mm_xor_ps(_mm_and_ps(_mm_xor_ps(_mm_sub_ps(y0,_mm_mul_ps(_mm_sub_ps(_mm_mul_ps(q,y0),one),y0)),one),qm),one);}
   att=_mm_and_ps(att,okr);
-  if(cones&&f->pspot[k])att=_mm_mul_ps(att,tnk_cone(f,k,lx,ly,lz)); /* .653 */
-  if(!cones||(f->pamb&(1UL<<k))){cb=_mm_add_ps(cb,_mm_mul_ps(att,LD(f->pac[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(att,LD(f->pac[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(att,LD(f->pac[k][2])));} /* .697: an ambient product of 0 adds 0 (tnk_splight; the hand-written tnk_plight adds it) */
+  if(f->pspot[k])att=_mm_mul_ps(att,tnk_cone(f,k,lx,ly,lz)); /* .653 */
+  if(f->pamb&(1UL<<k)){cb=_mm_add_ps(cb,_mm_mul_ps(att,LD(f->pac[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(att,LD(f->pac[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(att,LD(f->pac[k][2])));} /* .697: an ambient product of 0 adds 0 (tnk_splight; the hand-written tnk_plight adds it) */
   if(f->haveN){__m128 ndl=_mm_add_ps(_mm_add_ps(_mm_mul_ps(lx,nx),_mm_mul_ps(ly,ny)),_mm_mul_ps(lz,nz));
    if(sp)tnk_spec1(f,okr,ndl,att,lx,ly,lz,nx,ny,nz,vx,vy,vz,8+k,f->sacc); /* .697: this light's specular term now (tnk_spec's N.L: the same products) */
    ndl=_mm_and_ps(ndl,_mm_cmpgt_ps(ndl,zero));ndl=_mm_mul_ps(ndl,att);
    cb=_mm_add_ps(cb,_mm_mul_ps(ndl,LD(f->pdc[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(ndl,LD(f->pdc[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(ndl,LD(f->pdc[k][2])));}
  }
- ST(f->base[0],cb);ST(f->base[1],cg);ST(f->base[2],cr);
+ ST(f->base[0],cb);ST(f->base[1],cg);ST(f->base[2],cr);ST(f->base[3],LD(f->lbase[3])); /* .707: alpha as lbase's (the copy did it) */
  f->sdone=sp;
 }
 /* .651 (board, 3DMark 2001's High Polygon Count on .650: a frame of 25 s, the test given as N/A; host: eight lights with specular
@@ -355,23 +410,14 @@ static __m128 tnk_cone(const tnk_frame *f,uint32_t q,__m128 lx,__m128 ly,__m128 
  const __m128 p=tnk_pow(f,_mm_div_ps(_mm_sub_ps(rho,scp),_mm_sub_ps(sct,scp)),f->pcone[q][2],f->pmode[q]);
  return _mm_and_ps(in,_mm_or_ps(_mm_and_ps(part,p),_mm_andnot_ps(part,one)));
 }
-static void tnk_plight(tnk_frame *f){tnk_plight_g(f,0);} /* the board: tools/tnl_asm.py's hand-written _tnk_plight (no spot lights) */
-static void tnk_splight(tnk_frame *f){tnk_plight_g(f,1);} /* .653: with spot lights (the board: compiled from this C by clang) */
 static void tnk_spec(tnk_frame *f) { /* .697: the directional lights only (with point lights, tnk_splight made the sums: sdone), then the packing */
  __m128 cb,cg,cr;uint32_t k;
  if(f->sdone){cb=LD(f->sacc[0]);cg=LD(f->sacc[1]);cr=LD(f->sacc[2]);}
- else{const __m128 zero=_mm_setzero_ps(),one=LD(f->kone),x=LD(f->gx),y=LD(f->gy),z=LD(f->gz),all=_mm_cmpeq_ps(one,one);
-  __m128 ex,ey,ez,nx,ny,nz,vx,vy,vz;const __m128 ux=LD(f->gnx),uy=LD(f->gny),uz=LD(f->gnz);
+ else{const __m128 zero=LD(f->vp[6]),one=LD(f->kone),all=_mm_cmpeq_ps(one,one);
+  __m128 ex=zero,ey=zero,ez=zero,nx,ny,nz,vx,vy,vz;
   ST(f->sacc[0],zero);ST(f->sacc[1],zero);ST(f->sacc[2],zero);
-  ex=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[0])),_mm_mul_ps(y,LD(f->e[4]))),_mm_mul_ps(z,LD(f->e[8]))),LD(f->e[12]));
-  ey=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[1])),_mm_mul_ps(y,LD(f->e[5]))),_mm_mul_ps(z,LD(f->e[9]))),LD(f->e[13]));
-  ez=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[2])),_mm_mul_ps(y,LD(f->e[6]))),_mm_mul_ps(z,LD(f->e[10]))),LD(f->e[14]));
-  nx=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[0])),_mm_mul_ps(uy,LD(f->nm[3]))),_mm_mul_ps(uz,LD(f->nm[6])));
-  ny=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[1])),_mm_mul_ps(uy,LD(f->nm[4]))),_mm_mul_ps(uz,LD(f->nm[7])));
-  nz=_mm_add_ps(_mm_add_ps(_mm_mul_ps(ux,LD(f->nm[2])),_mm_mul_ps(uy,LD(f->nm[5]))),_mm_mul_ps(uz,LD(f->nm[8])));
-  if(f->nnorm){__m128 l=_mm_sqrt_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,nx),_mm_mul_ps(ny,ny)),_mm_mul_ps(nz,nz))),m=_mm_cmpgt_ps(l,zero),r;
-   r=_mm_and_ps(_mm_div_ps(one,l),m);nx=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nx,r),m),_mm_andnot_ps(m,nx));ny=_mm_or_ps(_mm_and_ps(_mm_mul_ps(ny,r),m),_mm_andnot_ps(m,ny));
-   nz=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nz,r),m),_mm_andnot_ps(m,nz));}
+  if(f->lview)tnk_eyepos(f,&ex,&ey,&ez); /* .707: only the local viewer reads the position (tnk_view); kept if a kernel made it */
+  tnk_nrm(f,zero,one,&nx,&ny,&nz); /* .707: tnk_light's normals (nready), not made again */
   tnk_view(f,ex,ey,ez,&vx,&vy,&vz);
   for(k=0;k<f->nl;k++){const __m128 lx=LD(f->ld[k][0]),ly=LD(f->ld[k][1]),lz=LD(f->ld[k][2]);
    tnk_spec1(f,all,_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,lx),_mm_mul_ps(ny,ly)),_mm_mul_ps(nz,lz)),one,lx,ly,lz,nx,ny,nz,vx,vy,vz,k,f->sacc);}

@@ -3,7 +3,7 @@
 Signature="$CHICAGO$"
 Class=DISPLAY
 Provider=%Provider%
-DriverVer=11/19/2026,10.706.0.0
+DriverVer=11/21/2026,10.723.0.0
 
 [Manufacturer]
 %Mfg%=VXModels

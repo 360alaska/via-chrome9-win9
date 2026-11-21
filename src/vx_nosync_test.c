@@ -1,4 +1,5 @@
-/* VXNOSYNC v2.2 (driver .698): no questions unless asked (ASK): the run needs no one at the machine; pass 9 is judged by its counts and
+/* VXNOSYNC v2.3 (driver .716): pass 9 says "kept off on this chip (as designed)" when the driver refuses the tear flip, not WRONG.
+ * VXNOSYNC v2.2 (driver .698): no questions unless asked (ASK): the run needs no one at the machine; pass 9 is judged by its counts and
  * frame rates alone. VXNOSYNC v2.1 (driver .698): pass 9's 20 ms is the engine's work (20 blended full-screen quads), not the CPU held: v2.0 (T697, board B)
  * gave 49.4 fps with both settings, as the old flip's wait for the blank is in the ring and only costs when the engine is behind it.
  * VXNOSYNC v2.1 (driver .698): pass 9, the tear flip (ACCEL_FLIP_TEAR, set live through TEXDBG BC 44B0000 + value and put back after).
@@ -126,6 +127,9 @@ static int tear_pass(int no) { /* v2.0 */
  DWORD o[8],keep,set,ring,cpu,kept,two,n;double fps,f0=0.0;int ok=1,eye,ran;
  if(!tear_get(o)){say("pass %d (the tear flip): the VxD does not answer BC 44B0003 (older than .696)\n",no);return 1;}
  keep=o[2];n=2;
+ /* v2.3 (.716): a driver that keeps the tear flip off on this chip (its boot default, and a live set refused) is as designed, not WRONG */
+ tear_set(1);if(tear_get(o)&&o[2]!=1){tear_set(keep);say("pass %d (the tear flip): the driver keeps it off on this chip (as designed): not tested\n",no);return 1;}
+ tear_set(keep);
  for(set=0;set<=n&&!stop;set++){
   say("pass %d, ACCEL_FLIP_TEAR %lu: 120 frames of about 20 ms of drawing without vsync, a red bar across the middle: ",no,set);
   ran=tear_run(set,&fps,&ring,&cpu,&kept,&two);
@@ -318,8 +322,8 @@ int main(int argc,char **argv) {
  {int k;for(k=1;k<argc;k++)if(!lstrcmpi(argv[k],"ASK"))g_ask=1;} /* v2.2 */
  GetModuleFileName(0,path,sizeof(path));s=strrchr(path,'\\');if(s)strcpy(s+1,"VXNOSYNC.LOG");logf=fopen(path,"w");
  if(argc>1&&!lstrcmpi(argv[1],"STRETCH")){say("VXNOSYNC v2.2 (driver .698) STRETCH: ");}
- else if(argc>1&&!lstrcmpi(argv[1],"TEAR")){say("VXNOSYNC v2.2 (driver .698) TEAR: the tear flip alone (pass 9)\n");}
- else say("VXNOSYNC v2.2 (driver .698): flips with and without vsync, with and without a lock of the back buffer (passes 1-5: the screen must stay white); flips after more than 100 ms of drawing (passes 6-7); a stretched windowed Present with a clip list (pass 8); the tear flip (pass 9; its questions only with ASK).\n");
+ else if(argc>1&&!lstrcmpi(argv[1],"TEAR")){say("VXNOSYNC v2.3 (driver .716) TEAR: the tear flip alone (pass 9)\n");}
+ else say("VXNOSYNC v2.3 (driver .716): flips with and without vsync, with and without a lock of the back buffer (passes 1-5: the screen must stay white); flips after more than 100 ms of drawing (passes 6-7); a stretched windowed Present with a clip list (pass 8); the tear flip (pass 9; its questions only with ASK).\n");
  vxd=CreateFileA("\\\\.\\VX85598",0,0,0,OPEN_EXISTING,0,0);
  d8=LoadLibrary("d3d8.dll");create=d8?(void*(__stdcall*)(U32))GetProcAddress(d8,"Direct3DCreate8"):0;
  if(!create){say("d3d8.dll / Direct3DCreate8 not found (DirectX 8 or later is needed)\n");return 1;}

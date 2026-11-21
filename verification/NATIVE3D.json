@@ -1,6 +1,6 @@
 {
   "scope": "Execute the linked VxD native submission path with synthetic MMIO/services.\nTrace checks do not model rasterization or prove physical GPU behavior.\n",
-  "passed": 214,
+  "passed": 216,
   "cases": [
     "linked VxD query reports mapped aperture, ready display and mode generation",
     "linked VxD emits the proven CPU-port triangle and pixel-program configuration",
@@ -174,8 +174,10 @@
     "16bpp ACCEL_3D_RINGCLEAR: a clear not at 0,0 and ACCEL_3D_RINGCLEAR 0 go the usual way",
     "32bpp ACCEL_D3D_SINK: the same fetched words on and off (single and batched)",
     "16bpp ACCEL_D3D_SINK: the same fetched words on and off (single and batched)",
+    ".713: the page-lock table under its own semaphore (one token, made once), not the engine lock: requests and handle closes take it around _LinPageLock / _LinPageUnLock, the engine lock never entered (the .515 order kept)",
     "v10.432: VX_IOCTL_LOCKMEM locks a shared-arena range once, held per handle, released at the last close; bad ranges, ACCEL_LOCK_HAL 0 and a refused lock hold nothing; v10.435: a page at a time, the pages done unlocked again when one is refused",
     "v10.434: the sampler classes each tick (render thread in the VxD waiting or not, in VXDDRAW, its code by page, 16-bit; other threads), adds a frame's ticks at its flip by packets and time with the flipping thread's run time, and stops at its starter's close; .520: every tick also by category in all and time-weighted (the time since the tick before), the gaps by where it landed, the in-VxD ticks by the VxD's phase, the TSC rate; the calibration spin marks the render thread; .534: the render thread's ring-3 code by 64-byte line, gameplay frames only",
+    ".713 (VX800 freeze): the sampler keeps NMI masked (port 70h bit 7) at every RTC access while it runs, the handler puts back the CMOS index it interrupted where port 70h reads back, and the stop puts port 70h back as found (not readable: index D, NMI enabled)",
     ".524: the sampler on the RTC's interrupt only (asked for the old time-out clock or not): IRQ 8 virtualized, A rate 6 and B's PIE set at the start and put back at the stop, an interrupt after the stop takes nothing; with B's PIE already set (another user) it does not start and writes nothing",
     "32bpp v10.440: the command words by part add up to the packet's words; vertices, triangles (list and strip), strip vertices; set-ups repeating the last packet's counted; off: nothing counted",
     "16bpp v10.440: the command words by part add up to the packet's words; vertices, triangles (list and strip), strip vertices; set-ups repeating the last packet's counted; off: nothing counted",

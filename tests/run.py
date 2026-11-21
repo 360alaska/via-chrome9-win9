@@ -39,6 +39,8 @@ def main():
   if a.ref:run('packet copies by constant spans: 3,000 random packets, every byte as .551 copies them (.553)',[sys.executable,'tools/compare_cores.py',ROOT/'tests/ref_core.so',ROOT/'tests/core.so'])
   run('the T&L group kernels: the assembled SSE2 bytes against the C kernels, 800 random frames (.544)',['clang','-m32','--target=i686-linux-gnu','-O2','-msse2','-nostdlib','-static','-ffreestanding','-fno-stack-protector','-fno-pic','-no-pie','-Wno-gnu-folding-constant','-Wa,--noexecstack','tests/test_tnl_asm.c','tests/tnl_kernels.s','-o','tests/test_tnl_asm'])
   run('the T&L group kernels, bytes == C',[ROOT/'tests/test_tnl_asm'])
+  run('.707: the T&L\'s four-places-a-word helpers against byte-by-byte answers',[sys.executable,'tests/tnl_bytewords.py'])
+  if os.environ.get('VX_OLD_CORE'):run('.707: the T&L group path word for word against an earlier build\'s core (VX_OLD_CORE)',[sys.executable,'tests/tnl_xbuild_cases.py',os.environ['VX_OLD_CORE'],'tests/core.so','300'])
   if (ROOT/'tests/tnl_544.bin').exists():run('the T&L group path against .543, GRID-like scene (.544)',[sys.executable,'tests/bench_tnl.py','tests/core.so','3','tests/tnl_544.bin'])
   run('the T&L cases of .544\'s review (ZBIAS, base 65535, linear fog, the side-plane fallback) through the VxD\'s checks',[sys.executable,'tests/tnl_544_cases.py'])
   run('v4 review: clip overflow and rejected ZRANGE',[sys.executable,'tests/tnl_v4_review_cases.py'])
@@ -54,6 +56,7 @@ def main():
   run('.649: a context whose target or depth surface was destroyed while bound: unbound, not lost',[sys.executable,'tests/rt_unbound_cases.py','tests/core.so'])
   run('.646 (review of .644): the T&L\'s fast paths against its one-vertex path, 300 random scenes',[sys.executable,'tests/fuzz_tnl_diff.py','tests/core.so','300','644'])
   run('.698: the T&L with the guard band against without, rasterised, 200 random scenes',[sys.executable,'tests/tnl_guard_cases.py','tests/core.so','200','698'])
+  run('.718: a core with a small scratch (TN_MAX 300) for the deferred side planes',['gcc','-std=c99','-shared','-fPIC','-O2','-DTN_MAX=300','src/vx_d3d_core.c','src/vx_native3d_hw.c','-o','tests/core_small.so']);run('.718: the deferred side planes (near and far clipped, the sides left to the per-primitive path) against the guard band, 300 scenes',[sys.executable,'tests/tnl_defer_cases.py','tests/core_small.so','300','698'])
   run('the pass-through span kernels: the assembled SSE2 bytes against the C reference (.545)',['clang','-m32','--target=i686-linux-gnu','-O2','-msse2','-nostdlib','-static','-ffreestanding','-fno-stack-protector','-fno-pic','-Wa,--noexecstack','tests/test_hal_asm.c','tests/hal_kernels.s','-o','tests/test_hal_asm'])
   run('the pass-through span kernels and the index maximum, bytes == C, 60,000 random cases',[ROOT/'tests/test_hal_asm'])
   if a.asan:
