@@ -13,6 +13,7 @@ typedef struct {
  uint32_t edid[32];       /* 128 raw EDID bytes */
  uint32_t bios[64*3];     /* per BIOS mode: [0]=id|(verdict<<16), [1]=width|(height<<16), [2]=bpp|(memory model<<8)|(attributes<<16) */
  uint32_t scan[36];       /* bus scan (only when the request asked for it): 3 buses x 12 DWORDs, see vx855_edid.c */
+ uint32_t late[4];        /* .769: the EDID read again after boot (vx_edid_late_try): tries, EDIDs found, sizes given back, ms since the last try */
 } vx_edid_report;
 /* verdicts: 0 base mode, 1 extra mode accepted, 2 BIOS mode query failed, 3 not a linear direct-colour graphics mode, 4 bpp not 16/32 (8bpp is offered only as the three base modes),
    5 size outside 640x480..1920x1200, 6 layout/pitch/memory check failed, 7 same size and depth already present, 8 monitor does not list it,

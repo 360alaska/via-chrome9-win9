@@ -79,7 +79,7 @@ typedef struct {
   * sets nready / eready; the others load them (the same operations made once: the same bits). tn_soa_finish_b clears both each group. */
  /* 9088 */ float nv[3][4];      /* the normals in eye space (normalized with NORMALIZENORMALS), x y z */
  /* 9136 */ float ev[3][4];      /* the eye-space position x y z */
- /* 9184 */ uint32_t nready,eready,pad20,pad21; /* .711: at 9184 (.707-.710 kept 128 free bytes before them, from a range-squared skip
+ /* 9184 */ uint32_t nready,eready,pskip,pad21; /* .711: at 9184 (.707-.710 kept 128 free bytes before them, from a range-squared skip
   * removed in .708) */
 } tnk_frame;
 #define TNK_OFF(f,o) typedef char tnk_off_##f[(offsetof(tnk_frame,f)==(o))?1:-1];
@@ -90,7 +90,7 @@ TNK_OFF(cx,2540) TNK_OFF(cc,2560) TNK_OFF(rec,2564) TNK_OFF(scratch,2576) TNK_OF
 TNK_OFF(sdc,4384) TNK_OFF(spow,5152) TNK_OFF(klog,5168) TNK_OFF(ksqrt2,5232) TNK_OFF(kmant,5248) TNK_OFF(spec,5264)
 TNK_OFF(cvn,5280) TNK_OFF(cvdir,5312) TNK_OFF(cvl,5376) TNK_OFF(cvm,7680) TNK_OFF(cvamb,7936) TNK_OFF(kff,7984)
 TNK_OFF(nspot,8000) TNK_OFF(pspot,8016) TNK_OFF(pmode,8048) TNK_OFF(psd,8080) TNK_OFF(pcone,8464) TNK_OFF(lbase,8848)
-TNK_OFF(sdone,8912) TNK_OFF(sacc,8928) TNK_OFF(cvvary,8976) TNK_OFF(vc,8980) TNK_OFF(spcut,8992) TNK_OFF(vacc,9008) TNK_OFF(kvc,9024) TNK_OFF(nv,9088) TNK_OFF(ev,9136) TNK_OFF(nready,9184)
+TNK_OFF(sdone,8912) TNK_OFF(sacc,8928) TNK_OFF(cvvary,8976) TNK_OFF(vc,8980) TNK_OFF(spcut,8992) TNK_OFF(vacc,9008) TNK_OFF(kvc,9024) TNK_OFF(nv,9088) TNK_OFF(ev,9136) TNK_OFF(nready,9184) TNK_OFF(pskip,9192)
 #endif
 /* TNK KERNELS END 1 */
 /* TNK KERNELS BEGIN 2 */
@@ -253,7 +253,7 @@ static void tnk_light(tnk_frame *f) {
  * is above 0, else 1; the ambient product times it; with normals, N.L > 0 times it times the diffuse product. The selects are written as
  * xor, and, xor (the same bits as and, andnot, or) so that the board's assembly needs no spare register. */
 static __m128 tnk_cone(const tnk_frame *f,uint32_t q,__m128 lx,__m128 ly,__m128 lz);
-static __m128 tnk_pow(const tnk_frame *f,__m128 x,const float *pw,uint32_t mode);
+static __inline __attribute__((always_inline)) __m128 tnk_pow(const tnk_frame *f,__m128 x,const float *pw,uint32_t mode); /* .739: inlined always (the kernels may hold no call; X2's inner loop made clang keep it apart) */
 /* .697: one light's specular term for four lanes, added into sb sg sr: as tnk_spec did it (.651-.696), N.L given (the same products in the
  * same order as tnk_spec's own N.L: nx lx + ny ly + nz lz); ok the lanes the light reaches (all, or a point light's range mask) */
 static __inline void tnk_spec1(const tnk_frame *f,__m128 ok,__m128 ndl,__m128 att,__m128 lx,__m128 ly,__m128 lz,__m128 nx,__m128 ny,__m128 nz,
@@ -286,7 +286,7 @@ static void tnk_plight(tnk_frame *f) { /* .647: point lights alone, no spot ligh
  * _tnk_plight, which the board runs (.707: kept as .706 had it: clang's tnk_splight ran 282 instructions a group for one light, the
  * hand-written one 198). It makes its own normals and position and adds into base, which tn_soa_finish_b fills from lbase first. */
  const __m128 zero=LD(f->vp[6]), /* .653: 0 from the frame (vp[6]), as tnk_spec: clang made max(N.L, 0) of the select, with its 0 in memory */one=LD(f->kone),x=LD(f->gx),y=LD(f->gy),z=LD(f->gz);
- __m128 ex,ey,ez,nx=zero,ny=zero,nz=zero,cb=LD(f->base[0]),cg=LD(f->base[1]),cr=LD(f->base[2]);uint32_t k;
+ __m128 ex,ey,ez,nx=zero,ny=zero,nz=zero,cb=LD(f->lbase[0]),cg=LD(f->lbase[1]),cr=LD(f->lbase[2]);uint32_t k; /* .741F: from lbase, as tnk_splight (the 64-byte copy into base a group is gone) */
  ex=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[0])),_mm_mul_ps(y,LD(f->e[4]))),_mm_mul_ps(z,LD(f->e[8]))),LD(f->e[12]));
  ey=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[1])),_mm_mul_ps(y,LD(f->e[5]))),_mm_mul_ps(z,LD(f->e[9]))),LD(f->e[13]));
  ez=_mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(x,LD(f->e[2])),_mm_mul_ps(y,LD(f->e[6]))),_mm_mul_ps(z,LD(f->e[10]))),LD(f->e[14]));
@@ -298,8 +298,10 @@ static void tnk_plight(tnk_frame *f) { /* .647: point lights alone, no spot ligh
   if(f->nnorm){__m128 l=_mm_sqrt_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,nx),_mm_mul_ps(ny,ny)),_mm_mul_ps(nz,nz))),m=_mm_cmpgt_ps(l,zero),r;
    r=_mm_and_ps(_mm_div_ps(one,l),m);nx=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nx,r),m),_mm_andnot_ps(m,nx));ny=_mm_or_ps(_mm_and_ps(_mm_mul_ps(ny,r),m),_mm_andnot_ps(m,ny));
    nz=_mm_or_ps(_mm_and_ps(_mm_mul_ps(nz,r),m),_mm_andnot_ps(m,nz));}
+  ST(f->nv[0],nx);ST(f->nv[1],ny);ST(f->nv[2],nz);f->nready=1; /* .741: tnk_light_k loads these and does not make them again. eready stays 0: the board's light fog recomputes eye z, and the host must too */
  }
  for(k=0;k<f->npl;k++){
+  if(f->pskip&(1UL<<k))continue; /* .741F: out of the tile's reach (tn_tile_lights): it adds nothing to any lane */
   __m128 lx=_mm_sub_ps(LD(f->pp[k][0]),ex),ly=_mm_sub_ps(LD(f->pp[k][1]),ey),lz=_mm_sub_ps(LD(f->pp[k][2]),ez),d,m,r,q,qm,att,okr;
   /* .648 (board, VXTLP 6b on .647: a point light 38.6 ms a frame against the runtime's 36.1): no square root or divide. The reciprocal
    * square root estimate (12 bits) and one Newton step, r = r0 - r0 (d2 r0 r0 - 1) / 2; then d = d2 r. A vertex on the light (d2 0) keeps
@@ -308,6 +310,7 @@ static void tnk_plight(tnk_frame *f) { /* .647: point lights alone, no spot ligh
    r=_mm_sub_ps(r0,_mm_mul_ps(_mm_mul_ps(_mm_sub_ps(_mm_mul_ps(_mm_mul_ps(d2,r0),r0),one),LD(f->khalf)),r0));
    m=_mm_cmplt_ps(zero,d2);d=_mm_and_ps(_mm_mul_ps(d2,r),m);}
   okr=_mm_cmple_ps(d,LD(f->pr[k][0]));
+  if(!_mm_movemask_ps(okr))continue; /* .741F: no lane inside the range: the attenuation is masked to 0 below, every product a 0 (as tnk_splight, .697) */
   {
   lx=_mm_xor_ps(lx,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(lx,r),lx),m));
   ly=_mm_xor_ps(ly,_mm_and_ps(_mm_xor_ps(_mm_mul_ps(ly,r),ly),m));
@@ -317,12 +320,12 @@ static void tnk_plight(tnk_frame *f) { /* .647: point lights alone, no spot ligh
   {const __m128 y0=_mm_rcp_ps(q); /* .648: 1/q as the estimate and one Newton step, y0 - y0 (q y0 - 1) */
    att=_mm_xor_ps(_mm_and_ps(_mm_xor_ps(_mm_sub_ps(y0,_mm_mul_ps(_mm_sub_ps(_mm_mul_ps(q,y0),one),y0)),one),qm),one);}
   att=_mm_and_ps(att,okr);
-  cb=_mm_add_ps(cb,_mm_mul_ps(att,LD(f->pac[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(att,LD(f->pac[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(att,LD(f->pac[k][2])));
+  if(f->pamb&(1UL<<k)){cb=_mm_add_ps(cb,_mm_mul_ps(att,LD(f->pac[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(att,LD(f->pac[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(att,LD(f->pac[k][2])));} /* .741F: an ambient product of 0 adds 0 (as tnk_splight, .697) */
   if(f->haveN){__m128 ndl=_mm_add_ps(_mm_add_ps(_mm_mul_ps(lx,nx),_mm_mul_ps(ly,ny)),_mm_mul_ps(lz,nz));
    ndl=_mm_and_ps(ndl,_mm_cmpgt_ps(ndl,zero));ndl=_mm_mul_ps(ndl,att);
    cb=_mm_add_ps(cb,_mm_mul_ps(ndl,LD(f->pdc[k][0])));cg=_mm_add_ps(cg,_mm_mul_ps(ndl,LD(f->pdc[k][1])));cr=_mm_add_ps(cr,_mm_mul_ps(ndl,LD(f->pdc[k][2])));}
  }
- ST(f->base[0],cb);ST(f->base[1],cg);ST(f->base[2],cr);
+ ST(f->base[0],cb);ST(f->base[1],cg);ST(f->base[2],cr);ST(f->base[3],LD(f->lbase[3])); /* .741F: alpha as lbase's (the copy did it) */
  f->sdone=0;
 }
 static void tnk_splight(tnk_frame *f) { /* .653: the point and spot lights (.697: and the specular sums); .707: every group lit by point lights (the hand-written tnk_plight, point lights alone, retired) */
@@ -338,6 +341,7 @@ static void tnk_splight(tnk_frame *f) { /* .653: the point and spot lights (.697
    tnk_spec1(f,all,_mm_add_ps(_mm_add_ps(_mm_mul_ps(nx,lx),_mm_mul_ps(ny,ly)),_mm_mul_ps(nz,lz)),one,lx,ly,lz,nx,ny,nz,vx,vy,vz,k,f->sacc);}}
  else vx=vy=vz=zero;
  for(k=0;k<f->npl;k++){
+  if(f->pskip&(1UL<<k))continue; /* .741F: out of the tile's reach (tn_tile_lights) */
   __m128 lx=_mm_sub_ps(LD(f->pp[k][0]),ex),ly=_mm_sub_ps(LD(f->pp[k][1]),ey),lz=_mm_sub_ps(LD(f->pp[k][2]),ez),d,m,r,q,qm,att,okr;
   /* .648 (board, VXTLP 6b on .647: a point light 38.6 ms a frame against the runtime's 36.1): no square root or divide. The reciprocal
    * square root estimate (12 bits) and one Newton step, r = r0 - r0 (d2 r0 r0 - 1) / 2; then d = d2 r. A vertex on the light (d2 0) keeps
@@ -371,7 +375,7 @@ static void tnk_splight(tnk_frame *f) { /* .653: the point and spot lights (.697
  * 0 raised to the material's power, times the attenuation, times the light's specular product. The power x^p = e^(p ln x): ln x from the
  * float's exponent and 2 atanh((m - 1) / (m + 1)) for the mantissa in [0.707, 1.414] (to z^9: 1e-9), e^y by tnk_exp; x >= 1 gives 1, as
  * tn_pow. Compiled for the board by clang from this source (tools/tnl_asm.py), so the same instructions run on both. */
-static __m128 tnk_pow(const tnk_frame *f,__m128 x,const float *pw,uint32_t mode) { /* .653: the power (splat) and its case as arguments (the specular power, a spot light's falloff) */
+static __inline __attribute__((always_inline)) __m128 tnk_pow(const tnk_frame *f,__m128 x,const float *pw,uint32_t mode) { /* .653: the power (splat) and its case as arguments (the specular power, a spot light's falloff) */
  const __m128 one=LD(f->kone);
  __m128i b,ei;__m128 m,big,ex,z,z2,lnm,r,lx;
  if(mode==1)return _mm_min_ps(x,one);
@@ -380,8 +384,9 @@ static __m128 tnk_pow(const tnk_frame *f,__m128 x,const float *pw,uint32_t mode)
    * stays 1); r starts at the lowest set bit's square, with no 1.0 for clang to put in memory */
   while(!(n&1)){b=_mm_mul_ps(b,b);n>>=1;}
   r=b;n>>=1;
-  while(n){b=_mm_mul_ps(b,b);r=_mm_mul_ps(r,(n&1)?b:one);n>>=1;} /* one from the frame: clang made the select's 1.0 a constant in memory (.697: and makes a
-   * branch around the multiply a select with 1.0 in memory too, so the multiply by 1 for a clear bit stays) */
+  while(n){while(!(n&1)){b=_mm_mul_ps(b,b);n>>=1;}b=_mm_mul_ps(b,b);r=_mm_mul_ps(r,b);n>>=1;} /* .739 (item X2): a clear bit only squares
+   * (an inner loop clang cannot turn into a select); .659-.738 multiplied r by 1.0 for it. The same squarings and products in the same
+   * order: the same bits (a product with 1.0 is exact) */
   return r;}
  x=_mm_min_ps(x,one);
  b=_mm_castps_si128(x);
@@ -407,8 +412,13 @@ static __m128 tnk_cone(const tnk_frame *f,uint32_t q,__m128 lx,__m128 ly,__m128 
  const __m128 one=LD(f->kone),scp=LD(f->pcone[q][0]),sct=LD(f->pcone[q][1]);
  const __m128 rho=_mm_sub_ps(_mm_setzero_ps(),_mm_add_ps(_mm_add_ps(_mm_mul_ps(lx,LD(f->psd[q][0])),_mm_mul_ps(ly,LD(f->psd[q][1]))),_mm_mul_ps(lz,LD(f->psd[q][2]))));
  const __m128 in=_mm_cmpgt_ps(rho,scp),part=_mm_cmplt_ps(rho,sct);
+ /* .741F: no lane inside the outer cone: 0 for all four (what the select below gives); no inside lane in the falloff band: 1 where inside.
+  * The divide and the power only when a lane needs them: the same bits */
+ if(!_mm_movemask_ps(in))return _mm_and_ps(in,one);
+ if(!_mm_movemask_ps(_mm_and_ps(in,part)))return _mm_and_ps(in,one);
+ {
  const __m128 p=tnk_pow(f,_mm_div_ps(_mm_sub_ps(rho,scp),_mm_sub_ps(sct,scp)),f->pcone[q][2],f->pmode[q]);
- return _mm_and_ps(in,_mm_or_ps(_mm_and_ps(part,p),_mm_andnot_ps(part,one)));
+ return _mm_and_ps(in,_mm_or_ps(_mm_and_ps(part,p),_mm_andnot_ps(part,one)));}
 }
 static void tnk_spec(tnk_frame *f) { /* .697: the directional lights only (with point lights, tnk_splight made the sums: sdone), then the packing */
  __m128 cb,cg,cr;uint32_t k;
@@ -480,6 +490,28 @@ static void tnk_cv(tnk_frame *f,float (*cvb)[4]) {
   ST(f->base[3],m[0][3]);ST(cvb[3],m[0][3]);
   f->cvfirst=0;}
 }
+/* .741F (from the "vxstream" core's tile test): the eye-space box around n vertices (a tile of up to 32: the places in list, their source
+ * vertices in sp, the position the first 12 bytes of each: 8 and 4 bytes loaded, nothing past them). The object-space minimum and maximum
+ * first; the box of their image under the world x view matrix is T + the sum over the three columns of min / max (column x minimum,
+ * column x maximum), which holds every vertex's eye position. scratch[6] the box's low corner (x y z in lanes 0-2), scratch[7] its high
+ * corner, scratch[5] the sum of the terms' sizes (|T| + the larger |column x bound| a column): the rounding of a vertex's own eye position
+ * is a small part of it (tn_tile_lights' margin). A NaN position drops out of the minimum and maximum (.765: the vertex the first operand; such a vertex takes no light: its
+ * distance is no number); an infinite one makes the box infinite or no number, and no light is dropped. */
+#define TNK_V3(p_) _mm_movelh_ps(_mm_castsi128_ps(_mm_loadl_epi64((const __m128i*)(const void*)(p_))),_mm_load_ss((const float*)(const void*)(p_)+2))
+#define TNK_COL(c_) _mm_movelh_ps(_mm_unpacklo_ps(_mm_load_ss(f->e[(c_)*4]),_mm_load_ss(f->e[(c_)*4+1])),_mm_load_ss(f->e[(c_)*4+2]))
+#define TNK_BOX(c_,sh_) {const __m128 col=TNK_COL(c_),a=_mm_mul_ps(col,_mm_shuffle_ps(mn,mn,sh_)),b=_mm_mul_ps(col,_mm_shuffle_ps(mx,mx,sh_)); \
+  bl=_mm_add_ps(bl,_mm_min_ps(a,b));bh=_mm_add_ps(bh,_mm_max_ps(a,b));bm=_mm_add_ps(bm,_mm_max_ps(_mm_andnot_ps(sg,a),_mm_andnot_ps(sg,b)));}
+static void tnk_bounds(tnk_frame *f,const uint8_t *const *sp,const uint16_t *list,uint32_t n) {
+ const __m128 sg=LD(f->ksign);__m128 mn,mx,bl,bh,bm;uint32_t i;
+ mn=mx=TNK_V3(sp[list[0]]);
+ for(i=1;i<n;i++){const __m128 v=TNK_V3(sp[list[i]]);mn=_mm_min_ps(v,mn);mx=_mm_max_ps(v,mx);} /* .765 (outside audit of .757, item 4): the vertex first: minps / maxps give the second operand when either is no number, so a NaN vertex keeps the box so far (it set the box to NaN, and the next vertex then replaced it with itself, losing the earlier vertices: a light reaching them could be dropped). A NaN first vertex leaves the box no number: no light dropped */
+ bl=bh=TNK_COL(3);bm=_mm_andnot_ps(sg,bl);
+ TNK_BOX(0,0x00) TNK_BOX(1,0x55) TNK_BOX(2,0xAA)
+ ST(f->scratch[5],bm);ST(f->scratch[6],bl);ST(f->scratch[7],bh);
+}
+#undef TNK_V3
+#undef TNK_COL
+#undef TNK_BOX
 #undef LD
 #undef LDI
 #undef ST

@@ -1,0 +1,23 @@
+/* vx_tnl_sizes.inc: the kernels' sizes in bytes and places within a 64-byte line (tools/tnl_asm.py), for VXKBENCH's sweep */
+#define KSZ_tnk_light_h 1201
+#define KPIN_tnk_light_h 46
+#define KSZ_tnk_plight 1128
+#define KPIN_tnk_plight 31
+#define KSZ_tnk_vcodes 172
+#define KPIN_tnk_vcodes 7
+#define KSZ_tnk_pos 754
+#define KPIN_tnk_pos 51
+#define KSZ_tnk_pos_o 761
+#define KPIN_tnk_pos_o 37
+#define KSZ_tnk_light 1354
+#define KPIN_tnk_light 30
+#define KSZ_tnk_light_k 1353
+#define KPIN_tnk_light_k 40
+#define KSZ_tnk_splight 2743
+#define KPIN_tnk_splight 47
+#define KSZ_tnk_spec 2055
+#define KPIN_tnk_spec 38
+#define KSZ_tnk_cv 1873
+#define KPIN_tnk_cv 45
+#define KSZ_tnk_bounds 527
+#define KPIN_tnk_bounds 62

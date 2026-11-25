@@ -8,311 +8,319 @@
   "files": {
     "VXDOS.EXE": {
       "bytes": 47104,
-      "sha256": "b6beb89b0c0246979c3bb408af298a25c5473caca0aa66c28c8db1cdd31f68f6"
+      "sha256": "71817bbb9b418fdd2a1bbb07c42c4e2bfce6ca712d8a0b627e9276ec1a52648b"
     },
     "VX3SUITE.EXE": {
       "bytes": 52224,
-      "sha256": "021a0560eeafda66b2a1f85391f84d317daa2cab1c1a67490448ffbc8fb5b29c"
+      "sha256": "16304d436cae22dc9f901405026596fc0b1f0301b27ee563323c189f29b6f219"
     },
     "VX2TIP.EXE": {
       "bytes": 36864,
-      "sha256": "9d85bd514590051aea8cf2e2244d47aafbaff2cc3f5481d53d77afb930a39963"
+      "sha256": "d90ebff2c772620e5a4a2eb1915e0f73e8020078485dd737eab13a0ee5baf7f0"
     },
     "VXTIME.EXE": {
       "bytes": 44032,
-      "sha256": "7ea06c50c29aa03f23a9f06f91b75e79486ddf0cb1235ce0c0dc04bcc6256419"
+      "sha256": "e5d8a75cc50dfc6b646af557d5c6fbdab5edf1b5adb6cd0d348ca09485bea2e6"
     },
     "CLXPOVL.EXE": {
       "bytes": 42496,
-      "sha256": "f82774f733abef57b5f7d4f9f58532b3af31c58829d370003643b8d177c4cc31"
+      "sha256": "46bdda89efce19ff19f08cdd5f0a10e09ca6f0b864a9aa4ca0728d2d16593679"
     },
     "VXRING.EXE": {
       "bytes": 72192,
-      "sha256": "a2fd54576b5ec7a37001d2c9a8c30321998dfb9110aecd66980c9e227cd20a5e"
+      "sha256": "fdd3ff884633e7dc65924e2abcb2f4d1b4b11a20a522bfdb65ac07f28809d08f"
     },
     "VXGTUNE.EXE": {
       "bytes": 56832,
-      "sha256": "82bd9dd6f199df63a75b84666eb884f3498738de208e4149d93936db5e2fc4f5"
+      "sha256": "7f12a0a8ada24e9429e90d071731457d4022915cd4a16a4d91736daf601199be"
     },
     "VX98TEST.EXE": {
       "bytes": 29696,
-      "sha256": "c691f92439698f943ee2123e54d1bbc355226327550e1f40b82386d437b84e47"
+      "sha256": "0518798b3e4b7dbc9ab22ae2eb02d8c74131e2612427ebb6945067d922c8b517"
     },
     "VXDISCO.EXE": {
       "bytes": 205324,
-      "sha256": "19f19074edeb7342baad6b0f5e93c128051a056973db5f026b98205d6de17d07"
+      "sha256": "7457e84514fb1eb091cab88f1abdeda7697ec7058f95eac8a1a54a3f9bffa3e9"
     },
     "VX2SWAP.EXE": {
       "bytes": 52736,
-      "sha256": "75f8a88a844e96858c817709d64477e409664cafb1dfd68af536f8b059f79a31"
+      "sha256": "b70b1c126eafc4af9de7037a56f4c210848ee7a67c37a4025d3c8d1b9ba32adf"
     },
     "VXFLAT.EXE": {
       "bytes": 99840,
-      "sha256": "73c3f8041221b6ecfd0e657b0604614a92f52068f54ff88e37925973da7965a0"
+      "sha256": "60db81964a46d8434eaa3dd38d0dc99960ecf4d2ec11aa60c52b59f8a95735aa"
     },
     "VXD3DMON.EXE": {
-      "bytes": 153088,
-      "sha256": "1ee76776e435195616377126ce0efcb9b98c6ea2e407af8d132b95af605c8b2d"
+      "bytes": 162304,
+      "sha256": "26c5a2f40a552fbaa9db0bf946f7bba883d45626c7b32b77a39ee37bb9bf8270"
     },
     "VXLEG.EXE": {
       "bytes": 51712,
-      "sha256": "dd92bd57e1ff014539d330f022ab8ba0d4b0fd7cc627bf8e7de644194b31d289"
+      "sha256": "e2969e3533d13c6c4d396e7cccc4c8853c60db132e57e824a5825bafe5eabafb"
     },
     "VXSMPCAL.EXE": {
       "bytes": 45056,
-      "sha256": "31c3776d47290637821f4b0e86602569ab66b7dad81d4da6b59c9264a50ea694"
+      "sha256": "fecbbf04a27314d07f53f72f6800e0bfd44075603b8e0dfb01cf33d074001e8d"
     },
     "VXFLIPF.EXE": {
       "bytes": 45568,
-      "sha256": "bd674dbc1e0210f018757775f9c6ea87ade4ec5728bcb25d16520ff575766e03"
+      "sha256": "1fc7d0d59b3d6fb4233edba75a5fbeb80f1c817ac0954be6076a8e7666440def"
+    },
+    "VXKBENCH.EXE": {
+      "bytes": 78336,
+      "sha256": "b7d83beed9b003bc881734fa5fb19df4de052cc6babee997e660eabb13be3b12"
     },
     "VXDDRAW.DLL": {
-      "bytes": 305664,
-      "sha256": "806bf6587099131b0d6ccc802fe76eac7d44228c69b9bdb0f9aedbf52b888cad"
+      "bytes": 331264,
+      "sha256": "09362b18c60c1a14fe899c2cfabd723ea6d37c9c277896b46247eb8b8cab5912"
+    },
+    "VXCRASH.EXE": {
+      "bytes": 58368,
+      "sha256": "ce1a12e1d243d1d9e90a165b5721e3cca03f3fba7c255718bdcccf5a1ad75348"
     },
     "CHROME9.DRV": {
-      "bytes": 42274,
-      "sha256": "a9581b1d12f9eb05c725267554ee628fd5112cd499058b333df49bbf1080b669"
+      "bytes": 42830,
+      "sha256": "961ce6bb3faa9f77ee8a31d8290476f72e3625a4ab0abbc6819ba8a1f20b0ee9"
     },
     "VXREUSE.EXE": {
       "bytes": 36864,
-      "sha256": "e01e539b176b5b353ea413bdb1570085e43eb503184f0d78f8cf6ee34f32346e"
+      "sha256": "e3aa3694494c69f3a3145c07b741edc01beb1e1047641e63ee75635d4e3721aa"
     },
     "VX2GDI.EXE": {
-      "bytes": 53248,
-      "sha256": "d96d3a9b99ffb93d137a79f6041da5b128d7589f476e317bc0692acc4960a42d"
+      "bytes": 53760,
+      "sha256": "17e2a5345db7f1d56cfe9ce14861b6464291a037760b8b8818ed2a421170b68a"
     },
     "VX2OVL.EXE": {
       "bytes": 58368,
-      "sha256": "ff1dddd14a2725f652c2a92205e9227eeb204f33703a00232d6023aec6d818e1"
+      "sha256": "2663d898c491f12e39ce740126280480116aa27a971f5a7f529d2386c85c3d1a"
     },
     "VX2SYNC.EXE": {
       "bytes": 38400,
-      "sha256": "5bf8ec687557f635723ce4beefdd1913760000eada7c9e421b8ffdd05b5ee3ae"
+      "sha256": "2484d27aeb589ce8ee1499efa225f003a83f9fe2e587527a8a5d251438a2ac7b"
     },
     "VX2ROP.EXE": {
       "bytes": 38912,
-      "sha256": "7974075b2a15cbc3c5b07a9287f239df874b5db79f4c5d8f7d65b8ba37e80d90"
+      "sha256": "5378e5a62aea44c5c3cde368035cdede20b7c005cf11a11212326eabeca22eb7"
     },
     "VXALT.EXE": {
       "bytes": 45568,
-      "sha256": "288b46eda6ce6aeaee17f21c91b81a3c99c0d990cff74f003a08072a3d21114f"
+      "sha256": "3bc328294ec61ee61b2f4ce40665bcdc28d0b6fd63be9f04a1d87d9a4602f1d3"
     },
     "VX2FLIP.EXE": {
       "bytes": 53248,
-      "sha256": "75697607a98fc3623f73df2f36a6a8d0c06c278890b895449db6bdc85ebbccfd"
+      "sha256": "c36f6390d2366c0176ddfdf8c5ef610c7d233adcad8a1d3a1005fce9f0c1f646"
     },
     "VX2MODE.EXE": {
       "bytes": 62464,
-      "sha256": "3adb1bdaf9548fa1a331f5fe245b6f976e8d2c1d25b42b4b64f3abc93f1520df"
+      "sha256": "dd5feef0fdd43f1960943ee98cedb2c93d0adba340263c4819af66b098e92362"
     },
     "VX85598.INF": {
       "bytes": 2819,
-      "sha256": "635e222bfc1fc983610109a2c77b217d8917bab2792f244fb3b25bddbe9f53e1"
+      "sha256": "5ad3ed92f11b000f51fd550077fa1a346344974a3d81c5dd4bf0d6d6748b849a"
     },
     "VXPANEL.EXE": {
       "bytes": 46592,
-      "sha256": "b7f3ca6812770cc5d1c461f9ef40543f710cc8d0757b6588b09fe853965b96c3"
+      "sha256": "e5986e8e3c97c67cb320ddb2585807578c8e7c625c000dc288535ac5e04a29ed"
     },
     "VXEP.EXE": {
       "bytes": 45568,
-      "sha256": "9cd8ec4eb9f5aad8c62809f81b4a18941f4d3006d33b9f69decdb89a69338c5b"
+      "sha256": "c22fcec3e3806a03265bda773b149a5c5cb244e7bc53e81fece085ad23b2533d"
     },
     "CHROME9.VXD": {
-      "bytes": 423529,
-      "sha256": "325152fb8558bbaf82108a5a068c47bfd433ae82e04c68d6e2cab4109cf1b6d0"
+      "bytes": 428123,
+      "sha256": "9a853f1b668f57fb2834953b43ddee1edd87235c2b2b20723b2bc5b6d57d26c6"
     },
     "VXSTATE.EXE": {
       "bytes": 38912,
-      "sha256": "cc36a3271b81ab164f3e67c888662476c3f50ab64bdd75c0bd7f20f13b9cf3a7"
+      "sha256": "3965296f071edb37e9fbb765fcecdb3df7f2da0c0e8ab7d54f900f1ae41b9c91"
     },
     "VXTLP.EXE": {
-      "bytes": 119808,
-      "sha256": "481fadc02eb18020d3b45f8e201a95b6d785beb4eb3035a94155184d9177ca45"
+      "bytes": 138752,
+      "sha256": "ec563569d10b14efe966489f40ec410a55eef1c137b799f32030cff368419729"
     },
     "VX2DTD.EXE": {
       "bytes": 51712,
-      "sha256": "fb2fe9d1dc0946b8b16a5ffcb597c76802850ea4478057d44e0813ca9b494837"
+      "sha256": "1fb25b81067721dfe80a1aef1ae5634bdcfd3620f9c7674d0e21a4df359e707c"
     },
     "VX2TIME.EXE": {
       "bytes": 40960,
-      "sha256": "e5ac8e142a35f8226b436424a255fa2573770369fa6c0902881485ebf6f67b83"
+      "sha256": "e678bd09f1e3518e3f58c485a6c1bf8c80facbe2ca1265cc0a7d5994c9668b2c"
     },
     "VXAB.EXE": {
       "bytes": 48128,
-      "sha256": "2782061d04b1c672a9eaefdc5ab68a9ce2a46d578d334adbf051fba355ab9a89"
+      "sha256": "7e388762a052a9712b7ce9dc779540523bc2276ceda782275f68bbcf07f58d23"
     },
     "VXRTT.EXE": {
       "bytes": 49152,
-      "sha256": "879435a494d16db081e1a2f4d3dcd298891646111005a93a4ed5a2125e8071ae"
+      "sha256": "13493c14bf88cab2af66f47098d2dd6d643071a0ffc590f6dbefdb7c6f5a3ac3"
     },
     "VX85598.DRV": {
-      "bytes": 42274,
-      "sha256": "97b2e6841ad83e5c127ae0e4ad944d21fc0fb4f4ae82d593cc56c4bee616657b"
+      "bytes": 42830,
+      "sha256": "a3a6326c9d0d9c26dcd07b75ca8d2628a828ccb2e24b2ab9c1784717b2272fbb"
     },
     "VXHOLD.EXE": {
       "bytes": 46592,
-      "sha256": "85b699dad5b5bda1c72a8f92d7a36dbb2befccba9016ad1071494cc6a30fd0a8"
+      "sha256": "a7cd32e75032c2b8bc134bb365d5c4da485de29a25dca5f045e06e1d7c3f6763"
     },
     "BIOSRD.EXE": {
       "bytes": 35328,
-      "sha256": "8c3e5a6e89fd3c3c2a2f07b3af4a27f08a036897a1055fef8a0787d75ae01721"
+      "sha256": "13de916667926bf2d43603ecb82876c6e17df23aba08277f8e9884637d7e5609"
     },
     "VXREG.EXE": {
-      "bytes": 53248,
-      "sha256": "f37dd9c62981f2bb376bc4eda8e2e83e08cf2c42261e7ba888cd2ced24512a0e"
+      "bytes": 55808,
+      "sha256": "22985496eafe84a9d569fbcef2349e46894e44ffce948c587e0ea87164788295"
     },
     "VX2OPT2.EXE": {
       "bytes": 46592,
-      "sha256": "e7ddae62bb9d081bcde0c3b52c398662ee84dafbdf27dd7ec70f4e92ef1de7c1"
+      "sha256": "2dce9907e61e63c5881f7c2fff5ca733194fa2593fcf7f537f97ea05e18c4517"
     },
     "VXGL.DLL": {
-      "bytes": 2269696,
-      "sha256": "d332b4e4efc3af080083a648fc96a95e49fb03c54d1d4f551dcd65f90221a1fc"
+      "bytes": 2294272,
+      "sha256": "e92cd6a3cadc5af1ef9371b253f4ba4277a17875c95e58c3ac6d20cb48f47b0a"
     },
     "VXRHW.EXE": {
       "bytes": 55296,
-      "sha256": "91ae00096e59a5ce54c722f3e79cfb16fe8986fb1ac1e59fc626c45d7c60de94"
+      "sha256": "fc448ca33a4c02b2a895f18bd633d37202d73a8b27c625b71f127a2be6a3dccb"
     },
     "VX2PRIM.EXE": {
       "bytes": 53760,
-      "sha256": "2c7b7f891114feda398007d7ea77bfa884e9571d0f7a1ea02a1b020d7714176c"
+      "sha256": "abd298ab98cb32921014fef6356fa88269a6c876966a527e6454c0822ac9549b"
     },
     "VX2STR2.EXE": {
       "bytes": 55296,
-      "sha256": "e197a1e6546c1489924b0a6c036e66ba949bea554ec30ad66543decbcfd1a0c0"
+      "sha256": "c0fa9722a5abe53fdcbfd482a99edf1830ab34586c4c6167e3910d87f15e3401"
     },
     "VXGAME.EXE": {
       "bytes": 63488,
-      "sha256": "b97895ab16b440278ab40c0296cf45b7852806a0f6afb907d146af47f6085492"
+      "sha256": "1966ed020ed74f4313cfdf11f1118ccca67ee9085bdc9b07dc08f52aef77694b"
     },
     "VX2SDIB.EXE": {
       "bytes": 50176,
-      "sha256": "998b200a2f774ea2bcec234b2c14e4bcc007a84e9d2362d1aacca0dac200cef2"
+      "sha256": "ee384301a9065dae3e073d36365140ffb460b1c8b77c99ed0f0c73647343b446"
     },
     "VX2BARS.EXE": {
       "bytes": 27648,
-      "sha256": "1de89ea132221ba98cca36fa7f99b84d1cc788b2713dd2536d59f97c8b5fad83"
+      "sha256": "2724bd593542e5508dbd3cd0d8251859dbba20623098563b844ddcf23501e4b0"
     },
     "VX2BLT.EXE": {
       "bytes": 41472,
-      "sha256": "89c74a883d704d7e52074c1e0f8f03005a275ab159ef04473f0cde20d7d5d3e6"
+      "sha256": "77b301bec868bd864bd480d11d0dfe1ead0a13a5f49ca897f2764a797becd51a"
     },
     "VX2OPT.EXE": {
       "bytes": 47104,
-      "sha256": "5bc5a371bfd361727c4573abae6aebb49c699cbaba0411e5cdb307c006273260"
+      "sha256": "a5f66f1be0b23701e1f03ecc62bb27b93e5bef5764a5963d348ecbdc7cce1edb"
     },
     "VX2CUR.EXE": {
       "bytes": 45056,
-      "sha256": "16cdaefc16c52fe7b15a51d547328d051c6764e327618162a2c4388308bab151"
+      "sha256": "b5a73889f79c72a06395181b88dfe8d7535b24098669cc9896d0a25c75af6f91"
     },
     "VXDCI.EXE": {
       "bytes": 36352,
-      "sha256": "017c62e70e96ad53cef0eada6658a5f325a7bd76b5dc0448ed5658c971c1b728"
+      "sha256": "ee6a3d4afe3890b201e20836185c872d0a63e82a15e03b94556e88228c2c0049"
     },
     "VX2DLAB.EXE": {
       "bytes": 70144,
-      "sha256": "4fdeaace890b085ed139136ae2249e1518ad3ed0ddb5f960235611aff0d3cddc"
+      "sha256": "3c6b73e074097f1840c6f4f61d5851dc3b3a980d274ee2920406386c73a719cb"
     },
     "VX2DKEY.EXE": {
       "bytes": 39424,
-      "sha256": "88ac7eeecebf585d426fe1421cd84e4807bd3ec959eee44fbb4c5a1a3649e25f"
+      "sha256": "d2f6767488530bfb8a38285ee6775c70c15e2758005695f1514d7bab5c5681a1"
     },
     "VXKEY.EXE": {
       "bytes": 37888,
-      "sha256": "f449b4d5bef3374e0f0efcd0055dc6a698e7b44d557a2a9c53bca47c656b7f39"
+      "sha256": "b3821169a074d962b120128244f0f2ce38f6ec080b093c5ad47dd82fdecc9261"
     },
     "VX3DM1.EXE": {
       "bytes": 43008,
-      "sha256": "222a512eb5f89f507a096be439a58d815bb4ce0cb549efef5f935a6ba1b947cb"
+      "sha256": "ca4615ac70162df53e46a87bd3070157007b53c79cc328ffdbfab9cd1361d840"
     },
     "VX2COL.EXE": {
       "bytes": 42496,
-      "sha256": "80b476a8a981c228e6c5cb43faeedbe0590c8ff7c798e518cfe3f643d8f9553b"
+      "sha256": "03bf225f036b72e6411594f55a0da292a5129b113091d1a65b04572b8fb0434b"
     },
     "VX2SDI2.EXE": {
       "bytes": 39936,
-      "sha256": "61d3e79895caebbfad4e19fc36eb198831de973b393919177cab7aceffe4c99c"
+      "sha256": "3f90ee0e5a37dfa6237063f03f06c3d1226542b97e3ada48781c1badfa17c05f"
     },
     "VX2CRT.EXE": {
       "bytes": 35328,
-      "sha256": "48db8ae0c410d2ca7662d669d75f586fe754d77136bc30760af9f7b977db51fd"
+      "sha256": "21e6f2b427d81495ebc1afac3adaa8621b13beb2fdaf1244129450a440fe96f9"
     },
     "VX2TUNE.EXE": {
       "bytes": 47104,
-      "sha256": "a2d4f5cc5ab9091c5b8bfd09f13e83aa0127081de39373be92c72cdb0db0c95e"
+      "sha256": "5963b67f5be16f79b877fede8aa39d912ae0e038e7078b05b29b2de4b9f8928e"
     },
     "VX2KEEP.EXE": {
       "bytes": 53760,
-      "sha256": "0d9df96b417c7517c0e739887d1d6f2f92907a3c860cb7a9ea6e975e5ec70616"
+      "sha256": "8447ac6318e1df4c2ba610ae508c9be7d964e6384fc174914fc72a49b2808e91"
     },
     "VXTEX.EXE": {
       "bytes": 85504,
-      "sha256": "09f76194f1f6bb65f84782555e777f4a0bb8ae00bb13de17cb46b1e57cb296dc"
+      "sha256": "18aef931c9062bc73720b3df3382fbf24efb0ee1121a14af9d4cd6bfb34d8dc2"
     },
     "VX2HOLD.EXE": {
       "bytes": 43008,
-      "sha256": "50f9cf8a873b61bb7d039fd760df2a6b8bba9c14f99ba0aa51f3703d075d27b9"
+      "sha256": "5bcb62b42e4555ce7f0e9d8466d1213723e2381e0e0fbfdf45265f94c906a2d3"
     },
     "CHROME9.INF": {
       "bytes": 2819,
-      "sha256": "96f88cd1653d7d6e4ecaccba903feeee643c09be3a2c5ab2f95c3a33599be262"
+      "sha256": "9cbd1e04c8f30a2de560d468f8302dab0d7faab71edb9ca8e549ca3955fee49f"
     },
     "VX2CYCLE.EXE": {
       "bytes": 36352,
-      "sha256": "3f9ad0054125c8735d8419c02c9c74ac6dc7374142d5e2171c47ea1ef75a1505"
+      "sha256": "8fefce4a4261a2e9a5b0969910c186456f3de8c903f91e7b0ed419f2ff2efb83"
     },
     "VX2READ.EXE": {
       "bytes": 46592,
-      "sha256": "f054b89f67b951fbc65812d90095845a26365703839958e04cdb32ab5e43adc3"
+      "sha256": "e36fb661999eca5cf55e295752b1472fccfd7300c08f055879b491eaa40371da"
     },
     "VX2DVI.EXE": {
       "bytes": 58880,
-      "sha256": "95973218cecee54e53045a7d4bfaa96e3a5f79d8dc13f017341c7e15892e32cc"
+      "sha256": "b61e03eb3b7c910eed555f7415891468940f7f75f7596ce7ddc354be977d3aab"
     },
     "VX2LINE.EXE": {
       "bytes": 49664,
-      "sha256": "f97eebace0ef631c5ff5f2b9e0bf23a1e2ecbf927b4455e9a3691eced1e68829"
+      "sha256": "283e3aca7df872d5fc508bda87703a0aaf697d4d40db1a637696c26cbdf198c8"
     },
     "VXV4.EXE": {
       "bytes": 35840,
-      "sha256": "d6fac47c8c81e84361fba05d21e27d81dfed5ffb62cd9cb8f3d551e58d27db5d"
+      "sha256": "68d3a582fb688921989b16e69e55978ec1f3fad8db9e455fbd18ef4ab3586f97"
     },
     "VX2ASYNC.EXE": {
       "bytes": 50176,
-      "sha256": "c6aaccd24506b216d0b4b92e25dea59a885f1d859ccabeae53b2717085bb9f68"
+      "sha256": "061921b5a7dcf47ef410352853e9d29c0cf432a7820b8944f4ade72a448fcf0b"
     },
     "VX2STR.EXE": {
       "bytes": 48640,
-      "sha256": "03d96d0e4e58f4f256f0ff5f2d137db840bc2f6fa9bd206d4ab786a99da22c2f"
+      "sha256": "1d0b1db4ec80bed21268e9d759e07b56728c3212031ac59df61889aac46cfc4f"
     },
     "VXCLIP.EXE": {
       "bytes": 47616,
-      "sha256": "6e19bd9a1104689f0d2c981cfb0c138b5ee10a3b0cc5a77401fe99de4500e744"
+      "sha256": "448c36713eb3f062800dde929770b9f5991e49c04de851f50ee97d7739e3068b"
     },
     "VXSTEN.EXE": {
       "bytes": 61440,
-      "sha256": "e866972f7c736730dd9180a66ade24da204eadceafe62579b1a5879bfc85937c"
+      "sha256": "a8617175657a155f315418fb63abb7920012bbd1f1a7031189d40b16bc49b918"
     },
     "VX2PROOF.EXE": {
       "bytes": 58368,
-      "sha256": "c15491ddf35697c19a1f574d2cbfe685c9e98910f78b49a2c324e69a0d3a63b1"
+      "sha256": "ab7dd334b30c02aa9fd77f70d9b33040378adcb2058930d5ddc856b415cbed06"
     },
     "VX2D8.EXE": {
       "bytes": 41472,
-      "sha256": "b20af680dae0d84f9e30fd76a06c494e0d66d3e1a1919d9c15563f90fa0648ab"
+      "sha256": "0739a833ab54a280c8f904b9c5592f3fc7063dae8b9a0979b0573ec008804835"
     },
     "VX2CONF.EXE": {
       "bytes": 44032,
-      "sha256": "24ed331cf7435ec53857a59f8fe416778ca6f817166cd586658724ef6da797da"
+      "sha256": "a1f788389e53b5aa6045c96579cde81cb3701b2c15df9fee0440b0757e9ac0a6"
     },
     "VX2SAVE.EXE": {
       "bytes": 44544,
-      "sha256": "703b36fe1da57c38c2785ee50577f8fa47b12b8876a4e246e7a85a9b40efdfe5"
+      "sha256": "db0ba8ed0ff416bd57a77c1487e9e05ee8aa068fb8e2ca4c4860d4cd48a15511"
     },
     "VX2FAST.EXE": {
       "bytes": 53760,
-      "sha256": "b3c41ae077e69f8162d0f382d32f8ab9638f08cc8c03b2ad3af84ae76428a624"
+      "sha256": "7eebad58203559520df371a5230f64bf55e59d9e8bff4be39248ccb364654d1b"
     },
     "VXSEL.EXE": {
       "bytes": 24166,
@@ -320,107 +328,111 @@
     },
     "VXIDLE.EXE": {
       "bytes": 33792,
-      "sha256": "0f2d9c2a55242a6d57fd02b70941820d47d77594c7a253d0e529dbf47ac37fc8"
+      "sha256": "e04573e81c7ede29b02f5b3fef142059916fdd81febb1e651cfb636574dc02fb"
     },
     "VX2AUTO.EXE": {
       "bytes": 97280,
-      "sha256": "cb4e7bb90ccadec2b9dc27996c26cc7e1ce1fc051e8fe594e08dcb2ec577cc35"
+      "sha256": "a618b839898081e086eb7bd258ffd52525c9234dd0c3a46144632f86c1583552"
     },
     "VXNOSYNC.EXE": {
-      "bytes": 56320,
-      "sha256": "ec4c0940ebc7a6097c8267c8e78f40f9391bcb81c1b6c7a89a472916e65b3c84"
+      "bytes": 56832,
+      "sha256": "a6743904b3a30d017340a93fff1b831fa87807145eebb3053f5b320b77e815bf"
     },
     "VX2OVL8.EXE": {
       "bytes": 37376,
-      "sha256": "630fa11d72013899297c8604e37efd75b4a54aee00109a5739f65a21b0257626"
+      "sha256": "3bea430c91b1097f707796eaa2f492c79e6656beedbecb5e8eb92086280004ad"
     },
     "VX2COL8.EXE": {
       "bytes": 38400,
-      "sha256": "09c764c121eed5e1e983e329f3eb7e57cfe52df6858f692359e444e45177d4d8"
+      "sha256": "6aa9609d5d6c5025fd722ced9e8f7cdee209d9b61cd092664ff5a52418e98720"
     },
     "VX2STRX.EXE": {
       "bytes": 56832,
-      "sha256": "25d71e27e570ca051786e2c871889f03ce68a4afc0b9892a82d7dde397c2fdb3"
+      "sha256": "c0562b4269f682394717303d36a4853707778b6a53cb70b86821a99b76db121c"
     },
     "VXPRES.EXE": {
       "bytes": 47104,
-      "sha256": "3102288e42cde313ae265cae8fcdcf182279b626d2e7aa2775ab22be6ba04d75"
+      "sha256": "80b20005b8c8debf3b96094c3288b858635f65c85794877ed263a582cc1e960d"
     },
     "VX2EDID.EXE": {
       "bytes": 35328,
-      "sha256": "5ed1a1adb7d64c873df4ced189b9abac3a6cd74d3a73507634c2d9cbc1e1ce61"
+      "sha256": "8c6bd3bc165a6d72860ac26aca8a644d0beaee037231c2bbdfb0e4346ccf124a"
     },
     "VX3DTEST.EXE": {
       "bytes": 71680,
-      "sha256": "8f1969f94f442931d16d767a8e42160c434005b86c554015364b47dfd22fd8d6"
+      "sha256": "b7bbe3a40e284d84f28640ac23f1a705876791029655376d1a68697cbd20c659"
     },
     "VX2SPAN8.EXE": {
       "bytes": 37888,
-      "sha256": "5b99bf1c98786a443894668038d5b7396eab7f0d4bf9c3eefae70c231b3c62d2"
+      "sha256": "89bb47b0f7e14a740abd1f36056bc8797c9b3e090f8ceb0c30f81e03bb1dd419"
+    },
+    "VXPSP.EXE": {
+      "bytes": 46592,
+      "sha256": "20d7d4c7f81e3aceac01dd36c42ec34a84521d495a60ad2808f60edd826b8331"
     },
     "VX93D.EXE": {
       "bytes": 69120,
-      "sha256": "97bd33046a1019f487db63c3edbc73a2025f97376af1b7aafbe6b5c781cf2135"
+      "sha256": "72a5a4e73ba9cb670b5483a61315502f32aa3fdbd7a559de095aa34bb22940e9"
     },
     "VX85598.VXD": {
-      "bytes": 423529,
-      "sha256": "ea64c5b401124354e479e24cb3cf5a781f126d8f87e0419ceb7905888d5270b7"
+      "bytes": 428123,
+      "sha256": "3c6f854024f1314e11a9ae48d25345c7dcf95d6f24d14b0b079757c4be45981b"
     },
     "VX92D.EXE": {
       "bytes": 38912,
-      "sha256": "deee1ccf0f977774472b30e4a393c03804a9aeb0e0c50f4a3b9decb218632f94"
+      "sha256": "d4419a1b278133324bfd479c736d05c3d26922bcdd0710d00f61f93001617d7a"
     },
     "VX2FIX.EXE": {
       "bytes": 45056,
-      "sha256": "f6bbbdfdb96c6600229bc17082472a43ac8249bd1e80207f2506b19d68e0f847"
+      "sha256": "78958c4bb57f34e4d64cb9a97b176943ce7763a42415275ef9298842b6de1b28"
     },
     "XPDUMP.EXE": {
       "bytes": 36352,
-      "sha256": "9f2121489e6796be302a8bacdfe82584c14e3a525870298e12418c00c1ddf2f6"
+      "sha256": "f457445da336e13ffb9942e2bd6d00536b2c18f4f327e40bafda6cb6b53c5c84"
     },
     "VX2GAMMA.EXE": {
       "bytes": 52224,
-      "sha256": "86db724599670076ca36f422257989ebc8d70b531049e9e191f54f8b348b2060"
+      "sha256": "b2e22aee84b4c226b915532256858b722c3227a79bae845429e3426cd4d1e92b"
     },
     "VX2BENCH.EXE": {
       "bytes": 51200,
-      "sha256": "08ee4ec0e2d24abddc95602445464eec0d383928c565668f76cdeeb0d27530eb"
+      "sha256": "d96fcde52747398e5f577629fbf550cd9a5427ecbc341b2aba8bbced5db16417"
     },
     "VX2WIDE.EXE": {
       "bytes": 48128,
-      "sha256": "a9296cc6d389c9e90449f72c9cf889bf3ea7ac7a9d81a8d2acc4ea3f490d3088"
+      "sha256": "9c272775ba4f94aa2db6a634af9a48af85357bd90e4d34ba6d37d1e5192271dd"
     },
     "VX2PAT.EXE": {
       "bytes": 41984,
-      "sha256": "ad08f3c991b340c584629319486c45f9a41d5a97041e1ea54e6c97e12c532461"
+      "sha256": "a32e8f5d5c9d3c8d272fe29c1eaabc5c235d70045d3a23d2f48c8d2cff03b333"
     },
     "VXGL.EXE": {
-      "bytes": 128000,
-      "sha256": "22a94d3fef0532c0179dc90a3b5fc11d2bc0d3f47f64b96d502b645151a9dc0d"
+      "bytes": 128512,
+      "sha256": "f7ae608906188c58fe483447c73fe6356658db0d61c7621694781f7cf854bd50"
     },
     "VX2TRN.EXE": {
       "bytes": 38912,
-      "sha256": "56ae56e4eed34e35347bb5ffbb32ea39557013ca7f021cfbb2ebf73b76ee8889"
+      "sha256": "e6f4b21675a766a670935addf63bdb1650c421ca58358b64ecf37b3c1a0db151"
     },
     "VXDX7.EXE": {
-      "bytes": 168448,
-      "sha256": "5a8a1645b40d7acc09804dacb07d3f2e949868e8966edf927dc5aaeabe856413"
+      "bytes": 165376,
+      "sha256": "a37e854dd3b04197d196a0f7b5bdfd85ccf6eb41b3f155b0a40c1f65f0cc7bba"
     },
     "VXFORMAT.EXE": {
       "bytes": 50176,
-      "sha256": "213a9c044b7aa9596fae9957ed0106a94d5b890d1075786448a6233a07d86b01"
+      "sha256": "bd050ae66e5f5233cbfe3600e0fee9f7b18d06bfe6d3f7d7e9736c0692158f21"
     },
     "VX2MEM.EXE": {
       "bytes": 49152,
-      "sha256": "d622e8a42ab9ab197145310d02b4e8fb2aa0985e9c0c7a41993f54b9866dea33"
+      "sha256": "bc6b0eace539386bc661d8b07ece9a428eac62dd7eba52a4639fb8b76dfef2ba"
     },
     "VXPROBE.EXE": {
       "bytes": 66560,
-      "sha256": "fb2e156a187ffa6ec8956688ae62e6a20f75c0e9d4ec733fd9ba0833620f22ea"
+      "sha256": "5e744576d2691c5d58e179b832c4fb5c1030af43d60340e9112cf61334ba2714"
     },
     "VX2TOP.EXE": {
       "bytes": 37888,
-      "sha256": "dde922c09fbc3c4d58e8c41e04c8698404082aff3b081453f46f238fda10e082"
+      "sha256": "3d789e529ea54458358d6555ab90df99d251c102dff1bdebb48b7c4341d345ba"
     }
   },
   "source_sha256": {
@@ -429,7 +441,7 @@
     "gl/common/spantmp_common.h": "dd8509cf322cd5a4fddf86bccf48983eb575b94fa5ac9f8b1492711c179767aa",
     "gl/common/stenciltmp.h": "0b482fa7d9684453c85a64f717e5c355b4ffe4ecf78026b83bfb00650bb559bf",
     "gl/host/ddraw.h": "e7facc8d15bab8488dc06122bf1a5eca0ebe0d39720aaa38b10aadf006914c96",
-    "gl/host/vxgl_host.c": "70c4b097d5dfd15172b9b79c128517dd1c5ffbde3ef8f1a0e703dd416e915149",
+    "gl/host/vxgl_host.c": "8282dcd7de712b563142737237743ead22f33997958f87e74724a961f424bd3c",
     "gl/host/windows.h": "40a4391368653609cd3ffa58ce7dd0e0f92f33d60fe5df5cbca873f1e3a5f920",
     "gl/icdlist.h": "a6d84aa5ffd2cf2fdad300129c9c52dec2b3c06afb01c56fcd862d3d87835d2a",
     "gl/mesa/COPYING": "e8800bd573e8f844a5b87cf43cc4d55767314b4e95a6092cf26ce9c6ed00b877",
@@ -696,7 +708,7 @@
     "gl/mesa/src/mesa/main/image.c": "4069409aceb590363ad738aa27a43902d80cd6f9eeff107db0a439686ba63414",
     "gl/mesa/src/mesa/main/image.h": "c1f783a206f382dcee04b5c9acd94c5c8f12dbe20f6e42f01031849632cb94b4",
     "gl/mesa/src/mesa/main/imports.c": "f545fb247af204433116b89273a7865a90b97f09ed0470e6fcddfa082ec42c77",
-    "gl/mesa/src/mesa/main/imports.h": "a656645fd20d31a13746e1f3451e07834fa023c44e47a2daff4a4d737382dcd1",
+    "gl/mesa/src/mesa/main/imports.h": "87cb6d3346365d48d1536e35bd5cdcecbb2539ab8896430e240e6bd11e0c274f",
     "gl/mesa/src/mesa/main/light.c": "bf03e833806054cc6892658313a03124660eccfc4385422599dbff79256a714d",
     "gl/mesa/src/mesa/main/light.h": "659f4084700149fe6eea5b5409e1e8d44f9b95ca54233bc61faa287c5a5ea8db",
     "gl/mesa/src/mesa/main/lines.c": "637fa71f70ed078b833d18505495bec887ed36de8e13d235669f1e733c7adc01",
@@ -1022,7 +1034,7 @@
     "gl/mesa/src/mesa/vbo/vbo_exec.c": "de2a8c63241d64125d101d97a72818d713aef8f6d486b82f14298f769fbbcf44",
     "gl/mesa/src/mesa/vbo/vbo_exec.h": "0060c3283df951d7c048a2204f3b99b2be39d66b9b749e89846ad7a225e2232e",
     "gl/mesa/src/mesa/vbo/vbo_exec_api.c": "c6f755a8f5ba8ef03e7c6e5eea6ec5b1147d5b9240c3279e24ec501fd18bc8c6",
-    "gl/mesa/src/mesa/vbo/vbo_exec_array.c": "8c984b3f34f2bb3f380a38be21bae2915a3f4586d0b2a1cb083ab4cb9122f802",
+    "gl/mesa/src/mesa/vbo/vbo_exec_array.c": "4e12eb467629720bc82785de55416e0dfe86c4144333fb2f2da31f29bec4b0fe",
     "gl/mesa/src/mesa/vbo/vbo_exec_draw.c": "9fc645c63bf79311643f918084e93a26d107811e382bef6ce46c1990a8c7f7b4",
     "gl/mesa/src/mesa/vbo/vbo_exec_eval.c": "0770bd7c36eb71cc55847b9e7ae24a8ebb21646cb0c30ccd3851be868983d102",
     "gl/mesa/src/mesa/vbo/vbo_rebase.c": "113ca308825a1afa2be51cd37d138c40afa6abc3deb85e05a1b1392eb44e88e8",
@@ -1077,25 +1089,25 @@
     "gl/vxgl.h": "8de23c5b9a59fd2f65b2d956010c7dae82cd9bc7a75c37f7fe04ac2f2281aab0",
     "gl/vxgl_batch.c": "c517384c28cc871d9839f326d3cf3c01b2300f2f1f691891990406f032906146",
     "gl/vxgl_dxtn.h": "0f17f7b33d704dcb7a411c77e6c0864612e41780b22876d1e578c5f0b67426d1",
-    "gl/vxgl_fbo.c": "91b361681831012988ce1bac15db3a70e985f48e6115ec353aec7b5ae1ed8ffc",
-    "gl/vxgl_fp.c": "a2a811e6dad515dd991e3bf6f4444b3fff95286ab4f5eba75d0f705a54097797",
-    "gl/vxgl_icd.c": "882430627a319251be4dc291d336ed794e78a34214564e00023f283f3384f740",
-    "gl/vxgl_mesa.c": "e55ca5b56f3b4f8796f78d33940df13ad61f39fa97376f0ae4f840d43f336352",
-    "gl/vxgl_sse.c": "a1b28e2e801c20ae3f1fbda61d740e8625f01309cc5e5cbdc5b6db8df88c28fa",
-    "gl/vxgl_ssepass.c": "b4be58fe4496f88d2f027e8e0cde0ee8681a00329554b4a04fa5e89b2c42474b",
-    "gl/vxgl_state.c": "30ae70811e9ea3e535a352f7839badee3faa2871a301f33b5e68fae42514e98a",
-    "gl/vxgl_tex.c": "df79a2ea881fdf2385e0929949c32d4aaf9313ec5e3e0cb04f1f8b6fcb1e62ca",
-    "gl/vxgl_tris.c": "58072ea5569171c99ac5e29c1b9383256b0202a814b449903e58d354ae598b70",
+    "gl/vxgl_fbo.c": "a480aa531c30d8aad1bb0815214940b80e095e8b94800995fe32376ac8c62246",
+    "gl/vxgl_fp.c": "7601de4c9e01d31f129e93b34373bc0cae555fa1762d41fc79a2737343f88bb4",
+    "gl/vxgl_icd.c": "2e48bba02ca49eac294155738a650fe3ad46a59ca9acc969a8a26f358345870a",
+    "gl/vxgl_mesa.c": "e51e892b8085de30589309b827f24e0b170a1c98d64106fb2857d41c2eff51b6",
+    "gl/vxgl_sse.c": "cfd8e43a003fc0850a6903a932c583b8f38185dc5d6d9c0911977e095e1078e7",
+    "gl/vxgl_ssepass.c": "e63086a12c1ffd382a865c515cf49419796e52d2aae1aba35961b01ddf5f2ca8",
+    "gl/vxgl_state.c": "8eeeecf2615313132e15505e5e0ffba501131ddc4b2a444c26b5df185b1416a1",
+    "gl/vxgl_tex.c": "b5a27392bf9e8068f0549f20906b2538e4251cb4ac9e843aa685e9bba2033eee",
+    "gl/vxgl_tris.c": "8336e7e782c15130579c405ab242f9a6757ca7cadd3d10433fafeb4eb0e1ba76",
     "src/3d_accel.h": "7b336feafe5a7783c895757e20b16e9711a38fa94c70b78a44a1aa7a85201503",
     "src/LICENSE": "fc72801e4e7e48d535d797114358da8b1ec358d32a985853a766482ce0b73d1a",
     "src/async.h": "f94a9e708d6053bc89487909c32415cbd8b9c8f61257980279f6604a8b533b77",
     "src/biosrd.c": "1bedb97f385ad6c7260f4559197b2c23cf9a3ae2096d447862800971c8d88587",
     "src/boxv.h": "0c130a7f5e5a5c1f0237bf55770e7c3b60891b5959cf42a92391525a6e7d5eae",
     "src/boxvint.h": "0b371b47b3799796290c608982ec1d048ae3e93215bb356074fe26c2e4e418ae",
-    "src/clxp3d.c": "e94b14552a502e5f10119aa9fd99b2d9638d579facfdf8955359dfed56bc2028",
+    "src/clxp3d.c": "fef412eea918882e5657f494be7764c48f56af2b267e8c3e973d49bece6dc525",
     "src/clxpovl.c": "f8afacea2f537237123c7caefae441a868adc9a5a71a1521aae4c5d2ba125a72",
     "src/code32.h": "b7a5017551d1955578599f7baa5430015638bbc6bbd62b4357cdb5c08c47e398",
-    "src/control.c": "2efdc2b7d3bee9ae716e6d5979e1deb76513ff8c23c74cb9e148cc9b188f6904",
+    "src/control.c": "f5f0d53bea590e1f52b8a0323a0b461b0e1629bc69ca297fe31fa27bd436def6",
     "src/cursor.h": "8ab3518891ad43d3185353bc9591879af2a1139dc5b04b9d897d644af6ff812b",
     "src/cxphys.c": "1ea3a7af80339cd0846901f0d8a7f51d614739ab0c2df16843891309a1c5d21f",
     "src/dbgprint.c": "346c562c10ea0855995f460da870ba0149cd824cc257f0d30af557c3647dcd2f",
@@ -1116,19 +1128,19 @@
     "src/ddk/minivdd.h": "1a94e0c3f0296d154c9ce97b20155ad7d13b566a9492cb86829909a192c6cf37",
     "src/ddk/tvout.h": "d6c925fcb53ba44518d72703d6bc4611ce47d5593e9cf94db07a04034f5f7c6e",
     "src/ddk/valmode.h": "3159facad62112e12ec95909e16a186e10a30417d739400d17246776806dd7a7",
-    "src/dibcall.c": "0ccfcbf27391e239331a3790f7b4d4598a76f953d518c58a3ea38bfe7fe05a24",
+    "src/dibcall.c": "5218d675d3f955a8e8aa596ff196124ea12ece7e36129537f03a94e6c1c50cce",
     "src/dibthunk.asm": "5254b91fff8c76bbef623b036a5fddc57cbdb00024b9a61c54e087580b4b1bfd",
-    "src/dpmi.h": "167ca67ba3448bcc5d7f4dea6764cc7e831cab561743efecd6c2feb0b6a84622",
+    "src/dpmi.h": "1d5209efc16fa3fdf660bef072309844d1a259477eb397b5614232bb42b5ef98",
     "src/drvlib.c": "c963fe8649cfdd887de43d4886292fbaa69f7675aacba00a402bc6ea57963568",
     "src/drvlib.h": "aa8e9a850b25518922f2cd2d46764f59d4d7717a68bbd61bfefd8d31f434519c",
-    "src/enable.c": "2ffce087a176d003206bc7da0914aa4d79767d562b44dc501a79e4deaab94a30",
+    "src/enable.c": "3881f743893c30c66ac98cf4268d0ba2160a55f41009cac801595725398b83a3",
     "src/fixlink/fixlink.c": "edd9a87d21b9e2cc2e5aea22cdc35acfebdaca4d58de6d4ef6c46e0bf22ad4c0",
     "src/fixlink/licence.txt": "c3c59220e038c7b3b816668577f3967ca6f48d4074a34ffbd8cc93ad760c7be1",
     "src/glreplay.c": "c140c1a55cb9c28b3a1f817f488f0dde09eb27f789141f71eba1f72270a388a2",
     "src/gltrace.c": "5adb7e694308085e71aade48da7191836965c6a317cb0a075114a294bdfb6ced",
     "src/gltrace_exports.txt": "f93113ed8c6e872ce87ad9f2c44eb8108aa78d40c38925c5fb72325529825a60",
     "src/gltrace_gen.h": "8219dc3d36907ec402fc7a58687aadbb41c8a1adf86872ce8a4775ecf5c6c119",
-    "src/init.c": "ccb862194e6dd1cf69ae51ff8c816d5da4ed36872b89de842a146455efd9c738",
+    "src/init.c": "78c36d94c8ce5cb428532f37f612a9a75edf1e9416d3277e667f461d1604b45c",
     "src/io.h": "6eaa998f9ed01c6e99d2d046bdca920aa26147196ae33136f8de23a2cf66073b",
     "src/io32.h": "24b0db16b58669b5b7ebc21e661855645e08d632ebc84c5c8efc1bf2e8491e37",
     "src/makefile": "e53d8a4b2ae5390089aa07d05aa88f240270e8c199245567f536ecc7d70b0946",
@@ -1136,8 +1148,8 @@
     "src/modes.c": "5c08d70937d2f627865fab4e7f4cdd798dfbc30768f4a6fec3c4c946f50c8867",
     "src/modes_vesa.c": "909c935e27737ca2d6649f7ca46d394455e0b072dedc78a2731636106db380b5",
     "src/mtrr.h": "c9c5acd3d961392f9e0ec8a035c6013cf0750982823ca6d5c6fa5094d8570466",
-    "src/palette.c": "2e04c643695f2160dad55d718f5e7fa5d4e7212eb015caea9a32173046613dd2",
-    "src/pm16_calls.c": "ba14ab0aec29fbc94300d58a15998774551a9b5df042fa711b7ada9e47ee0d1c",
+    "src/palette.c": "894e82a2942b080577301f5572fe1af51cdc6f309dc924a69c95c63a3129b857",
+    "src/pm16_calls.c": "e19a153f71a620154d2a6ba652203b378139b563cec67354217bd7efe52c57bb",
     "src/pm16_calls.h": "57aa34a50adbbecdcc0df7839c516d7b58276d4df49173d359e23ccb92a4cd95",
     "src/pm16_calls_vesa.c": "1fd3dd938b9e4c821e3b372793fbea6801ef745932e1b55bca656c0a924d1d0e",
     "src/q2menu.c": "04469a73b64e5dd0cba301226fa235f5eed3ddf61867a8520df33237cb0e22e4",
@@ -1148,12 +1160,12 @@
     "src/res/fonts120.c": "d691fc4a4b580c4cf598dcb917e9e9bbc47b34faceec99b3b91a6bbbbb2fb7e1",
     "src/res/fonttmpl.c": "7cd04d0abe0dc463f85af8ad699b906422f3832e62ce183be29787bc663eefb4",
     "src/res/vesamini.rc": "1e92db38b6a37c2950c5c2a83efba5b2a99a4b4963049b68248aa9cf51103927",
-    "src/res/vx85598.inf": "635e222bfc1fc983610109a2c77b217d8917bab2792f244fb3b25bddbe9f53e1",
+    "src/res/vx85598.inf": "5ad3ed92f11b000f51fd550077fa1a346344974a3d81c5dd4bf0d6d6748b849a",
     "src/res/vxgl.reg": "354b794828bfb1d951a82d1b860bc2153e6b718d6775e23b965b316e7b14a650",
     "src/res/wintundd.ocx": "522bf879bb47fbb5762a66dda6c2919a6fa33bdcb4077e9db02c96b67107d2da",
-    "src/scrsw.c": "1ccb36b4dccb5a51fbe7f634014be403cb0dc49beebd76c4985314cf51885cd3",
+    "src/scrsw.c": "efa2e87700456f45a91ecfd159d86ef900ee6499348f97c29f2f624732245b14",
     "src/scrsw_vesa.c": "87b1ef06ab2cdfbf503b8e04a62d7fbceb5bb43e6e5faa0f09a4eed0946691c4",
-    "src/sswhook.asm": "a6c1ead7c5cf513885309d9ff45288ba8ddb8a4ba69351b526b3acbfd2d21440",
+    "src/sswhook.asm": "32e848d1bd98ce46e8a90bf689b16f22efe890ab421bf0a866c0af26b2e274e2",
     "src/types16.h": "db8f9f6af4f5928350d4d34e78386b62939bcdab1bf25cbd486daccc20bafd67",
     "src/version.h": "b776d7881d096b82664af95aaa8aed9d4f251b791826c53f8ea880835145f8c3",
     "src/vesa.h": "b0c3237baf34b89c337f375b91c0ef9da22edb4ddad3e8a854e086374fc75703",
@@ -1177,12 +1189,12 @@
     "src/vx2dlab.c": "c95cbe170f06c6dafe985fe61ee1d440dc756fa006a9a3c0666355457df69334",
     "src/vx2dtd.c": "e676278007a5c9c47b6ddc8db71bba6e617275705919aea03eba78dbfe1baa27",
     "src/vx2dvi.c": "fe4c01f040bb60d5602cbf6a4f57650b326f6089e9d53027733b004cfb09c016",
-    "src/vx2edid.c": "4e28333baa7907d162155bd914e458942781a43f916de49b7c0d6088e8229ec4",
+    "src/vx2edid.c": "93f642cc4a901d033286e701e13abf002c9f525ddc676ef9ec1b2f7de248fbcf",
     "src/vx2fast.c": "747b72fcde31a111d4f607470a894ede6121dbeb7c65a820214d326b0837e3ec",
     "src/vx2fix.c": "166a92b2e890109136e2a6b3bc1e75589c15a46a8bae48af377b0dd0123812b0",
     "src/vx2flip.c": "f0f7f7a84d1bfd7d3db9f00d6dfaa6d1a51b80c77cc36f5056d129993f4ed109",
     "src/vx2gamma.c": "c06754fd0c3978c35fdd0802e1e1cecc5c0660dd096e0606778b0427da9dffad",
-    "src/vx2gdi.c": "a5322b26f5e4e59803386855d6bb25077117d4ecb9beb4b8364754b2335c72fb",
+    "src/vx2gdi.c": "970482abd33bc3a246aff82e0b3841d815149438878413fd0335749ed26cde07",
     "src/vx2hold.c": "91ce7934f0cca84537dc8b9786b8b3aee02634e3ac2aa9296ba57ad468bbe1cf",
     "src/vx2keep.c": "b01c30b4f1906ca77ce3224ff8889cc00ef8ec8950cc1aa85afb332932d6ad7a",
     "src/vx2line.c": "c1911783976c71ead435b966c0e452729de4bee07a23b35b5a769bcb15a2081b",
@@ -1216,18 +1228,18 @@
     "src/vx3dtest.c": "7e96d6ebecf2ec32ace6ec85db0c223a4fddb64257ba42ae26617109f2afd589",
     "src/vx3suite.c": "d3f400a7ec35fe0730086941fbac1c1be4bab62591c8f05fb960d0bd664262fe",
     "src/vx3suite_core.inc": "da2eeeb325afa02b94792cf82ada2f59f4668041403a197f0d2f07cd75ffc81f",
-    "src/vx85598.c": "9cb2f55f4c9b98d8e0e26866a853dedd34d08c1eaf1a06a4c2d183d335cf9884",
-    "src/vx85598.h": "6d4b76bd3682b7fc3a8448cf9d8d6272c04894d57a61ecd35345e104bd1722b3",
-    "src/vx855_2d.c": "7bdb90541bf4d15687c942034a8ebd15e0a56218c8a9ce4018c4045987b85962",
-    "src/vx855_2d.h": "8cdb2a8a6b95b0c01d272ec9186dff7c517f0899a69ba911165ce756c5028deb",
-    "src/vx855_3d.c": "89ad91ec83d70e2cc5f6fe0ab1c3ecc1534b2b7e6dbece39f307af47726f4476",
+    "src/vx85598.c": "1c81ad0bc48309050069b55d41f5ffebf3d2861ee803fab885708652f7b62564",
+    "src/vx85598.h": "35b9b2715a9088729ed3af6ccc9be010db51633cf71fe1a57d32cf9c490466db",
+    "src/vx855_2d.c": "775c288d3567e850c28e51be71386d8986b050daa928a56efe2db7c02e8114d1",
+    "src/vx855_2d.h": "baea7e46cbf50cc6ea4956768564b54287b6e9d3e9b51f296854d8a7b16b583c",
+    "src/vx855_3d.c": "691128fab1463149c5df08bd34d7e3658e8faf4728434e9ecd96726f6bdda1b0",
     "src/vx855_3d.h": "ba9884fcbecd2fa22f814583eae9404a03602aec151bf3fbca7bc9ff7bd01f80",
-    "src/vx855_3d_core.c": "31c9eb92014e7504ff1123bd0d47c5945e4c4b44015c77f754f797c942d0fdc5",
+    "src/vx855_3d_core.c": "631c59720b56837c089fae6ae7cb9f7d1a4704e25a5bbd3e6c11e943229b6859",
     "src/vx855_edid.c": "d6e667018ab65f3d8d69dfc4897527ec1921639a8ed227c3d932a750cde9b96f",
     "src/vx855_fill.h": "cec7a077905e52f37af7c7eb007fa26e64e297ab8b070941c4b91d452d36f0cd",
-    "src/vx855_flip.c": "9b058aa086e936d62355a10ebfb80018af13c86beb00db26bf2190ea3e19d218",
-    "src/vx855_flip.h": "2b11b3f1dab62ff32e5f1682f6df4fa1ad3ce71ae94490774977996e36f77ae2",
-    "src/vx855_vbe_init.inc": "b929e16bf5e0ecdb90d3e9308e5d2ac6e5cc9fcc02314ecba0ebd29a70fd6a3c",
+    "src/vx855_flip.c": "841ec91b9c23cf18cf3ad8682ffaff3b170b547e87340cabe414be2a814fcc3a",
+    "src/vx855_flip.h": "56879cbf65e3c696fcc1597e9a2fbc09e7fe241b2288cd44825c059c10b7af28",
+    "src/vx855_vbe_init.inc": "a7a00dc7484a61d3cf78e28d29b29514f7103a40e67f796d5100ea5e8fa7afc2",
     "src/vx98test.c": "9aca9664d8c07d83bf5a144d7c370e32f2bb92156e8dc6083e18e831ac52dc01",
     "src/vx_92d_test.c": "b0a220b0fe1c79826f3ac0d393cb981c4dafcdfbc22e7a8cf2a2aca9fb7497f2",
     "src/vx_93d_hang.h": "4db302259090f2ccae2b358531c5a103f63c6d47cd893403db4d72fec0378118",
@@ -1236,36 +1248,37 @@
     "src/vx_alpha.h": "9161d1b5ea9f6fdd5cb9df03eaf3c2531b8e07e6066ccd96a00c4752f23a611a",
     "src/vx_alt_test.c": "94acdefe5a8315ff2fe1f5dbdddb4e418e060f7f6df5d74e6426449f23f7ddaa",
     "src/vx_brush_diag.h": "4935580e54f12c023855709479c62da6ac7fdf63c8dc5276dc4268824e58ba2f",
-    "src/vx_cache.c": "9f888b0b9c8a24192e34df3baa42ee929541e06ef19673b463cbbe9a42d5e159",
+    "src/vx_cache.c": "d0954e89ec3a80714c5f861be03dcf340506179cb30594c2e2cf14989db1a045",
     "src/vx_clip_probe.c": "652d846e43f601744f51aee007c7edeffae5e6f2fd851fb49120019e1450f066",
+    "src/vx_crash_test.c": "b44c0dc7b1fb2fb9f1a4b71c6b17773d20740d66859e525bc609e572865a1c77",
     "src/vx_curchk.h": "6a9e75bb2f171d2fdd7baa3d403d85c801b7b8789ba7ceb2f46536606916ffdb",
     "src/vx_d3d8_fns.h": "e843a83c5c81ae29e7d78aeaf613f4623e6cefe8f7028fc02634fabd288aa23a",
-    "src/vx_d3d_core.c": "145a7c1194201edf24afaebc09433c854c0b313fda2d85d96e57e63dfa63ba60",
+    "src/vx_d3d_core.c": "f94e988e258073b4eff8cdf3c1279dc28f3bda9e456c3f49491bc62de86df3cf",
     "src/vx_d3d_core.c.orig": "fdf37133eba00084f48f25419df1c01fe22c0ba684c6b2ba2214da3d883d8995",
     "src/vx_d3d_core.h": "edb72be383c3e16284b633c0b65df7141778334546cd00cd036c7914633cfa45",
     "src/vx_d3d_diag.h": "a34b8a31893b7e7604767d40fd17f7c785b311e3a7a2194d0484d8bc3ada8611",
-    "src/vx_d3d_hal.c": "0e7c427f3454cd943779f29512ffb4dc437001c947f7612001011f17480f9320",
+    "src/vx_d3d_hal.c": "3c00461c8f9b6e597fa2c5478440b54e5f082f4874ba22aa260c004c9b202c39",
     "src/vx_d3d_hal.c.orig": "5c5603f7507b276c8cd9c40784f5c15ecd2259d96f4548e6f51d4fa1337ce8dc",
-    "src/vx_d3d_hal.h": "569b94aed15ed1f0168905f8366690a30ac9f244775ecd98fc018bb77d366bee",
-    "src/vx_d3d_legacy.inc": "8a980b4e187fab4f1bccb4addea20e6cf9504cdc401a1e8038221151d77f6ac5",
-    "src/vx_d3d_mon.c": "debe3cbab3a742bf18132bf26eeddaffa7a94d7fc0ecb090fcaf7cc554a19aa4",
+    "src/vx_d3d_hal.h": "856dcc454020d697d6f3a8df84dd9b36cdacf055a8372e16be594e3d8cfa34d3",
+    "src/vx_d3d_legacy.inc": "80736132d6000b477eb27f220690c43336f7a00424deb58399197ac46030cb61",
+    "src/vx_d3d_mon.c": "000f3f3ebfe43a8531ca3c82e56fa872b699c149d06d8b1fdda3ec6c84ac781f",
     "src/vx_d3d_rec.inc": "26ad78d809e505cc84d1c2c72c1c5ca504e076e1a61fcb541be076618c479014",
     "src/vx_d3d_span.inc": "89a5b6052e9cde30b8dbefbdefa8e9893a7633209087b1921f94ae14d45b71b5",
-    "src/vx_d3d_tnl.inc": "97a6b39c7c9e19cf2f7307ca1152150aff560ad961b1288ca0ea07ae3582a0fe",
-    "src/vx_d3d_tnl_soa.inc": "6cbe103f8be8e13a130dac57d7568d0f604cec611bf56b9bdbf3fe0ebcf6083d",
+    "src/vx_d3d_tnl.inc": "aca674c167fbf7c7295ce16bef37e3b81815c551f7be719f57689e76e2049045",
+    "src/vx_d3d_tnl_soa.inc": "1ae5396f3f499e86839376879cdb45df1407e24a651487da1755521e220be58f",
     "src/vx_dci_test.c": "1887d22965de3d493c0a44ea59fdabd4e46f389047d2955acc1af29347ad679e",
-    "src/vx_ddraw.c": "dcc5c75ecb4bd3437767f2e38fc9ebea4d76a9edb7befc756fdef7d10168d580",
+    "src/vx_ddraw.c": "9fd83e903dd2e5e105c5544070b0e8b8d18446bd47df1d58aa8df68e9c334f7c",
     "src/vx_disco.c": "74b3b65d4dc4dada72e65b595523b75d5bc9c7f1e8918f3d60fe6a1742cdc580",
     "src/vx_disco_tex.h": "5b05d10082df08eedd792d61997139bbf8c003715a552c8aa426b9049e09ff1a",
     "src/vx_dos_test.c": "336ded702c6081f22bec62463f820c8b6690525a7ee3174ac1e90bfd53717a3c",
-    "src/vx_dx7_test.c": "c18256e6d7672df02eb86007c3563c3126c2241264ba136ded5e4bb899f0342b",
+    "src/vx_dx7_test.c": "bc271899c43f92d33d11f9e7db73f071cba3257927b6df789b5aa6bc9f9c0dfb",
     "src/vx_ep_test.c": "451380f3d818c509bcfdacc82a095ed30a672559671118bbe9dca70d3088d3d5",
     "src/vx_flat_test.c": "583ae0fd591137cc47904101de043dd0b6a6793de6d74e78860a25a9af669cdf",
     "src/vx_flipf_test.c": "88eb8949cc322670c56cda175a08570218cf08df05024347e29bc256e2bfa3d7",
     "src/vx_fmt_test.c": "5de3cce466845ad88f709458ac58b4e9156a6d4dded40fde5ce74651d5735117",
     "src/vx_game_test.c": "0dc9181a68ce96e373603b7a810e044e141c690417686228db09532c9559c52e",
-    "src/vx_gl_scenes.h": "77ddc745f704eb8ffba6d710df6d48de50169b392ac85f1d43a0569a016fb85f",
-    "src/vx_gl_test.c": "cabde691f179b918b9d4634974916a5d29b58835fb62865b61772e5862ee8933",
+    "src/vx_gl_scenes.h": "4eab18ef3efb9bf6b213e666963bb1d9e6dff81749807f2ddb07f65d636a4eb1",
+    "src/vx_gl_test.c": "4f72cba259d47b738bdac763cfc8091e1f74c1b58e1555bd55b0dfcb477371ca",
     "src/vx_glix_scenes.h": "4814464fe1dd58174fe510e9ced04dc73e1f15a46a5229a4b5fe63f37391db51",
     "src/vx_gtune.c": "f1e9fc07e16114d0c846afb8cba7a86785f72f41eb32d516636447dcac6ad9fc",
     "src/vx_hal_sse.asm": "ab123d9ab22e8fea4d8de38c545e99b73fddc4d7e20bc26e788e33c2b3470786",
@@ -1273,17 +1286,20 @@
     "src/vx_hold_test.c": "b326771da4e1fadd3ff269d27e9fd51ddb8cfb067ffcb2934bd4deebff26b3cc",
     "src/vx_hollow_test.c": "79ed4ec54a28689f50f3f845a6a88d030098722a6f00b5dfcaf3ae8c8b9cbe0a",
     "src/vx_idle_test.c": "23ded5cef07e1f1b82a186ac4a834f5d97fa7320c527fd6083732e3fed0da065",
+    "src/vx_kbench.c": "dfc2cccdaaafb8960187f10bf9c4921a45df26338bc22d0bc780aa57dd1e8276",
+    "src/vx_kbench_abl.asm": "75346f9ed6b8fe870397e9824e26bb37c0fd0e393e3c53fd1e3ae3f265c2d4c0",
     "src/vx_key_test.c": "9f5ceed94af34da8b1523f97e236f46acd95dacaf21b81f5e174642a31558b54",
     "src/vx_lat.h": "11cfc22d2c2d1fc83e94035b6ac53fba0782ca916cc139377e780728b06480a1",
     "src/vx_leg_test.c": "f46d73458fc5ecb61e1b753fb7db53b5d9694ee170b046fbc1487628c258b944",
-    "src/vx_native3d.h": "4727ad068dca2c937775563d1558685f2751a835a96340e88c949112414d1f9b",
-    "src/vx_native3d_hw.c": "4911a1139dc2ad091c83d479bc0a591b41710578347e77652163f591d806a94b",
-    "src/vx_native3d_vxd.c": "f7adec4e52b0ca94c95933ae9ea0d9ddbfe7503b9f704657411cfed51ccb95e0",
-    "src/vx_nosync_test.c": "384f29e3b91e22869ce2a2c4f34694e76e3de35f1fe68c291bb20b02cf4a23d5",
+    "src/vx_native3d.h": "09c923efb909975245c14b816bac6c4911d5e18ab0ab92d2035254c58265d719",
+    "src/vx_native3d_hw.c": "c9fed5d924963f8c121f1305efc0755664c348efdc589acdcd04420856e9f5a9",
+    "src/vx_native3d_vxd.c": "431ca6a6e52bd0e0bd693ea204b3ce1c7dd5820d57a1f6a0a6aec6d3088a01b5",
+    "src/vx_nosync_test.c": "65828a3c6f2bccd291c16149f45e7fd1026f58b16097a990054ef82c9078b04c",
     "src/vx_panel_test.c": "995e77ba825a48216220206d0db46fd1130396fd328d5071090c7cfbf2c5b4c5",
     "src/vx_pres_test.c": "481eaf942161e3db823f891f0927dc430f6cfd667396fd2756d720e459ea46e5",
+    "src/vx_ps_probe.c": "c4ffe1008c9cde88d7394ad3ba4dc22e3f8c86fa1714db5cd76990f436a38e47",
     "src/vx_qscenes.h": "26ed70648d352c950b62eaa7dde9c07a284306f5aa20c9df425cc8eab69870fb",
-    "src/vx_reg_test.c": "7be75e20788da94c3f5b7da21e3d88588f90376fc5d0f5437f6afb9f42bc2a99",
+    "src/vx_reg_test.c": "570c4137ec83a7015d39bbd2bec1ff49a71d600eaf244c4d449ce710f8d985ae",
     "src/vx_reuse_test.c": "42fb4fc44ad5ab508f69354c50e177be05fa528b562134701cebfd85e813d328",
     "src/vx_rhw_test.c": "fdb94b9dbe59436d7178b8775a7053cef4dde56d6c0d0bf91e0252142abbf80b",
     "src/vx_ring.h": "446f21ee445ac494ab52d25a12ba97cefaf0b68184957428e4da99b4a8a66e14",
@@ -1295,36 +1311,36 @@
     "src/vx_sten_test.c": "3a86ad4dd69786e9187607609b6f204d41f2dcbb25a84a56f0c1dab09fca2991",
     "src/vx_tex_test.c": "e99c4197e9cd116ededba77634dd6bf7783099b1b0e019dae204b973c62cf12a",
     "src/vx_time_test.c": "48883ccc691e0a3661c785700a63780d83d51064e62fe51a204deb96a2026487",
-    "src/vx_tlp_test.c": "4f65a35b5dee3fdfa676413b003f77df38dfaa3bf869a1d4a7d99c7bb910aa30",
-    "src/vx_tnl_sse.asm": "8c1ea9c0ff7d76734e1b22fb261565ec4eae4640b6ece35a8396d460b39df108",
+    "src/vx_tlp_test.c": "fe91a788ff6f236d8b41dba3e4ddac110ad60802be5efc81b09e1519dca4568e",
+    "src/vx_tnl_data.asm": "a04c13309917a3edcd8319d50c3187220aab7a46ac9f62174caa6f477943bbe2",
+    "src/vx_tnl_sizes.inc": "957ee0689757b1758aaf9b1ad01f936666aa456b7b2e4dbfa2daf5325976bec0",
+    "src/vx_tnl_sse.asm": "2f09f82cfa3ed08de9ff5995a720c75586e5657f0fc31158989081057c2ae0c5",
     "src/vx_v4_test.c": "a9e9749e2f2aec711b771cae6b88431d7a0f9630d4e24b744890039f42cb7cd6",
     "src/vx_xp_programs.h": "cc919970fdb6d6c8ee2cad8b4aa5ad6c2d7f70a1756d2493ac671ca6c031a466",
     "src/vxd.h": "80627580f684cc536a765e85aa4a476e8e6be08486d2dcb871e73285e7212b21",
     "src/vxd_async.c": "f8021ebec0b70de80b37d09b3d6a2f014a3ae080c6a5e102399a535777a76c04",
-    "src/vxd_fbhda.c": "f82cd121631ddf1121359ff225abfa9c0363ec504c6233359dcebe40ee5d0bb5",
+    "src/vxd_fbhda.c": "bd6dcd932ad0c689076ed4b693c1f33b585649cb05133fc4cfa1477212a67967",
     "src/vxd_gamma.h": "9c2999d0f6b1913034f37a6df39d7512831d66542e4bcdc6c688e649f473cb27",
-    "src/vxd_gtf.c": "f452d4f082b6feb617396b4f6f3e98855ff4df40a372e9a1da7308119e83ab90",
-    "src/vxd_lib.c": "22202f3c6e05546446b647a841db4c007ed23b1e261732e6d0a4600a493d61a5",
-    "src/vxd_lib.h": "39662fa6905da43b0ee071d289d39f252cdd21588d46ea88e06160bea8988974",
-    "src/vxd_main.c": "8485c0084e9a4def31e07a66115a0c02442d57687f46338c83e5787565f6b7bf",
+    "src/vxd_gtf.c": "95b118c22e7b1b56b2733e33a97dfba88df2be25a3cbfe956814f8d0eccdb4fd",
+    "src/vxd_lib.c": "07303398e0793c6bfc8ba54a11493dee5bfc2190b93d3540e1f02919e3375752",
+    "src/vxd_lib.h": "3b1fdfb47f934a326f3ce0204b524524ccc243cbe3e03c48cc34a4740406b8d1",
+    "src/vxd_main.c": "ee994be8ff79bcacb3e3dbfa262d9df82f278f92b4ccc64f4a7bfc0ba197bd53",
     "src/vxd_main_vesa.c": "7f385720d9a44fb6c2460b7b1f45c21d7e94d507632dc61542ce209578a674a8",
     "src/vxd_mouse.c": "9cf2b4f1d33212afddd8633b62f8bf927a76ecd44a102401cade87cef251852c",
     "src/vxd_mouse_conv.h": "39eda6d4a09055d0e0e8373a82ee2aaadd1b35ab72abb72451484e605088266d",
     "src/vxd_mtrr.c": "38c225460f5558ae22f1022f65218afa49ba2cef1e3448baf85baa7c564d2243",
     "src/vxd_strings.h": "9517de73519647a95f044ed9c2b61b4cd59ca94426afbd1a0e4a97e9bd183b5c",
-    "src/vxd_terror.c": "ef3f3e7c95998a3a4e408fb758141c01f289b05d19963cf8d410e6c27a79e17d",
-    "src/vxd_terror.h": "46a31cdcf00ab1733a11b78d4ceee6500f67f4ea05765571d72d08d9f8d2040f",
-    "src/vxd_vdd.c": "3c853375eca1f29cb2aa2c977d284f7451f3176121d6183471cd7aae8f202f51",
+    "src/vxd_vdd.c": "8d97368bf9edd0e789a85f84049938565f607a9aa484a6388f70b6dbe7891302",
     "src/vxd_vdd.h": "ee2c004763a6281c596c58eb4086122691f735563c9e632fa413cee4b96a7649",
     "src/vxd_vdd_list.h": "a20d3474c06720ad22aab37083b168e3c5b5406986e74c97cc0fb18b7bf319a5",
     "src/vxd_vdd_vesa.c": "98fccb8f24b1c335505724f33c3d2586fef8ad3f0b9d78b4cbff00cc16afc753",
-    "src/vxd_vesa.c": "ccc127aa5b35486ce6e1b39298b7a608f16b4861a819bae480543bb56c9b94fb",
+    "src/vxd_vesa.c": "555b42c6378fbc482e789ab26e45eed4740465d5ce4eef08cd462c642468510a",
     "src/vxd_wram.c": "3df72981619ba0c2335e3cf923355634da736019362ce8c65e9603f0462baf0f",
-    "src/vxprobe.c": "43f573ba11b0c1e8a57a863d68e04a572abe33b8f7db92b95c73feb4d17f709e",
+    "src/vxprobe.c": "0805ad8e885a3f92ed7add8f19ba8c3ec67d44db226c5b679c3a24530b15fd26",
     "src/vxstate.c": "7a484ecbf364f6fad58ce0416746d2f7d7df0fca4c2693e77b06e9b9810f803c",
     "src/winhack.h": "27df0e0a223fb66d7fd4fbfa85d52d597d79b49fd0ef87c333f1bbc1f5b932e0",
     "src/wram.h": "63e60087dfdc55f06cc2de72755eb6388e475c28012fcf7d12577fd3a938d04a",
     "src/xpdump.c": "1c378b9e5c799d5b1b726dd3ad7ea677a4f629404794a639c429e4288caf57ee",
-    "build.py": "939a8879d9500851c1d740814c1b6b9c92dd423055827fe961fa8c05f4da1738"
+    "build.py": "6d69d04cadd59b00bd1c2b6083344642fec204c6dfda1eee54b6ad940c7d2cb7"
   }
 }

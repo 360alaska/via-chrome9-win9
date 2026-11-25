@@ -115,7 +115,7 @@ uint32_t VX_D3D_format_bytes(uint32_t);
  * This raw code is translated to VX3DN_TEX_XRGB1555 before submission. */
 #define VX_RAW_555 14UL
 /* v10.199: L8 and DXT1/3/5 (texture use only) */
-#define VX_RAW_L8 30UL
+#define VX_RAW_L8 37UL /* .754 (outside review): was 30, VX3DN_ARGB8888's number (VX_D3D_format_bytes gave 1 for an A8R8G8B8 target) */
 #define VX_RAW_DXT1 31UL
 #define VX_RAW_DXT3 32UL
 #define VX_RAW_DXT5 33UL

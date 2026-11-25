@@ -360,11 +360,11 @@
   ],
   "probe_sha256": "b991925fa0a2b4c715e454563aef6973f66929d380fbf646c5703b7552fb06aa",
   "production_source_sha256": {
-    "src/vx_d3d_core.c": "145a7c1194201edf24afaebc09433c854c0b313fda2d85d96e57e63dfa63ba60",
+    "src/vx_d3d_core.c": "f94e988e258073b4eff8cdf3c1279dc28f3bda9e456c3f49491bc62de86df3cf",
     "src/vx_d3d_core.h": "edb72be383c3e16284b633c0b65df7141778334546cd00cd036c7914633cfa45",
-    "src/vx_d3d_hal.c": "0e7c427f3454cd943779f29512ffb4dc437001c947f7612001011f17480f9320",
-    "src/vx_d3d_legacy.inc": "8a980b4e187fab4f1bccb4addea20e6cf9504cdc401a1e8038221151d77f6ac5"
+    "src/vx_d3d_hal.c": "3c00461c8f9b6e597fa2c5478440b54e5f082f4874ba22aa260c004c9b202c39",
+    "src/vx_d3d_legacy.inc": "80736132d6000b477eb27f220690c43336f7a00424deb58399197ac46030cb61"
   },
-  "tested_hal_sha256": "806bf6587099131b0d6ccc802fe76eac7d44228c69b9bdb0f9aedbf52b888cad",
-  "tested_host_library_sha256": "ffaf60813b20a0d54c51e5eefb854446e1a3cb9f7630ca2c870346ace96f55ca"
+  "tested_hal_sha256": "09362b18c60c1a14fe899c2cfabd723ea6d37c9c277896b46247eb8b8cab5912",
+  "tested_host_library_sha256": "8ae394fa8f2810b5c86b06668fb1f087b0818fa1c9f7521ac488039ce580b772"
 }

@@ -29,15 +29,15 @@ unsigned long VX_tsc(void);
  * lock alone. 0: the system critical section as before. Set once (vx_lock_init, after the registry is read) before any engine call.
  * vx_lk: [0] outermost entries, [1] of them waited, [2] the waits' time (TSC / 256), [3] the longest wait, [4] waits of 2 ms and more,
  * [5] the longest hold, [6] holds of 2 ms and more, [7] 1 the private lock, 2 the system critical section (TEXDBG BC DB, DC clears) */
-volatile unsigned long vx_privlock=1;
+/* .738: vx_privlock removed (the engine's own lock, always) */
 uint32_t vx_lk[8];
 static uint32_t lk_sem,lk_on,lk_owner,lk_depth,lk_waiters,lk_t0,lk_ms2=7800UL;
 extern volatile uint32_t vx_cs_waiter;
 void vx_lock_init(uint32_t cyc_per_ms) {
  if(cyc_per_ms)lk_ms2=(cyc_per_ms*2UL)>>8;
  if(lk_on||lk_owner)return;
- if(vx_privlock&&!lk_sem)lk_sem=Create_Semaphore(0);
- lk_on=vx_privlock&&lk_sem;vx_lk[7]=lk_on?1UL:2UL;
+ if(!lk_sem)lk_sem=Create_Semaphore(0);
+ lk_on=lk_sem!=0;vx_lk[7]=lk_on?1UL:2UL;
 }
 void vx_lock(void) {
  uint32_t t;unsigned long f;
@@ -431,7 +431,7 @@ static int validate_line(const vx2d_request *r) {
  uint32_t adx,ady,n;
  /* both end points on the surface; the line is end-exclusive and nonempty; the engine's counters are 12 bits (major length) and 14 bits (error terms) */
  if(r->dx>=r->dst.width||r->dy>=r->dst.height||r->sx>=r->dst.width||r->sy>=r->dst.height) return 0;
- if(r->flags&~(uint32_t)VX2D_CLIP) return 0; /* .530: styled lines (VX2D_DASH, ACCEL_DASH) removed: the DIB engine draws them */
+ if(r->flags&~(uint32_t)VX2D_CLIP) return 0; /* .530: styled lines (ACCEL_DASH) removed: the DIB engine draws them */
  if(r->rop!=0xF0||r->height!=1) return 0;
  adx=r->sx>r->dx?r->sx-r->dx:r->dx-r->sx; ady=r->sy>r->dy?r->sy-r->dy:r->dy-r->sy;
  n=adx>ady?adx:ady;
@@ -446,10 +446,9 @@ static uint32_t vwhy;
 static int validate(const vx2d_request *r) {
  if(r->cb!=sizeof(*r)||r->abi!=VX2D_ABI)VF(1);
  if(r->bpp!=hda->bpp)VF(2);
- if(r->flags&~511UL)VF(3); /* v10.453: + VX2D_RT */
+ if(r->flags&~(511UL&~64UL))VF(3); /* v10.453: + VX2D_RT. .765 (owner): bit 64 (the styled lines' VX2D_DASH, removed in .530) refused here as no flag; its own check (VF(6)) deleted */
  if(!surface(&r->dst,r->bpp))VF(0x10|sf_why);
  if(r->op!=VX2D_LINE&&!box(&r->dst,r->dx,r->dy,r->width,r->height))VF(5);
- if(r->flags&VX2D_DASH) VF(6);
  if(r->flags&VX2D_CLIP) {
   if(r->left>=r->right||r->top>=r->bottom||r->right>r->dst.width||r->bottom>r->dst.height) VF(7);
  }
@@ -500,6 +499,9 @@ static void note_off(void) {m2d_state=2; fail_gen=vx_status.set_successes;}
 /* .689: the 3D side gave the engine up after hangs it would not reset again (vx_native3d_vxd.c rec_fail) but a last reset left it idle: GDI
  * draws by the CPU until the next mode set, with the display running (VX2D_device_lost holds the display: T689 board A, the screen froze) */
 void VX2D_accel_off(void) {note_off();}
+/* .740 (AD): the 3D side gave the engine back after a give-up (its owner gone, a reset left it idle): GDI may try the engine again, proved
+ * first (vx2d_verify_pending, set by that reset's VX2D_3d_reset), as after a mode set (a windowed program sets no mode) */
+void VX2D_accel_retry(void) {if(m2d_state==2){m2d_state=0;retries++;}}
 static void note_lost(void) {m2d_state=3; lost_gen=vx_status.set_successes;}
 static void unfence(void) {
  if(lost_fenced) {
@@ -1129,8 +1131,16 @@ static int xf_box(uint32_t dx,uint32_t w,uint32_t *x,uint32_t *w32,uint32_t *lp)
 /* the byte range a rectangle of rows reads: rows y0..y0+h-1 of stride st from base, bytes c0..c1-1 of each */
 static uint32_t xf_min=0x400000UL; /* lowest address accepted: application memory 4 MB up; the DRV's own data segment (text buffers) may be anywhere above 64 KB */
 static int xf_range(uint32_t base,int32_t st,uint32_t y0,uint32_t h,uint32_t c0,uint32_t c1,uint32_t *lo,uint32_t *hi) {
- int32_t a=(int32_t)y0*st,b=(int32_t)(y0+h-1)*st; uint32_t first=base+(uint32_t)(a<b?a:b),last=base+(uint32_t)(a<b?b:a);
- if(base<xf_min||first<xf_min||last+c1>0xC0000000UL||last+c1<last) return 0;
+ /* .728 (Fable's check of Gemini's review, #2): with a negative stride base + min(a, b) could wrap below base to a high address and pass
+  * the checks (lo above hi). Rows and stride bounded first so the products fit 32 bits (the VxD has no 64-bit multiply), then a span
+  * below base, or a last byte past 4 GB, refused before adding */
+ int32_t a,b,mn,mx; uint32_t first,last;
+ if(!h||y0>=0x10000UL||h>0x10000UL||y0+h>0x10000UL||st>0x8000L||st<-0x8000L) return 0;
+ a=(int32_t)y0*st; b=(int32_t)(y0+h-1)*st; mn=a<b?a:b; mx=a<b?b:a;
+ if(mn<0&&(uint32_t)(-mn)>base) return 0;
+ first=base+(uint32_t)mn; last=base+(uint32_t)mx;
+ if(mx>0&&last<base) return 0;
+ if(base<xf_min||first<xf_min||last+c1>0xC0000000UL||last+c1<last||first+c0>last+c1) return 0;
  *lo=first+c0; *hi=last+c1; return 1;
 }
 static uint32_t xf_lock_page,xf_lock_n; static int xf_locked;
@@ -1393,12 +1403,21 @@ static uint32_t hc_reg(int k) { /* 0 control 1 image address 2 position 3 origin
 static void hc_ctl(uint32_t c) {hcw(hc_reg(0),c); if(hc_two) hcw(0x260UL,0xB6000004UL|(c&1UL));}
 /* v10.330 (review #188): a hide that could not reach the unit (no mapping, or the native loss fence) is kept pending and tried again at the
  * next hide; it cleared hc_on and was forgotten, so the sprite could stay while the driver counted it hidden */
+/* .765 (audit VXD-H2): hc_hgen, one count a hide. The fast mouse move (VESA_cursor_fast_move) runs outside the lock and without CLI: a
+ * hide between its visibility test and its show turned the cursor back on. The move takes the count before that test and shows only if
+ * no hide came since, its show and the hide's control write each with interrupts off. */
+static volatile uint32_t hc_hgen;
+uint32_t VX2D_hwcur_hgen(void) {return hc_hgen;}
 void VX2D_hwcur_hide(void) {
+ unsigned long f;
+ hc_hgen++;
  hc_pos_ok=0;
  if(!hc_on&&!hc_off_pending) return;
+ f=VX_irq_save();
  if(hc_on) {hc_on=0; hc_hides++;}
  if(vx2d_hwcur&&hc_ready&&hc_map_off()) {hc_ctrl&=~1UL; hc_ctl(hc_ctrl); hc_off_pending=0;}
  else hc_off_pending=(vx2d_hwcur&&hc_ready)?1:0;
+ VX_irq_restore(f);
 }
 /* v10.258: brightness (0..255*1000) for the mono cursor's two colours; a 24-bit colour as the mono cursor's colour registers take it
  * (10 bits a channel, red 29:20, green 19:10, blue 9:0, as viafb writes them for VX855; white = 3FFFFFFF, black = 0) */
@@ -1435,7 +1454,9 @@ int VX2D_hwcur_set(const uint32_t *am,const uint32_t *xm,uint32_t stride,uint32_
  hc_ready=1; hc_sets++; return 1;
 }
 /* position of the image's top left corner (may be negative); shows the cursor when it was hidden */
-int VX2D_hwcur_move(int32_t x,int32_t y) {
+int VX2D_hwcur_move_g(int32_t x,int32_t y,uint32_t g);
+int VX2D_hwcur_move(int32_t x,int32_t y) {return VX2D_hwcur_move_g(x,y,hc_hgen);}
+int VX2D_hwcur_move_g(int32_t x,int32_t y,uint32_t g) { /* .765: g, the hide count when the caller looked */
  uint32_t xo=0,yo=0;
  VX3DN_ev(14,0);
  if(!hc_ready||!vx2d_hwcur||!hc_map()) return 0;
@@ -1449,8 +1470,11 @@ int VX2D_hwcur_move(int32_t x,int32_t y) {
  hcw(hc_reg(2),((uint32_t)x<<16)|((uint32_t)y&0x7FFUL)); hcw(hc_reg(3),(xo<<16)|(yo&0x7FFUL));
  if(hc_two) {hcw(0x208UL,((uint32_t)x<<16)|((uint32_t)y&0x7FFUL)); hcw(0x20CUL,(xo<<16)|(yo&0x7FFUL));} /* .598 */
  hc_moves++;
- if(!hc_on) {hc_on=1; hc_shows++; hc_ctrl|=1UL; hc_ctl(hc_ctrl);}
- hc_pos_ok=1;
+ {unsigned long f=VX_irq_save();
+  if(hc_hgen!=g) {VX_irq_restore(f); return 1;} /* .765: hidden since the caller looked: stays hidden */
+  if(!hc_on) {hc_on=1; hc_shows++; hc_ctrl|=1UL; hc_ctl(hc_ctrl);}
+  hc_pos_ok=1;
+  VX_irq_restore(f);}
  return 1;
 }
 int VX2D_hwcur_active(void) {return hc_on;}
@@ -1491,6 +1515,7 @@ static uint32_t ov_nv12(const vx_ovl_req *q) {
   for(;x<w2;x++) {d[2*x]=a[x]; d[2*x+1]=b[x];}
   d+=q->pitch;
  }
+ if(rows)(void)*(volatile uint32_t*)(d-q->pitch); /* .726 (outside review of .723): the write-combined chroma drained before the HQV is started on it (as the cursor's image is, v10.327) */
  return off;
 }
 /* the previous command must have been loaded. v10.337 (board, VXPROBE ovkey: of two UpdateOverlay calls in a row, the second was refused
@@ -1765,7 +1790,7 @@ void VX2D_ovl(const vx_ovl_req *q,uint32_t *r) {
     if(!ov_src_ok(&t,ov_planar(t.fmt))) {ov_reason=6; rc=1; ov_refused++; break;}} /* v10.288: a bad new source is refused; the current frame stays */
    ov_last.offset=q->offset;
    if(!ov_want) {rc=0; break;}
-   if(ov_hqv_on&&hc_map()&&ov_hqv_on) { /* through the scaler: the HQV takes the new source and the V1 unit follows it */
+   if(ov_hqv_on&&hc_map()) { /* through the scaler: the HQV takes the new source and the V1 unit follows it */
     uint32_t n;
     if(ov_last.flags&VXO_BOB) ov_odd=(q->flags&VXO_FLD_ODD)?1:(q->flags&VXO_FLD_EVEN)?0:!ov_odd;
     for(n=0;n<50000UL&&(rd(0x3D0UL)&0x10UL);n++) ;
@@ -2141,7 +2166,7 @@ static void control_body(uint32_t value,uint32_t *out) {
  if((value&0xFF000000UL)==0xF4000000UL) {vx2d_prof=value&1UL; if(vx2d_prof) {for(i2=0;i2<8;i2++) ph_sum[i2]=0; ph_n=0;} out[0]=vx2d_prof; out[1]=ph_n; out[2]=0; out[3]=0; vx_unlock(); return;} /* v10.132: phase profile on/off */
  if((value&0xFF000000UL)==0xF3000000UL) {vx2d_str_fuse=value&1UL; out[0]=vx2d_str_fuse; out[1]=str_fused_rows; out[2]=str_ops; out[3]=0; vx_unlock(); return;} /* v10.132: fused 1-bit expansion */
  if((value&0xFF000000UL)==0xEB000000UL) {vx2d_keep=value&1UL; if(!vx2d_keep) k_release(); out[0]=vx2d_keep; out[1]=keep_opens; out[2]=keep_releases; out[3]=keep.open; vx_unlock(); return;} /* v10.144: kept engine context */
- if(value==0xFFFFFE50UL) {extern volatile unsigned long vx_accel_d3d; {extern int VX_chip_accel(void); out[0]=VX_chip_accel()?vx_accel_d3d:0UL;} /* .598 (VX900 board, VXREG v1.58: the HAL offered Direct3D with the 3D engine not driven; every ContextCreate would then fail instead of the application taking the software device): ACCEL_D3D answers 0 there */ out[1]=0x56584433UL; {extern volatile unsigned long vx_heap_align; out[2]=0x100UL|(vx_heap_align&1);} {extern volatile unsigned long vx_d3d_log; extern volatile unsigned long vx3dn_ckey; out[2]|=0x400UL|((vx_d3d_log&1)<<1)|((vx3dn_ckey&1)<<2)|(((vx_d3d_log>>1)&1)<<13);{extern volatile unsigned long vx3dn_delta; /* .524: ACCEL_D3D_DELTA, bit 20 */ out[2]|=0x800UL|((vx_d3d_rttex&1)<<3)|((vx_d3d_mipcap&1)<<4)|((vx_d3d_texhint&1)<<5)|((vx_d3d_indexed&1)<<7)|((vx_d3d_rtnowait&1)<<12)|((vx_d3d_ixpass&1)<<16)|((vx_d3d_infocache&1)<<17)|((vx_d3d_v8&1)<<19)|((vx3dn_delta&1)<<20)|((vx_d3d_tnl&1)<<21);}} /* v10.179: bit 8 = field valid, bit 0 = ACCEL_HEAP_ALIGN; v10.202: bit 10 valid, bit 1 = ACCEL_D3D_LOG; v10.208: bit 2 = ACCEL_D3D_CKEY */ {extern volatile unsigned long vx_d3d_feat_cfg; out[3]=0x80000000UL|(vx_d3d_feat_cfg&0x7FFFFFFFUL);} /* v10.212: bit 31 valid, the ACCEL_D3D_* feature switches */ vx_unlock(); return;} /* v10.149: registry ACCEL_D3D for the HAL's DriverInit */
+ if(value==0xFFFFFE50UL) {extern volatile unsigned long vx_accel_d3d; {extern int VX_chip_accel(void); out[0]=VX_chip_accel()?vx_accel_d3d:0UL;} /* .598 (VX900 board, VXREG v1.58: the HAL offered Direct3D with the 3D engine not driven; every ContextCreate would then fail instead of the application taking the software device): ACCEL_D3D answers 0 there */ out[1]=0x56584433UL; {out[2]=0x101UL; /* .737: the heap always rounded (vx_heap_align removed) */} {extern volatile unsigned long vx_d3d_log; extern volatile unsigned long vx3dn_ckey; out[2]|=0x400UL|((vx_d3d_log&1)<<1)|((vx3dn_ckey&1)<<2);{extern volatile unsigned long vx3dn_delta; /* .524: ACCEL_D3D_DELTA, bit 20 */ out[2]|=0x800UL|((vx_d3d_rttex&1)<<3)|((vx_d3d_mipcap&1)<<4)|((vx_d3d_texhint&1)<<5)|((vx_d3d_indexed&1)<<7)|((vx_d3d_rtnowait&1)<<12)|((vx_d3d_ixpass&1)<<16)|((vx_d3d_infocache&1)<<17)|((vx_d3d_v8&1)<<19)|((vx3dn_delta&1)<<20)|((vx_d3d_tnl&1)<<21);}} /* v10.179: bit 8 = field valid, bit 0 = ACCEL_HEAP_ALIGN; v10.202: bit 10 valid, bit 1 = ACCEL_D3D_LOG; v10.208: bit 2 = ACCEL_D3D_CKEY */ {extern volatile unsigned long vx_d3d_feat_cfg; out[3]=0x80000000UL|(vx_d3d_feat_cfg&0x7FFFFFFFUL);} /* v10.212: bit 31 valid, the ACCEL_D3D_* feature switches */ vx_unlock(); return;} /* v10.149: registry ACCEL_D3D for the HAL's DriverInit */
  if(value==0xFFFFFE3FUL) {out[0]=keep_opens; out[1]=keep_releases; out[2]=keep.open; out[3]=vx2d_keep; vx_unlock(); return;}
  if((value&0xFFFFFFE0UL)==0xFFFFFE40UL&&(value&31UL)<19UL) {uint32_t k=value&31UL; out[0]=m2d_linear?rd(saved_regs[k]):0xFFFFFFFFUL; out[1]=saved_regs[k]; out[2]=keep.saved[k]; out[3]=keep.open; vx_unlock(); return;} /* v10.144: register k of the 19 now, and in the kept context */
  if((value&0xFF000000UL)==0xEC000000UL) {vx2d_prefilter=value&1UL; out[0]=vx2d_prefilter; out[1]=vx2d_ops; out[2]=vx2d_fallbacks; out[3]=0; vx_unlock(); return;} /* v10.142: DRV size pre-check */
@@ -2156,7 +2181,6 @@ static void control_body(uint32_t value,uint32_t *out) {
  if(value==0xFFFFFE12UL) {out[0]=async_ops; out[1]=async_waits; out[2]=pend.active; out[3]=(vx2d_async?1:0)|(vx2d_async_gate?2:0); vx_unlock(); return;}
  if((value&0xFF000000UL)==0xFC000000UL) {vx2d_async=value&1; out[0]=async_ops; out[1]=async_waits; out[2]=m2d_state; out[3]=flags(); vx_unlock(); return;}
  if((value&0xFF000000UL)==0xFD000000UL) {vx2d_async_gate=value&1; out[0]=async_ops; out[1]=async_waits; out[2]=m2d_state; out[3]=flags(); vx_unlock(); return;}
- /* v10.92: 0xFE000000 | k << 20 | v (20 bits) sets styled-line parameter k (0 on/off, 1 opaque command bits, 2 transparent command bits, 3 format) for a test; VX2D_REGISTRY restores the registry values. */
  /* v10.116: 0xFFFFFE18 reads the system-memory drawing counters: out[0] XF_MONO, out[1] XF_STAGE, out[2] XF_TEXT, out[3] spans; 0xFFFFFE19: out[0] calls handed back, out[1] the last reason, out[2] the live mask, out[3] the staging block's offset;
   * 0xF7000000 | mask sets the live mask (ACCEL_HOST bits) and the DRV's copy of it. */
  if(value==0xFFFFFE1BUL) {out[0]=ss_saves; out[1]=ss_restores; out[2]=ss_refused; out[3]=vx2d_save_off; vx_unlock(); return;} /* v10.124 SaveScreenBitmap counters */

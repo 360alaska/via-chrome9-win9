@@ -142,7 +142,7 @@ def rebase_checks():
    if n not in ('FBHDA_access_begin','FBHDA_access_end','FBHDA_access_rect'):
     return super().hook(n,fn)
  def cursor(bpp):
-  g=CursorGPU(bpp);g.hook('FBHDA_lock',lambda:1);g.hook('FBHDA_unlock',lambda:0);g.hook('FBHDA_release',lambda:0) # v10.319
+  g=CursorGPU(bpp);g.hook('FBHDA_lock',lambda:1);g.hook('FBHDA_release',lambda:0) # v10.319 (.765: FBHDA_unlock deleted)
   g.u.mem_write(g.addr('vx2d_hwcur'),pack([0]))
   anchor=g.addr('vesa_version');assert g.word(anchor+8)==0xffffffff
   g.u.mem_write(anchor+8,pack([0])) # act_mode, immediately after vesa_caps
@@ -1031,6 +1031,17 @@ def checks():
  g=NativeGPU();g.seq[0x1a]=0;g.seq[0x1e]=0
  assert g.submit(packet())==0 and g.seq[0x1a]==0 and g.seq[0x1e]==0
  cases.append('successful native completion restores temporary MMIO and clock-enable bits')
+ # .740 (AD): a give-up owned by a handle is lifted at the next readiness question once that handle has closed, not before, not by another
+ g=NativeGPU();g.u.mem_write(g.addr('vx3dn_ioctl_hdev'),pack([0x1234]));g.call('VX3DN_test_giveup');g.call('VX3DN_info',(ARENA+0xc000,))
+ assert g.word(ARENA+0xc000+8)==0 and g.word(g.addr('vx3dn_gave_up'))==1,'given up'
+ g.call('VX3DN_owner_close',(0x9999,));g.call('VX3DN_info',(ARENA+0xc000,))
+ assert g.word(ARENA+0xc000+8)==0 and g.word(g.addr('vx3dn_lift'))==0,'another handle closed: still given up'
+ g.call('VX3DN_owner_close',(0x1234,));g.call('VX3DN_info',(ARENA+0xc000,))
+ lift=[g.word(g.addr('vx3dn_lift')+4*k) for k in range(4)]
+ assert lift[0]==1 and lift[1]==1 and g.word(g.addr('vx3dn_gave_up'))==0 and g.word(ARENA+0xc000+8)==1,(lift,'not given back')
+ g.port_trace.clear() if hasattr(g.port_trace,'clear') else None
+ assert g.submit(packet())==0,'3D draws again after the lift'
+ cases.append('.740 AD: a 3D give-up is given back (engine reset, idle) once its owner handle has closed; another handle closing leaves it off')
  g=NativeGPU();g.call('VX2D_device_lost');g.call('VX3DN_info',(ARENA+0xc000,))
  assert g.word(ARENA+0xc000+8)==0 and g.submit(packet())==4 and not g.port_trace
  cases.append('a preexisting 2D device-loss latch also prevents native 3D submission')
@@ -1105,7 +1116,6 @@ def checks():
  g=NativeGPU();attempts=[]
  g.hook('VX2D_lost',lambda:1)
  g.hook('FBHDA_lock',lambda:attempts.append('lock') or 0)
- g.hook('FBHDA_unlock',lambda:attempts.append('unlock') or 0)
  g.hook('FBHDA_release',lambda:attempts.append('unlock') or 0) # v10.319 (audit V1): the release with the lock's own answer
  def mode_attempt():
   attempts.append(tuple(g.arg(i) for i in range(5)));return 0
@@ -1169,6 +1179,7 @@ def checks():
  cases+=texrun_checks() # .528
  cases+=indexed_checks() # v10.470
  cases+=texonly_checks() # v10.450
+ cases+=tptier_checks() # .762
  cases+=ringblt_checks() # v10.453
  cases+=query_checks() # v10.322
  cases+=prof_checks() # v10.329
@@ -1238,10 +1249,9 @@ def indexed_checks():
    if getattr(s,'nofence',0): # the groups are fetched (43C moves on) but their fences never land: every group stays in flight
     for o,c in s.fences[n:]:s.u.mem_write(FB+o,pack([0]))
    return r
- def run(va,batches,stuck=False,slots=0,chip900=0,seam=0):
-  g=RecGPU(32);g.seq[0x1a]=8;g.seq[0x1e]=1;g.u.mem_write(g.addr('vx3dn_va_off'),pack([va]));g.nofence=stuck
+ def run(va,batches,stuck=False,slots=0,chip900=0,fuse=1,direct=1):
+  g=RecGPU(32);g.seq[0x1a]=8;g.seq[0x1e]=1;g.u.mem_write(g.addr('vx3dn_va_off'),pack([va]));g.nofence=stuck;g.u.mem_write(g.addr('vx3dn_ixfuse'),pack([fuse]));g.u.mem_write(g.addr('vx3dn_ixdirect'),pack([direct]))
   if chip900:g.u.mem_write(g.addr('vx3dn_chip900'),pack([1]))
-  if seam:g.u.mem_write(g.addr('vx3dn_seam'),pack([seam]))
   if slots:g.u.mem_write(g.addr('vx3dn_va_nslots'),pack([slots]))
   for q in batches:
    g.u.mem_write(BATCH,b''.join(bytes(x[0]) for x in q));g.u.mem_write(ARENA+0xc800,pack([0xEEEE]))
@@ -1256,6 +1266,31 @@ def indexed_checks():
   need=(len(w)*4+SLOT-1)//SLOT # .559: by its bytes (three slots past 480 eight-word vertices)
   if sl+need>nsl:sl=0
   assert [g.word(FB+VA+sl*SLOT+4*j) for j in range(len(w))]==w,('slot',k,sl);sl+=need
+ assert g.word(g.addr('vx3dn_ixfuse_n'))==len(P),g.word(g.addr('vx3dn_ixfuse_n')) # .732: every packet copied and tested in one pass
+ g0,st0,va0=run(VA,batches,fuse=0);assert g0.word(g0.addr('vx3dn_ixfuse_n'))==0 and (st0,va0)==(st,va) and g0.got==g.got,'.732: IXFUSE 0 sends the same words'
+ ixd=lambda g:[g.word(g.addr('vx3dn_ixdirect_stat')+4*k) for k in range(4)]
+ assert ixd(g)==[len(P),sum(u32(b,108) for b,i,w in P),0,0],ixd(g) # .768B: every packet's words straight from the caller's packet into its slot
+ gd,std,vad=run(VA,batches,direct=0);assert ixd(gd)==[0,0,0,0] and (std,vad)==(st,va) and gd.got==g.got,'.768B: IXDIRECT 0 sends the same words'
+ sl=0
+ for k,(b,ix,w) in enumerate(P):
+  need=(len(w)*4+SLOT-1)//SLOT
+  if sl+need>nsl:sl=0
+  assert [gd.word(FB+VA+sl*SLOT+4*j) for j in range(len(w))]==w,('IXDIRECT 0 slot',k,sl);sl+=need
+ b0=bytearray(bytes(P[0][0]));w0=P[0][2];vo=bytes(b0).find(pack(w0[:10]));assert vo>0,vo # .732: a NaN x in the caller's words is refused (tested on the copy)
+ b0[vo:vo+4]=pack([0x7FC00000])
+ for dr in (1,0): # .768B: refused with IXDIRECT (at the upload: nothing of the packet kept) and without (by the validation)
+  for vaa in (VA,0): # and with no vertex area (the words copied into the packet first, tested there)
+   gb=RecGPU(32);gb.seq[0x1a]=8;gb.seq[0x1e]=1;gb.u.mem_write(gb.addr('vx3dn_va_off'),pack([vaa]));gb.u.mem_write(gb.addr('vx3dn_ixdirect'),pack([dr]))
+   gb.u.mem_write(BATCH,bytes(b0));gb.u.mem_write(ARENA+0xc800,pack([0xEEEE]));r=gb.call('VX3DN_submit_batch',(BATCH,1,ARENA+0xc800))
+   assert r!=0 and gb.word(ARENA+0xc800)==0,(dr,vaa,r,gb.word(ARENA+0xc800))
+   assert ixd(gb)[3]==dr and ixd(gb)[0]==0,(dr,vaa,ixd(gb))
+   assert not any(x==0x20000001 for x in gb.got),'.768B: an index burst sent for a refused packet'
+ for bad in (0x7F800000,0x3F800001): # .768B: a word the validation's tests refuse in another place: z past 1 (the third word), and an infinite u
+  b1=bytearray(bytes(P[0][0]));at=vo+(8 if bad==0x3F800001 else 24);b1[at:at+4]=pack([bad])
+  for dr in (1,0):
+   gb=RecGPU(32);gb.seq[0x1a]=8;gb.seq[0x1e]=1;gb.u.mem_write(gb.addr('vx3dn_va_off'),pack([VA]));gb.u.mem_write(gb.addr('vx3dn_ixdirect'),pack([dr]))
+   gb.u.mem_write(BATCH,bytes(b1));gb.u.mem_write(ARENA+0xc800,pack([0xEEEE]));r=gb.call('VX3DN_submit_batch',(BATCH,1,ARENA+0xc800))
+   assert r!=0 and gb.word(ARENA+0xc800)==0,(hex(bad),dr,r)
  got=g.got;n3=sum(1 for x in got if x==0x20000001);nb=sum((len(ix)+959)//960 for b,ix,w in P);assert n3==nb and 0x20000003 not in got,(n3,nb) # .555: XP's form, 04/20 = 1, up to 960 indices a burst
  for b,ix,w in P: # every burst's indices fetched in order, two a word (the first in the low half), after its 04/24 count
   for o in range(0,len(ix),960):
@@ -1277,7 +1312,7 @@ def indexed_checks():
  for code,sub in ((0xBC,0xC6),(0xBA,0),(0x6E,0),(0xBC,0xCC),(0x76,0),(0xB8,0),(0xA8,0),(0xBE,0),(0x64,0),(0xA3,0),(0x34,0),(0x74,0),(0x7C,0),(0xA5,0),(0xB7,0),(0xCE,0),(0xE0,0)): # v10.477: the A/B's 76 and B8 too; v10.479: the last reads (64 latencies, A3 fetch ...)
   g0=gen();assert texdbg(code,sub)==0 and gen()==g0,(hex(code),hex(sub),g0,gen())
  g0=gen();assert texdbg(0x50)==0 and gen()==g0+1,(g0,gen())
- cases.append(f'v10.470 INDEXED: {len(P)} indexed packets through XP\'s ring: their vertices written once into slots of the vertex area, their indices fetched after 04/20 = 3 in {nb} bursts; v10.473: their copy-in and validation counted apart, a retire for a CPU access counted under the cause its caller set; v10.476: TEXDBG reads leave the state cache, a switch starts it over')
+ cases.append(f'.768B IXDIRECT: {len(P)} packets\' vertices straight from the caller\'s packet into their slots, the same words as with IXDIRECT 0; a NaN x, a z past 1 and an infinite u refused at the upload (and with no vertex area), no index burst sent'); cases.append(f'v10.470 INDEXED: {len(P)} indexed packets through XP\'s ring: their vertices written once into slots of the vertex area, their indices fetched after 04/20 = 3 in {nb} bursts; v10.473: their copy-in and validation counted apart, a retire for a CPU access counted under the cause its caller set; v10.476: TEXDBG reads leave the state cache, a switch starts it over')
  # .627: the VX900 by index (board, VX93D INDEX v1.9 on .625): the vertices at the next KB in their slot, the five descriptors with their
  # offsets, five table words (base | 8 words a vertex) under 30030000, 04/20 = 1, no 04/21 or 04/22, the descriptors without offsets after
  g9,st9,va9=run(VA,batches,chip900=1)
@@ -1295,26 +1330,20 @@ def indexed_checks():
  assert sum(1 for i in range(len(got9)-4) if got9[i:i+5]==[0x010000C2,0x020001D1,0x030002D1,0x04000342,0x05000442])>=len(P)
  assert not any(x==(0x22000000|(32<<8)) or x==(0x21000000|(VA&0xFFFFFF)) for x in got9),'04/21, 04/22 written on the VX900'
  cases.append(f'.627 INDEXED on the VX900: {len(P)} packets drawn by index: vertices at a KB boundary in their slots, descriptors with offsets, five table words under 30030000, 04/20 = 1 in {nb} bursts, no 04/21-22, the descriptors without offsets again after')
- # .628: the seam cover (ACCEL_D3D_SEAM 0x0201: 1/16 right, 2/16 down): every index burst of an opaque packet with depth test and write is sent
- # a second time between the offset moved (the VX855's 04/41, 04/44; the VX900's constant 0) and put back; other packets are sent once
+ # .739: the seam cover (.628-.631, ACCEL_D3D_SEAM) deleted: an opaque depth-writing packet's index bursts are sent once, with no moved copy
  def zed(b): # the fixture's packets with a depth buffer after the target, depth test and write on, no blending
   b=bytearray(bytes(b));to,tp,tw,th=u32(b,20),u32(b,24),u32(b,28),u32(b,32);zo=(to+tp*th+0xFFFF)&~0xFFFF;zp=(tw*2+31)&~31
   b[40:60]=pack([zo,zp,tw,th,12]);b[76:92]=pack([1,1,4,0]);return b
  PZ=[(zed(b),i,w) for b,i,w in P];bz=[PZ[:3],PZ[3:]] if len(PZ)>3 else [PZ]
  for chip in (0,1):
-  g0,st0,va0=run(VA,bz,chip900=chip);h0=sum(1 for i in range(len(g0.got)-1) if g0.got[i]>>24==0x23 and g0.got[i+1]>>24==0x24)
-  gs,sts,vas=run(VA,bz,chip900=chip,seam=0x0201);gg=gs.got
-  ss=[gs.word(gs.addr('vx3dn_seam_stat')+4*k) for k in range(2)]
-  heads=sum(1 for i in range(len(gg)-1) if gg[i]>>24==0x23 and gg[i+1]>>24==0x24)
-  if chip:on=sum(1 for i in range(len(gg)-3) if gg[i:i+4]==[0x49400001,0x49400002,0,0]);off=sum(1 for i in range(len(gg)-3) if gg[i:i+4]==[0x49400000,0x49400000,0,0])
-  else:on=sum(1 for i in range(len(gg)-1) if gg[i:i+2]==[0x41400001,0x44400002]);off=sum(1 for i in range(len(gg)-1) if gg[i:i+2]==[0x41400000,0x44400000])
-  assert st0[0]==len(P) and sts[0]==len(P),(st0,sts)
-  assert on==nb and heads==h0+nb and ss==[len(P),sum(len(i) for b,i,w in P)] and off>=on,(chip,ss,heads,h0,on,off,nb)
-  assert sum(1 for x in gg if x==0x01CE1548)==nb and sum(1 for x in gg if x==0x01CE154C)>=nb,'.631: the moved copy first and without depth write (01/01 = CE1548), then depth write back (CE154C)'
-  k1=gg.index(0x01CE1548);k2=gg.index(0x01CE154C,k1);assert any(x>>24==0x24 for x in gg[k1:k2]) and any(x>>24==0x24 for x in gg[k2:k2+40]),'the copy between the two 01/01 writes, the burst itself after'
- cases.append('.628 the seam cover: each index burst of an opaque depth-writing packet sent a second time with the screen offset moved by 1/16 and 2/16 pixel and put back (VX855 04/41, 04/44; VX900 constant 0); other packets once')
+  g0,st0,va0=run(VA,bz,chip900=chip);gg=g0.got;h0=sum(1 for i in range(len(gg)-1) if gg[i]>>24==0x23 and gg[i+1]>>24==0x24)
+  assert st0[0]==len(P) and h0>=nb,(st0,h0,nb)
+  assert 0x01CE1548 not in gg and not any(gg[i:i+2]==[0x41400001,0x44400002] for i in range(len(gg)-1)),'a moved copy sent'
+ cases.append('.739 the seam cover gone: each index burst of an opaque depth-writing packet sent once, no moved copy (VX855 and VX900)')
  g,st,va=run(0,batches)
  assert st[0]==0 and st[1]>=len(P) and st[1]<=2*len(P),st # .559: a packet of 512 vertices expanded inline (some 8,300 words) can pass the room left in its group: it is written again as the next group's first (counted each time)
+ assert ixd(g)[0]==0 and ixd(g)[2]>=len(P) and ixd(g)[3]==0,ixd(g) # .768B: no slot: copied into the packet first, then expanded
+ gd,std,vad=run(0,batches,direct=0);assert (std,vad)==(st,va) and gd.got==g.got,'.768B: IXDIRECT 0 expands the same words'
  cases.append('v10.470 INDEXED: no vertex area: every indexed packet drawn with its indices expanded inline')
  # .564: three slots (one large packet's): each packet after the first finds none free, its expansion (some 8,000 words) is more than a
  # group holds: the work in flight is waited for and the packet drawn by index (.559-.563: through the registers, the ring stopped)
@@ -1701,6 +1730,57 @@ def texonly_checks():
  cases.append('v10.450 ACCEL_D3D_TEXONLY (default 1): a packet whose state differs from the last only in its textures (surface, filter, addressing) fetches the strobe and the texture units only: the engine\'s registers and blocks after every packet the same as with the whole set-up; a depth-test change and the first packet send it whole; %d of %d words fetched'%(sum(b[1]),sum(a[1])))
  return cases
 
+def tptier_checks():
+ """.762: VXREG SETUP (vx3dn_setup_lvl): bit 0, a packet that differs from the last only in its textures and its program fetches the strobe,
+ the texture units and the program set-up, not setup(); bit 1, a texture set-up followed by a program set-up leaves out its default
+ program and 7-word layout. After every packet the engine's registers and data blocks are the same as with both off; fewer words."""
+ import sys
+ sys.path.insert(0,str(ROOT/'tests'));import test_core as T
+ cases=[]
+ D=prepack_packets();A=bytes(D['tx96'][1]);TWO=bytes(D['two'][1]);S30=bytes(D['tx30'][1])
+ to=T.Packet.tex.offset;so=to+T.Texture.surface.offset;sh=T.Packet.shader.offset
+ assert u32(A,sh+T.Shader.count.offset)>0 and u32(TWO,sh+T.Shader.count.offset)>0
+ B=bytearray(A);struct.pack_into('<I',B,so,u32(B,so)+0x1000) # a texture and a program word
+ w1=sh+T.Shader.words.offset+4;struct.pack_into('<I',B,w1,u32(B,w1)^0x100)
+ P=bytearray(A);struct.pack_into('<I',P,w1,u32(P,w1)^0x200) # the program alone
+ C=bytearray(B);zf=T.Packet.z_func.offset;struct.pack_into('<I',C,zf,u32(C,zf)%8+1) # and the depth test: the whole set-up
+ R=T.Packet.raster.offset;zw=T.Packet.z_write.offset;bo=T.Packet.blend.offset
+ Z=bytearray(B);struct.pack_into('<I',Z,zw,1-u32(Z,zw));struct.pack_into('<I',Z,bo,1);struct.pack_into('<2I',Z,R,5,6) # .763: and Z write, blend SRCALPHA / INVSRCALPHA
+ Q=bytearray(Z);struct.pack_into('<2I',Q,R+8,5,128) # and an alpha test GREATER 128
+ W=bytearray(Q);struct.pack_into('<I',W,R,14|(0x00804020<<8));struct.pack_into('<I',W,R+4,2) # and a constant colour factor
+ K=bytearray(A);kf=sh+T.Shader.kflags.offset;struct.pack_into('<I',K,kf,u32(K,kf)|1);struct.pack_into('<4I',K,sh+T.Shader.konst.offset,0x3F000000,0x3E800000,0x3F400000,0x3F800000) # a constant
+ seq=[A,bytes(B),A,TWO,A,bytes(P),bytes(C),bytes(B),bytes(K),A,TWO,bytes(C),S30,bytes(K),TWO,bytes(P),bytes(Z),A,bytes(Q),bytes(B),bytes(W),bytes(Z),bytes(W),A,bytes(Q),TWO,bytes(Z)]
+ class RecGPU(XRGPU):
+  def __init__(s,*a,**k):super().__init__(*a,**k);s.got=[]
+  def fetch_2d(s,a,b):
+   if s.gmode and b>a:s.got.extend(s.gwords(a,(b-a)//4))
+   return super().fetch_2d(a,b)
+ def apply(st,words):
+  for t,b in decode(words):
+   if t!='43C' or not b[0]:continue
+   h,body=b[0],b[1:]
+   if ((h>>16)&0xFF)==0x03 or h==0x00FE0000:st[('data',h)]=tuple(body)
+   else:
+    for w in body:st[(h,w>>24)]=w&0xFFFFFF
+ def run(lvl):
+  g=RecGPU(32);g.seq[0x1a]=8;g.seq[0x1e]=1;g.u.mem_write(g.addr('vx3dn_setup_lvl'),pack([lvl]))
+  st={};snaps=[];nw=[]
+  for p in seq:
+   g.got=[];g.u.mem_write(BATCH,p);g.u.mem_write(ARENA+0xc800,pack([0xEEEE]))
+   assert (g.call('VX3DN_submit_batch',(BATCH,1,ARENA+0xc800)),g.word(ARENA+0xc800))==(0,1)
+   apply(st,g.got);snaps.append(dict(st));nw.append(len(g.got))
+  assert g.call('VX3DN_busy',())==0
+  return snaps,nw,[g.word(g.addr('vx3dn_tp_stat')+4*k) for k in range(3)]
+ L=(0,1,2,3,9,11);r=[run(l) for l in L]
+ for l in range(1,len(L)):
+  for k in range(len(seq)):assert r[0][0][k]==r[l][0][k],(L[l],k,{x:(r[0][0][k].get(x),r[l][0][k].get(x)) for x in set(r[0][0][k])|set(r[l][0][k]) if r[0][0][k].get(x)!=r[l][0][k].get(x)})
+ st=[x[2] for x in r];nw=[sum(x[1]) for x in r]
+ assert st[0]==[0,0,0] and st[1][0]>=8 and st[1][2]==0 and st[2][0]==0 and st[3][0]==st[1][0] and st[4][2]>=6 and st[4][0]==st[1][0]+st[4][2] and st[5]==st[4],st
+ assert nw[3]<nw[1]<nw[0] and nw[3]<nw[2]<nw[0] and nw[5]<nw[3] and nw[4]<nw[1],nw
+ assert all(r[5][1][k]<=r[0][1][k] for k in range(len(seq)))
+ cases.append('.762 / .763 set-up tiers (vx3dn_setup_lvl): the texture + program tier (bit 0: %d of %d packets), the raster tier (bit 3: %d more, Z write, blend and alpha test changed too) and the texture set-up without its default program (bit 1): the engine\'s registers and blocks after every packet the same as with all off, over textures, program words, a constant, one and two units, blend factors, an alpha test and a depth-test change; words fetched %s for levels %s'%(st[1][0],len(seq),st[4][2],nw,L))
+ return cases
+
 def wprof_checks():
  """v10.440: the command words by part (TEXDBG BC 9E-A1): off until turned on; each packet's words split into the set-ups, the vertex
  words and the rest, adding up to its words in the ring; vertices and triangles; a set-up the same words as the last packet's counted
@@ -1845,7 +1925,14 @@ def lock_checks():
  assert ev==[('W',0x5E5)]+[('L',e0)]*3+[('S',0x5E5)] and g.word(lk0)==e0,ev
  ev.clear();g.call('VX_lock_close',(0x11,));assert ev==[('W',0x5E5)]+[('U',e0)]*3+[('S',0x5E5)] and g.word(lk0)==e0,ev
  cases.append('.713: the page-lock table under its own semaphore (one token, made once), not the engine lock: requests and handle closes take it around _LinPageLock / _LinPageUnLock, the engine lock never entered (the .515 order kept)')
+ # .725 (review of .723): without the semaphore the table refuses every request; the engine lock is not taken in its place (the AB-BA order)
+ g=NativeGPU(32);ev=[];lk0=g.addr('vx_lk');g.hook('__LinPageLock',lambda:(ev.append('L'),1)[1])
+ e0=g.word(lk0);g.call('VX_lock_request',(1,0xA0000000,0x3000,0x11,ARENA+0x3100))
+ assert ev==[] and g.word(lk0)==e0 and [g.word(ARENA+0x3100+4*i) for i in range(3)]==[0,0,0],(ev,[g.word(ARENA+0x3100+4*i) for i in range(3)])
+ g.call('VX_lock_close',(0x11,));assert g.word(lk0)==e0
+ cases.append('.725: without the page-lock semaphore a LOCKMEM request is refused (nothing locked, the engine lock not taken in its place)')
  g=NativeGPU(32);locks=[];unlocks=[]
+ g.hook('_Create_Semaphore',lambda:0x5E5);g.hook('_Wait_Semaphore',lambda:0);g.hook('_Signal_Semaphore',lambda:0);g.call('VX_lock_table_init')
  g.hook('__LinPageLock',lambda:(locks.append((g.arg(0),g.arg(1),g.arg(2))),1)[1])
  g.hook('__LinPageUnLock',lambda:(unlocks.append((g.arg(0),g.arg(1),g.arg(2))),1)[1])
  out=ARENA+0x3100

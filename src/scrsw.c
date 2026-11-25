@@ -168,7 +168,7 @@ void SwitchToBgnd( void )
 
 		VESA_HIRES_disable();
 
-    lpDriverPDevice->deFlags |= BUSY;   /// @todo Does this need to be a locked op?
+    if( lpDriverPDevice ) lpDriverPDevice->deFlags |= BUSY;   /* .729 (review of .723, #5): no device yet (SwitchToFgnd checks it too) */
     wEnabled = 0;
 }
 

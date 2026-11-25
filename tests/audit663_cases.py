@@ -94,8 +94,11 @@ def c08():
  D=m4(2,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)
  vs=b''.join(struct.pack('<3fI4f',x,y,.5,0xFFFFFFFF,.25,.5,.3,.4) for x,y in ((-.5,-.5),(.5,-.5),(-.5,.5)))
  t.calls.clear();rc=t.run_dp2(PRE+T.cmd(36,2,struct.pack('<I',16)+I4+struct.pack('<I',18)+D)+T.rs((137,0),(22,1),(28,0))+TRI,vs,stride=32,fvf=0x242)
- n=ON('vx_d3d_tn').value if False else (U*12).in_dll(lib,'vx_d3d_tn')[11]
- return rc==(0,0) and n>0,('state not done count',n)
+ n=(U*12).in_dll(lib,'vx_d3d_tn')[11]
+ # .734: stage 2 (set 0 through its own matrix: u x 2) gets the T&L's third output set (slot C): drawn, nothing counted as not done
+ p=t.calls[0] if t.calls else None;f=lambda x:round(struct.unpack('<f',struct.pack('<I',x))[0],3)
+ q=p and sorted({(f(p.stages.q[i]),f(p.stages.r1[i])) for i in range(p.vertex_count)})
+ return rc==(0,0) and n==0 and p is not None and list(p.stages.set[:3])==[0,1,2] and q==[(.5,.5)],('not done',n,p and list(p.stages.set[:3]),q)
 def uvs(t):
  r=[];f=lambda x:struct.unpack('<f',struct.pack('<I',x))[0]
  for p in t.calls:

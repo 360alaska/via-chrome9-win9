@@ -24,7 +24,7 @@
 #define VX2D_TRANSPARENT 8
 #define VX2D_DDRAW 16
 #define VX2D_FIXPAT 32 /* v10.84 copies: the pattern operand of the ROP is the solid colour fg (command bit 13), for ROPs that use P and S */
-#define VX2D_DASH 64 /* v10.92, with VX2D_LINE: a styled line. mono[0] = the 32 pixel pattern in drawing order (bit 0 = the first pixel, 1 = pen colour fg), bg = the colour of the 0 bits, VX2D_TRANSPARENT = the 0 bits leave the destination alone */
+/* 64: free (.765: VX2D_DASH, v10.92's styled lines, removed in .530; validate refuses the bit) */
 #define VX2D_RT 256 /* v10.453, with VX2D_DDRAW and VX2D_COPY: a copy from a 3D render target into a texture (Direct3D 8's CopyRects): with XP's ring running it may be written into the ring after the draws (ACCEL_D3D_RINGBLT) */
 #define VX2D_ASYNC 128 /* v10.95, with VX2D_DDRAW: the command is started and VX2D_submit returns at once; the VxD finishes it (registers, cursor, sequencer lock) before it does anything else. Honoured only inside a DirectDraw exclusive mode with ACCEL_ASYNC on. */
 #define OP_VX_SUBMIT 0x1132
@@ -177,6 +177,8 @@ uint32_t VX2D_mmio_read(uint32_t);
 void VX2D_hwcur_hide(void);
 int VX2D_hwcur_set(const uint32_t *,const uint32_t *,uint32_t,uint32_t,uint32_t,uint32_t);
 int VX2D_hwcur_move(int32_t,int32_t);
+int VX2D_hwcur_move_g(int32_t,int32_t,uint32_t); /* .765 */
+uint32_t VX2D_hwcur_hgen(void); /* .765 */
 int VX2D_hwcur_active(void);
 void VX2D_hwcur_invalidate(void); /* v10.252: after an engine reset */
 extern volatile uint32_t vx2d_reset_epoch;

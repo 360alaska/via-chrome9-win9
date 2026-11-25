@@ -95,11 +95,13 @@ static uint32_t queue_backup[VX3D_QUEUE_SPAN/4];
 static uint32_t sf_table_backup[VX3D_SF_TABLE_SPAN/4];
 static unsigned long sf_allocation;
 static uint32_t fault_latched, running;
+/* .769 (audit VXD3D-C2): every register offset inside the 4 MB window mapped below and on a dword (the lab's paths take offsets from the
+ * caller's request; a bad one read 0xBAD0BAD0 or wrote nothing, as the video memory side already did) */
 static uint32_t read_mmio(void *unused,uint32_t at) {
- (void)unused; return *(volatile uint32_t *)(mmio_linear+at);
+ (void)unused; if(at>=0x400000UL||(at&3)) return 0xBAD0BAD0UL; return *(volatile uint32_t *)(mmio_linear+at);
 }
 static void write_mmio(void *unused,uint32_t at,uint32_t value) {
- (void)unused; *(volatile uint32_t *)(mmio_linear+at)=value;
+ (void)unused; if(at>=0x400000UL||(at&3)) return; *(volatile uint32_t *)(mmio_linear+at)=value;
 }
 static uint32_t read_fb(void *unused,uint32_t at) {
  (void)unused; if(at>vx_status.fb_bytes || vx_status.fb_bytes-at<4) return 0xBAD0BAD0UL; /* v9.91: never fault outside the mapped video memory */
@@ -252,6 +254,9 @@ static void recover_engine(void) {
   recover_info[3]=2;
  }
  flags=VX_irq_save(); seq_write(0x10,unlock); outp(0x3C4,old); VX_irq_restore(flags);
+ /* .728 (Fable's check of Gemini's review, #5): as engine_reset (vx_native3d_vxd.c): after the pulses the cursor is programmed again at
+  * its next show and the 2D side sets the engine up (and proves it) before its next operation */
+ {extern volatile uint32_t vx2d_reset_epoch;extern void VX2D_3d_reset(void);vx2d_reset_epoch++;VX2D_3d_reset();}
  start=Get_System_Time();
  do {st=read_mmio(NULL,0x400);} while((st&VX3D_BUSY_MASK) && st!=0xFFFFFFFFUL && (uint32_t)(Get_System_Time()-start)<250);
  recover_info[1]=st;
@@ -601,14 +606,20 @@ static void vx_iga2_apply(vx3d_report *r,const vx3d_request *q) {
  rt_sr_mask(0x10,0x01,(unsigned char)(i2_sr10&1));
  im[0]=1;
 }
-unsigned long VX3D_test(const vx3d_request *request,vx3d_report *r) {
+/* .765 (outside audit of .757, VXD3D-C1): the request copied into the VxD once, under the lock, and only the copy read: the caller's
+ * buffer was read again after its checks (raw lab words checked in one pass and written in another), so another thread of the caller
+ * could change a checked word before it was written */
+static vx3d_request vx3d_rq;
+unsigned long VX3D_test(const vx3d_request *user_request,vx3d_report *r) {
  vx3d_io io;
  vx3d_sf_io sf;
  uint32_t final_status;
  int ready;
- if(request->cb!=sizeof(*request) || request->version!=VX3D_VERSION ||
-    request->arm!=VX3D_ARM || (request->reserved&0xFF)>28 || request->probe>=VX3D_PROBES) return 87;
+ const vx3d_request *request=&vx3d_rq;
  vx_lock();
+ memcpy(&vx3d_rq,user_request,sizeof(vx3d_rq));
+ if(request->cb!=sizeof(*request) || request->version!=VX3D_VERSION ||
+    request->arm!=VX3D_ARM || (request->reserved&0xFF)>28 || request->probe>=VX3D_PROBES ) {vx_unlock(); return 87;}
  recover_info[3]=0;
  if(fault_latched && !running && !VX2D_busy() && (request->reserved&0x100) && mmio_linear) recover_engine();
  ready=prepare(r,request->probe); r->probe_id=request->probe;

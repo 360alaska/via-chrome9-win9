@@ -43,18 +43,18 @@ def main():
    print('\n'.join(x for x in lines if 'Error!' in x or 'Warning!' in x))
    print('\n'.join(lines[-4:]));sys.exit(r.returncode)
  inc=['-I'+str(wc/'h'/'win'),'-I'+str(wc/'h'),'-I'+str(src),'-I'+str(src/'ddk'),'-I'+str(src/'vmware')]
- flags=['-q','-wx','-s','-zls','-wcd=303','-DDRV_VER_BUILD=723','-DDBGPRINT','-DVX85598_BUILD']
+ flags=['-q','-wx','-s','-zls','-wcd=303','-DDRV_VER_BUILD=794','-DDBGPRINT','-DVX85598_BUILD']
  c16=[x for x in flags if x!='-DDBGPRINT']+['-zu','-zW','-4','-fp3','-DCOM0','-DHWBLT']+inc
  c32=flags+['-mf','-DVXD32','-fpi87','-ei','-oeatxhn','-4s','-fp3','-DVX_MEMLOG','-DCOM0']+inc
  objs16=['dbgprint','dibcall','dddrv','drvlib','enable','init','control','palette','scrsw_vesa','pm16_calls_vesa','modes_vesa']
- objs32=['vxd_main_vesa','vx85598','vx855_3d','vx855_3d_core','vx855_2d','vx855_flip','vx_native3d_hw','vx_native3d_vxd','vx855_edid','dbgprint32','vxd_fbhda','vxd_lib','vxd_vesa','vxd_gtf','vxd_vdd_vesa','vxd_mouse','vxd_mtrr','vxd_wram','vxd_async','vxd_terror','vx_cache']
+ objs32=['vxd_main_vesa','vx85598','vx855_3d','vx855_3d_core','vx855_2d','vx855_flip','vx_native3d_hw','vx_native3d_vxd','vx855_edid','dbgprint32','vxd_fbhda','vxd_lib','vxd_vesa','vxd_gtf','vxd_vdd_vesa','vxd_mouse','vxd_mtrr','vxd_wram','vxd_async','vx_cache']
  for name in objs16: run(['wcc']+c16+['-fo='+name+'.obj',src/(name+'.c')])
  for name in ['dibthunk','sswhook']: run(['wasm','-q','-dHWBLT','-fo='+name+'.obj',src/(name+'.asm')])
  for name in objs32: run(['wcc386']+c32+['-fo='+name+'.obj',src/(name+'.c')])
  for name in ['colortab','config','fonts','fonts120']:
   run(['wcc','-q']+inc+['-fo='+name+'.obj',src/'res'/(name+'.c')])
   run(['wlink','op','quiet','disable','1014,1023','name',name+'.bin','sys','dos','output','raw','file',name+'.obj'])
- run(['wrc','-q','-r','-bt=windows','-fo=VX85598.res','-I'+str(src/'res')]+inc+['-DDRV_VER_BUILD=723',src/'res'/'vesamini.rc'])
+ run(['wrc','-q','-r','-bt=windows','-fo=VX85598.res','-I'+str(src/'res')]+inc+['-DDRV_VER_BUILD=794',src/'res'/'vesamini.rc'])
  run(['wlib','-b','-q','-n','-fo','-ii','@'+str(src/'ddk'/'dibeng.lbc'),'dibeng.lib'])
  # Keep the upstream NE exports/ordinal contracts exactly as supplied.
  mk=(src/'makefile').read_text()
@@ -80,10 +80,13 @@ def main():
  # A Win9x HAL is a PE32 DLL; do not compile it with the VxD headers/ABI.
  run(['wcc386','-q','-bt=nt','-bd','-oneatxh','-4s','-s','-fp3','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src/'ddhal32'),'-I'+str(src),'-I'+str(wc/'h'/'nt'/'directx'),'-fo=vx_ddraw.obj',src/'vx_ddraw.c'])
  for name in ['vx_d3d_core','vx_d3d_hal']:
-  run(['wcc386','-q','-bt=nt','-bd','-4s','-s','-fp3']+['-obmilrt','-oe=40']+['-dWIN95','-DDRV_VER_BUILD=723','-I'+str(wc/'h'/'nt'/'directx'),'-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src/'ddhal32'),'-I'+str(src),'-fo='+name+'.obj',src/(name+'.c')])
+  run(['wcc386','-q','-bt=nt','-bd','-4s','-s','-fp3']+['-obmilrt','-oe=40']+['-dWIN95','-DDRV_VER_BUILD=794', # .761: back to these. T760: -oh -ol+ -oe=100 gave nothing on the VX855 (244.18 against 244.12 ms) and cost the VX900 0.4% (113.99 against 113.49); T758: -6s -fp6 cost 1.2-1.5%. Watcom's options are settled
+   '-I'+str(wc/'h'/'nt'/'directx'),'-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src/'ddhal32'),'-I'+str(src),'-fo='+name+'.obj',src/(name+'.c')])
+ run(['wasm','-q','-fo=vx_kbench_abl.obj',src/'vx_kbench_abl.asm']) # .749B: VXKBENCH's cut-down position kernels (tools/kb_ablate.py), the tool only
+ run(['wasm','-q','-fo=vx_tnl_data.obj',src/'vx_tnl_data.asm']) # .751: the T&L working arrays, each on a 64-byte line
  run(['wasm','-q','-fo=vx_tnl_sse.obj',src/'vx_tnl_sse.asm']) # .544: the T&L group kernels (SSE2 as bytes)
  run(['wasm','-q','-fo=vx_hal_sse.obj',src/'vx_hal_sse.asm']) # .545: the pass-through's span kernels (SSE2 as bytes)
- (b/'ddraw.lnk').write_text('system nt_dll\noption quiet\noption offset=0xA0000000\noption start=\'_DllMain@12\'\noption map=VXDDRAW.map\noption statics\nname VXDDRAW.DLL\nfile vx_ddraw.obj,vx_d3d_core.obj,vx_d3d_hal.obj,vx_tnl_sse.obj,vx_hal_sse.obj\nlibrary kernel32,user32,gdi32\nexport DriverInit=\'_DriverInit@4\'\nexport VXDDABI\nexport VXDBGKEY\nexport VXDBGKEYON\nexport VXOVKEY\nexport VXOVKEYON\nexport VXDD3DABI\nexport VX_D3D_QueryStats=\'_VX_D3D_QueryStats@4\'\nexport VX_D3D_Record=\'_VX_D3D_Record@4\'\nexport VX_D3D_RecordFrame=\'_VX_D3D_RecordFrame@0\'\nexport VX_D3D_QueryTrace=\'_VX_D3D_QueryTrace@8\'\nexport VX_D3D_QueryStates=\'_VX_D3D_QueryStates@8\'\nexport VX_D3D_QueryLegacy=\'_VX_D3D_QueryLegacy@8\'\nexport VX_D3D_QueryTSS=\'_VX_D3D_QueryTSS@8\'\nexport VX_D3D_QueryEvents=\'_VX_D3D_QueryEvents@8\'\nexport VX_D3D_QueryDraws=\'_VX_D3D_QueryDraws@8\'\nexport VX_D3D_QueryProfile=\'_VX_D3D_QueryProfile@8\'\nexport VX_D3D_QueryLatency=\'_VX_D3D_QueryLatency@8\'\nexport VX_D3D_QuerySlow=\'_VX_D3D_QuerySlow@8\'\nexport VX_D3D_QuerySlowOps=\'_VX_D3D_QuerySlowOps@8\'\nexport VX_D3D_QuerySlowIo=\'_VX_D3D_QuerySlowIo@8\'\nexport VX_D3D_LastPid=\'_VX_D3D_LastPid@0\'\nexport VX_DD_QuerySlowBlt=\'_VX_DD_QuerySlowBlt@8\'\nexport VX_DD_Reopened=\'_VX_DD_Reopened@0\'\nexport VX_DD_Vram=\'_VX_DD_Vram@8\'\nexport VX_DD_Surface=\'_VX_DD_Surface@12\'\nexport VX_DD_StencilPlane=\'_VX_DD_StencilPlane@12\'\nexport VX_DD_QueryFrames=\'_VX_DD_QueryFrames@8\'\nexport VX_DD_QueryBlts=\'_VX_DD_QueryBlts@8\'\nexport VX_DD_QueryBltSigs=\'_VX_DD_QueryBltSigs@8\'\nexport VX_DD_Present=\'_VX_DD_Present@4\'\nexport VX_D3D_QueryPhases=\'_VX_D3D_QueryPhases@8\'\nexport VX_D3D_TestSet=\'_VX_D3D_TestSet@8\'\n')
+ (b/'ddraw.lnk').write_text('system nt_dll\noption quiet\noption offset=0xA0000000\noption start=\'_DllMain@12\'\noption map=VXDDRAW.map\noption statics\nname VXDDRAW.DLL\nfile vx_ddraw.obj,vx_d3d_core.obj,vx_d3d_hal.obj,vx_tnl_sse.obj,vx_hal_sse.obj,vx_tnl_data.obj\nlibrary kernel32,user32,gdi32\nexport DriverInit=\'_DriverInit@4\'\nexport VXDDABI\nexport VXDBGKEY\nexport VXDBGKEYON\nexport VXOVKEY\nexport VXOVKEYON\nexport VXDD3DABI\nexport VX_D3D_QueryStats=\'_VX_D3D_QueryStats@4\'\nexport VX_D3D_Record=\'_VX_D3D_Record@4\'\nexport VX_D3D_RecordFrame=\'_VX_D3D_RecordFrame@0\'\nexport VX_D3D_QueryTrace=\'_VX_D3D_QueryTrace@8\'\nexport VX_D3D_QueryStates=\'_VX_D3D_QueryStates@8\'\nexport VX_D3D_QueryLegacy=\'_VX_D3D_QueryLegacy@8\'\nexport VX_D3D_QueryTSS=\'_VX_D3D_QueryTSS@8\'\nexport VX_D3D_QueryEvents=\'_VX_D3D_QueryEvents@8\'\nexport VX_D3D_QueryDraws=\'_VX_D3D_QueryDraws@8\'\nexport VX_D3D_QueryProfile=\'_VX_D3D_QueryProfile@8\'\nexport VX_D3D_QueryLatency=\'_VX_D3D_QueryLatency@8\'\nexport VX_D3D_QuerySlow=\'_VX_D3D_QuerySlow@8\'\nexport VX_D3D_QuerySlowOps=\'_VX_D3D_QuerySlowOps@8\'\nexport VX_D3D_QuerySlowIo=\'_VX_D3D_QuerySlowIo@8\'\nexport VX_D3D_LastPid=\'_VX_D3D_LastPid@0\'\nexport VX_DD_QuerySlowBlt=\'_VX_DD_QuerySlowBlt@8\'\nexport VX_DD_Reopened=\'_VX_DD_Reopened@0\'\nexport VX_DD_Vram=\'_VX_DD_Vram@8\'\nexport VX_DD_Surface=\'_VX_DD_Surface@12\'\nexport VX_DD_StencilPlane=\'_VX_DD_StencilPlane@12\'\nexport VX_DD_QueryFrames=\'_VX_DD_QueryFrames@8\'\nexport VX_DD_QueryBlts=\'_VX_DD_QueryBlts@8\'\nexport VX_DD_QueryBltSigs=\'_VX_DD_QueryBltSigs@8\'\nexport VX_DD_Present=\'_VX_DD_Present@4\'\nexport VX_D3D_QueryPhases=\'_VX_D3D_QueryPhases@8\'\nexport VX_D3D_TestSet=\'_VX_D3D_TestSet@8\'\nexport VX_D3D_CrashStats=\'_VX_D3D_CrashStats@8\'\n')
  run(['wlink','@ddraw.lnk'])
  run([str(fix),'-shared','VXDDRAW.DLL'])
  shutil.copy2(b/'VXDDRAW.DLL',ROOT/'driver'/'VXDDRAW.DLL')
@@ -101,28 +104,32 @@ def main():
  srcs+=['drivers/common/driverfuncs.c']
  ginc=['-I'+str(gl/'mesa'/'include'),'-I'+str(mesa),'-I'+str(mesa/'main'),'-I'+str(mesa/'glapi'),'-I'+str(mesa/'math'),'-I'+str(mesa/'tnl'),'-I'+str(mesa/'shader'),
        '-I'+str(mesa/'shader'/'grammar'),'-I'+str(mesa/'shader'/'slang'),'-I'+str(gl),'-I'+str(wc/'h'/'nt'/'directx'),'-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h')]
- gflags=['wcc386','-q','-bt=nt','-bd','-6s','-sg','-s','-fp6','-ox','-zp4','-w1','-wcd=303','-wcd=202','-wcd=140','-bm','-DWIN32','-D_WIN32','-DWIN32_THREADS','-DBUILD_GL32','-DDRV_VER_BUILD=723']
- hdr=max([f.stat().st_mtime for d in [gl/'mesa'/'include',mesa] for f in d.rglob('*.h')]+[ (ROOT/'build.py').stat().st_mtime ])
- objs=[]
- for f in srcs:
-  o=gb/(f.replace('/','_')[:-2]+'.obj');objs.append(o)
-  if o.exists() and o.stat().st_size>0 and o.stat().st_mtime>max((mesa/f).stat().st_mtime,hdr):continue
-  run(gflags+(['-oe=400'] if f in ('tnl/t_vertex_generic.c','tnl/t_vb_light.c','tnl/t_vb_fog.c') else [])+ginc+['-fo='+str(o),mesa/f]) # v10.483: the emit's inserts, vx_itrunc inlined
- for f in ['vxgl_icd','vxgl_mesa','vxgl_state','vxgl_tris','vxgl_tex','vxgl_batch','vxgl_fp','vxgl_fbo','vxgl_sse','vxgl_ssepass']: # v10.487: vxgl_ssepass
-  o=gb/(f+'.obj');objs.append(o);run(gflags+(['-oe=400'] if f=='vxgl_ssepass' else [])+ginc+['-I'+str(src),'-fo='+str(o),gl/(f+'.c')]) # v10.487: the pass's small helpers inlined
- o=gb/'vx_d3d_core.obj';objs.append(o);run(['wcc386','-q','-bt=nt','-bd','-bm','-6s','-s','-fp6','-obmilrt','-oe=40','-dWIN95','-DDRV_VER_BUILD=723','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src),'-fo='+str(o),src/'vx_d3d_core.c'])
- objs.append(b/'vx_tnl_sse.obj');objs.append(b/'vx_hal_sse.obj') # .544/.545: vx_d3d_core.c's SSE2 kernels
- o=gb/'vx_native3d_hw_gl.obj'
- exps=[('DrvCopyContext',12),('DrvCreateContext',4),('DrvCreateLayerContext',8),('DrvDeleteContext',4),('DrvDescribeLayerPlane',20),('DrvDescribePixelFormat',16),
-       ('DrvGetLayerPaletteEntries',20),('DrvGetProcAddress',4),('DrvRealizeLayerPalette',12),('DrvReleaseContext',4),('DrvSetContext',12),('DrvSetLayerPaletteEntries',20),
-       ('DrvSetPixelFormat',8),('DrvShareLists',8),('DrvSwapBuffers',4),('DrvSwapLayerBuffers',8),('DrvValidateVersion',4),('VXGL_FpStats',8),('VXGL_FlatStats',8),('VXGL_FlatStats6',8),('VXGL_FlatStats8',8),('VXGL_FlatStats10',8),('VXGL_ClipStats',8),('VXGL_SsePassStats',8),('VXGL_SsePassStats10',8),('VXGL_SsePassStats16',8),('VXGL_SsePassStats20',8),('VXGL_StallStats',8),('VXGL_Stats500',8),('VXGL_Stats501',8),('VXGL_Stats503',8),('VXGL_Stats505',8),('VXGL_Stats506',8)]
- lnk='system nt_dll initinstance terminstance\noption quiet\noption offset=0x21000000\noption map=VXGL.map\noption statics\noption stack=64k\nname VXGL.DLL\n'+''.join('file '+str(x)+'\n' for x in objs)
- lnk+='library kernel32,user32,gdi32,advapi32\nlibrary '+str(wc/'lib386'/'nt'/'directx'/'dxguid.lib')+'\n'+''.join("export %s='_%s@%d'\n"%(n,n,k) for n,k in exps)
- (b/'vxgl.lnk').write_text(lnk)
- run(['wlink','@vxgl.lnk'])
+ # .762: the ICD twice: VXGL.DLL as always (-6s -fp6), and VXGL4.DLL for the standard target (-4s -fp3, the T&L core's: T758 measured the
+ # Pentium Pro target 1.2-1.5% slower in Direct3D), for QUICK.BAT's same-session A/B (GLCG: the file in SYSTEM swapped between runs)
+ for gcg,gfp,gdir,gout in (('-6s','-fp6','gl','VXGL.DLL'),): # .763: back to -6s -fp6 (T762B OpenGL pursuit: -4s -fp3 1.1% SLOWER on the VX855, 576.2 against 569.6 ms; 0.2% faster on the VX900). VXGL4 deleted # .762B (owner: "just go ahead and put it in"): VXGL.DLL is the standard target's; VXGL6.DLL the Pentium Pro build, kept for QUICK's comparison
+  gb=b/gdir;gb.mkdir(exist_ok=True)
+  gflags=['wcc386','-q','-bt=nt','-bd',gcg,'-sg','-s',gfp,'-ox','-zp4','-w1','-wcd=303','-wcd=202','-wcd=140','-bm','-DWIN32','-D_WIN32','-DWIN32_THREADS','-DBUILD_GL32','-DDRV_VER_BUILD=794']
+  hdr=max([f.stat().st_mtime for d in [gl/'mesa'/'include',mesa] for f in d.rglob('*.h')]+[ (ROOT/'build.py').stat().st_mtime ])
+  objs=[]
+  for f in srcs:
+   o=gb/(f.replace('/','_')[:-2]+'.obj');objs.append(o)
+   if o.exists() and o.stat().st_size>0 and o.stat().st_mtime>max((mesa/f).stat().st_mtime,hdr):continue
+   run(gflags+(['-oe=400'] if f in ('tnl/t_vertex_generic.c','tnl/t_vb_light.c','tnl/t_vb_fog.c') else [])+ginc+['-fo='+str(o),mesa/f]) # v10.483: the emit's inserts, vx_itrunc inlined
+  for f in ['vxgl_icd','vxgl_mesa','vxgl_state','vxgl_tris','vxgl_tex','vxgl_batch','vxgl_fp','vxgl_fbo','vxgl_sse','vxgl_ssepass']: # v10.487: vxgl_ssepass
+   o=gb/(f+'.obj');objs.append(o);run(gflags+(['-oe=400'] if f=='vxgl_ssepass' else [])+ginc+['-I'+str(src),'-fo='+str(o),gl/(f+'.c')]) # v10.487: the pass's small helpers inlined
+  o=gb/'vx_d3d_core.obj';objs.append(o);run(['wcc386','-q','-bt=nt','-bd','-bm',gcg,'-s',gfp,'-obmilrt','-oe=40','-dWIN95','-DDRV_VER_BUILD=794','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src),'-fo='+str(o),src/'vx_d3d_core.c'])
+  objs.append(b/'vx_tnl_sse.obj');objs.append(b/'vx_hal_sse.obj');objs.append(b/'vx_tnl_data.obj') # .544/.545: vx_d3d_core.c's SSE2 kernels
+  o=gb/'vx_native3d_hw_gl.obj'
+  exps=[('DrvCopyContext',12),('DrvCreateContext',4),('DrvCreateLayerContext',8),('DrvDeleteContext',4),('DrvDescribeLayerPlane',20),('DrvDescribePixelFormat',16),
+        ('DrvGetLayerPaletteEntries',20),('DrvGetProcAddress',4),('DrvRealizeLayerPalette',12),('DrvReleaseContext',4),('DrvSetContext',12),('DrvSetLayerPaletteEntries',20),
+        ('DrvSetPixelFormat',8),('DrvShareLists',8),('DrvSwapBuffers',4),('DrvSwapLayerBuffers',8),('DrvValidateVersion',4),('VXGL_FpStats',8),('VXGL_FlatStats',8),('VXGL_FlatStats6',8),('VXGL_FlatStats8',8),('VXGL_FlatStats10',8),('VXGL_ClipStats',8),('VXGL_SsePassStats',8),('VXGL_SsePassStats10',8),('VXGL_SsePassStats16',8),('VXGL_SsePassStats20',8),('VXGL_StallStats',8),('VXGL_Stats500',8),('VXGL_Stats501',8),('VXGL_Stats503',8),('VXGL_Stats505',8),('VXGL_Stats506',8)]
+  lnk='system nt_dll initinstance terminstance\noption quiet\noption offset=0x21000000\noption map='+gout[:-4]+'.map\noption statics\noption stack=64k\nname '+gout+'\n'+''.join('file '+str(x)+'\n' for x in objs)
+  lnk+='library kernel32,user32,gdi32,advapi32\nlibrary '+str(wc/'lib386'/'nt'/'directx'/'dxguid.lib')+'\n'+''.join("export %s='_%s@%d'\n"%(n,n,k) for n,k in exps)
+  (b/'vxgl.lnk').write_text(lnk)
+  run(['wlink','@vxgl.lnk'])
  shutil.copy2(b/'VXGL.DLL',ROOT/'driver'/'VXGL.DLL')
- for name,source in [('VX3DM1.EXE','vx3dm1.c'),('VXCLIP.EXE','vx_clip_probe.c'),('VXDX7.EXE','vx_dx7_test.c'),('VXLEG.EXE','vx_leg_test.c'),('VXFLIPF.EXE','vx_flipf_test.c'),('VXDISCO.EXE','vx_disco.c'),('VXRING.EXE','vx_ring_test.c'),('VXGL.EXE','vx_gl_test.c'),('VXGAME.EXE','vx_game_test.c'),('VXD3DMON.EXE','vx_d3d_mon.c'),('VXDCI.EXE','vx_dci_test.c'),('VXSTEN.EXE','vx_sten_test.c'),('VXTEX.EXE','vx_tex_test.c'),('VXKEY.EXE','vx_key_test.c'),('VXPRES.EXE','vx_pres_test.c'),('VXRTT.EXE','vx_rtt_test.c'),('VXFORMAT.EXE','vx_fmt_test.c'),('VXFLAT.EXE','vx_flat_test.c'),('VXSMPCAL.EXE','vx_smp_cal.c'),('VXRHW.EXE','vx_rhw_test.c'),('VXHOLD.EXE','vx_hold_test.c'),('VXV4.EXE','vx_v4_test.c'),('VXREG.EXE','vx_reg_test.c'),('VXTLP.EXE','vx_tlp_test.c'),('VXEP.EXE','vx_ep_test.c'),('VXNOSYNC.EXE','vx_nosync_test.c'),('VXREUSE.EXE','vx_reuse_test.c'),('VXAB.EXE','vx_ab_test.c'),('VXALT.EXE','vx_alt_test.c'),('VXTIME.EXE','vx_time_test.c'),('VXIDLE.EXE','vx_idle_test.c'),('VX92D.EXE','vx_92d_test.c'),('VX93D.EXE','vx_93d_test.c')]:
-  run(['wcl386','-q','-bt=nt','-l=nt','-4s','-fp3','-dWIN95','-I'+str(wc/'h'/'nt'/'directx'),'-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src/'ddhal32'),'-I'+str(src),'-fe='+name,src/source,'kernel32.lib','user32.lib','gdi32.lib','uuid.lib',str(wc/'lib386'/'nt'/'directx'/'dxguid.lib')]+(['opengl32.lib','advapi32.lib'] if name in ('VXGL.EXE','VXGAME.EXE','VXSTEN.EXE','VXTEX.EXE','VXPRES.EXE','VXFLAT.EXE','VXALT.EXE') else []))
+ for name,source in [('VX3DM1.EXE','vx3dm1.c'),('VXCLIP.EXE','vx_clip_probe.c'),('VXPSP.EXE','vx_ps_probe.c'),('VXKBENCH.EXE','vx_kbench.c'),('VXCRASH.EXE','vx_crash_test.c'),('VXDX7.EXE','vx_dx7_test.c'),('VXLEG.EXE','vx_leg_test.c'),('VXFLIPF.EXE','vx_flipf_test.c'),('VXDISCO.EXE','vx_disco.c'),('VXRING.EXE','vx_ring_test.c'),('VXGL.EXE','vx_gl_test.c'),('VXGAME.EXE','vx_game_test.c'),('VXD3DMON.EXE','vx_d3d_mon.c'),('VXDCI.EXE','vx_dci_test.c'),('VXSTEN.EXE','vx_sten_test.c'),('VXTEX.EXE','vx_tex_test.c'),('VXKEY.EXE','vx_key_test.c'),('VXPRES.EXE','vx_pres_test.c'),('VXRTT.EXE','vx_rtt_test.c'),('VXFORMAT.EXE','vx_fmt_test.c'),('VXFLAT.EXE','vx_flat_test.c'),('VXSMPCAL.EXE','vx_smp_cal.c'),('VXRHW.EXE','vx_rhw_test.c'),('VXHOLD.EXE','vx_hold_test.c'),('VXV4.EXE','vx_v4_test.c'),('VXREG.EXE','vx_reg_test.c'),('VXTLP.EXE','vx_tlp_test.c'),('VXEP.EXE','vx_ep_test.c'),('VXNOSYNC.EXE','vx_nosync_test.c'),('VXREUSE.EXE','vx_reuse_test.c'),('VXAB.EXE','vx_ab_test.c'),('VXALT.EXE','vx_alt_test.c'),('VXTIME.EXE','vx_time_test.c'),('VXIDLE.EXE','vx_idle_test.c'),('VX92D.EXE','vx_92d_test.c'),('VX93D.EXE','vx_93d_test.c')]:
+  run(['wcl386','-q','-bt=nt','-l=nt','-4s','-fp3','-dWIN95','-I'+str(wc/'h'/'nt'/'directx'),'-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src/'ddhal32'),'-I'+str(src),'-fe='+name,src/source]+(['vx_tnl_sse.obj','vx_kbench_abl.obj'] if name=='VXKBENCH.EXE' else [])+['kernel32.lib','user32.lib','gdi32.lib','uuid.lib',str(wc/'lib386'/'nt'/'directx'/'dxguid.lib')]+(['opengl32.lib','advapi32.lib'] if name in ('VXGL.EXE','VXGAME.EXE','VXSTEN.EXE','VXTEX.EXE','VXPRES.EXE','VXFLAT.EXE','VXALT.EXE') else []))
   if name=='VXDISCO.EXE' and (src/'res'/'wintundd.ocx').exists(): # v1.3: WinTune's original WinTunDD.ocx rides at the end of the EXE
    ocx=(src/'res'/'wintundd.ocx').read_bytes()
    with open(b/name,'ab') as o:o.write(ocx+b'VXWTOCX1'+struct.pack('<I',len(ocx)))
@@ -144,7 +151,7 @@ def main():
  if (src/'vx3suite.c').exists():
   run(['wcl386','-q','-bt=nt','-l=nt_win','-4s','-fp3','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src),'-fe=VX3SUITE.EXE',src/'vx3suite.c','user32.lib','gdi32.lib','kernel32.lib'])
   shutil.copy2(b/'VX3SUITE.EXE',ROOT/'driver'/'VX3SUITE.EXE')
- run(['wcl386','-q','-bt=nt','-l=nt_win','-4s','-fp3','-DDRV_VER_BUILD=723','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src),'-fe=VX2BENCH.EXE',src/'vx2bench.c','user32.lib','gdi32.lib','kernel32.lib'])
+ run(['wcl386','-q','-bt=nt','-l=nt_win','-4s','-fp3','-DDRV_VER_BUILD=794','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src),'-fe=VX2BENCH.EXE',src/'vx2bench.c','user32.lib','gdi32.lib','kernel32.lib'])
  run(['wcl386','-q','-bt=nt','-l=nt_win','-4s','-fp3','-I'+str(wc/'h'/'nt'),'-I'+str(wc/'h'),'-I'+str(src),'-fe=VXGTUNE.EXE',src/'vx_gtune.c','user32.lib','gdi32.lib','kernel32.lib']) # v10.507
  shutil.copy2(b/'VX2BENCH.EXE',ROOT/'driver'/'VX2BENCH.EXE')
  shutil.copy2(b/'VXGTUNE.EXE',ROOT/'driver'/'VXGTUNE.EXE') # v10.507

@@ -2,7 +2,7 @@
   "scope": "Check actual linked DLL advertisement against the selected build variant. Synthetic loader/services; not runtime acceptance.",
   "expected_experimental": true,
   "passed": true,
-  "global_data": "0xa04144bc",
-  "callbacks": "0xa0459f18",
-  "GetDriverInfo": "0xa003acc0"
+  "global_data": "0xa032bf54",
+  "callbacks": "0xa03724dc",
+  "GetDriverInfo": "0xa00408b0"
 }

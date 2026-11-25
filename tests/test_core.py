@@ -292,7 +292,7 @@ class Contract(unittest.TestCase):
    if nu>1:self.assertEqual((p.stages.units,list(p.stages.set[:nu])),(nu,[0,1] if nu==2 and not p.stages.layout and not p.stages.s3 else [0]+[0 if stages[u][6]==0 else 1 for u in range(1,nu)]),n)
    r28=[x for x in w if x>>24==0x28][-1];self.assertEqual(r28,0x28FFCCC0 if nu==3 else 0x28FFCC00 if nu>1 and any(p.stages.set[:nu]) else 0x28FFC000,n) # v10.209: 04/28 set 1 S,T (T24); v10.310: three units, TextureC S,T
    if nu==3: # v10.310: the vertex's third set (TextureC) is the set unit 2 reads; 12 attributes; FE/01 byte 2 names TextureC
-    self.assertIn(0x00A8000C,w,n);self.assertIn(0x0411100D,w,n);fe=0x01212121|(p.stages.set[1]<<10)|(p.stages.set[2]<<18);self.assertIn(fe,w,n) # v10.313: byte 2 names unit 2's set (21 / 25)
+    self.assertIn(0x00A8000C,w,n);self.assertIn(0x0411100D,w,n);fe=0x01292121|(p.stages.set[1]<<10);self.assertIn(fe,w,n);self.assertIn(0x08010103,w,n);self.assertIn(0x09000001,w,n) # .731: byte 2 slot C (29), FE/08 three sets, FE/09 set C's dimension (T730)
    if n in('T142','T143','T145'):self.assertEqual(p.stages.c22,1);self.assertIn(0xBF000000,w)
    if n=='T116':self.assertEqual([p.stages.uv1[k][0] for k in range(3)],[bits(0.),bits(0.),bits(1.)]) # set 1 = (v, u)
   for k in range(8):
@@ -367,6 +367,34 @@ class Contract(unittest.TestCase):
    self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0,name)
    w=self._trace(p);self.assertIn(0x2203002C,w);self.assertIn(0x30380000 if op==22 else 0x30390000,w)
   self._reset_stages()
+ def test_bump3_vx900_texturec(self):
+  # .738 (board, CLXP3D v2.11 T172-T179 on the VX900: the three-stage bump form read the environment map at (0, 0) plus the offset): the
+  # VX900's own layout keeps 04/28's TextureC bits (C0: the program's coordinate instructions make them) as the other chips' FFCCC0
+  T,D,CUR=2,0,1
+  self._stages([(5,4,T,D,2,T,D,0),(11,22,T,CUR,3,T,CUR,0),(7,4,T,CUR,3,T,CUR,1)])
+  t=self.context.state.tss[1];t[7]=bits(.5);t[8]=0;t[9]=0;t[10]=bits(.5)
+  self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0));p=self.calls[0]
+  c9=U.in_dll(lib,'vx3dn_chip900')
+  try:
+   c9.value=1;w=self._trace(p)
+  finally:
+   c9.value=0
+  last28=[v for v in w if (v>>24)==0x28][-1]
+  self.assertEqual(last28&0xC0,0xC0,'%08X'%last28)
+  w0=self._trace(p);self.assertIn(0x28FFCCC0,w0)
+ def test_bump3_third_set_as_second(self):
+  # .737 (board, 3DMark 2001's Environment Bump Mapping on .736: the alien left out on all three chips): with three coordinate sets
+  # offered (.735), 3DMark puts the environment map on set 2 (TEXCOORDINDEX 2) while its vertices carry two. Drawn as stage 1's set,
+  # exactly as its two-set layout (T157): the same words, sets and validation, not CONFLICTINGSTATE
+  T,D,CUR=2,0,1;got=[]
+  for tci2 in (1,2):
+   self._stages([(5,4,T,D,2,T,D,0),(11,22,T,CUR,4,T,CUR,1),(7,4,T,CUR,4,T,CUR,tci2)])
+   t=self.context.state.tss[1];t[7]=bits(.5);t[8]=0;t[9]=0;t[10]=bits(.5)
+   self.assertEqual(lib.vx_d3d_texture_status(C.byref(self.context)),0,'TEXCOORDINDEX %d'%tci2)
+   self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0),'TEXCOORDINDEX %d'%tci2);p=self.calls[0]
+   self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0)
+   got.append((list(p.shader.words[:p.shader.count*4]),list(p.stages.set[:3]),p.stages.ps,list(p.stages.tau[:p.stages.ntau])))
+  self.assertEqual(got[0],got[1])
  def test_bump3_as_xp(self):
   # .662: CLXP3D v2.7 T153 (ADD), T154 (MODULATE), T156 (BUMPENVMAPLUMINANCE, ADD): stage 0 MODULATE base, stage 1 the bump, stage 2 the
   # environment map; XP's words, schedule, TAU words and constants c12 / c36, on the board's captures (XP, VX855)
@@ -926,7 +954,9 @@ class Contract(unittest.TestCase):
   pts=[(8,8,0.,0.,1.),(56,8,2.,0.,2.),(8,56,0.,1.,1.)]
   vb=b''.join(struct.pack('<4fII3f',x,y,.5,1.,0xFFFFFFFF,0xFF000000,u,v,q) for x,y,u,v,q in pts)
   self._stages([(5,2,2,0,2,2,0,0)]);self.context.state.tss[0][24]=0x103
-  self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb,stride=36,fvf=0x101C4),(0,0));p=self.calls[0]
+  fo=U.in_dll(lib,'vx_d3d_qfold');fo.value=0 # .724: the projected layout itself (a q other than 1 is folded into W by default)
+  try:self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb,stride=36,fvf=0x101C4),(0,0));p=self.calls[0]
+  finally:fo.value=1
   self.assertEqual(p.stages.layout,2);f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]
   self.assertEqual(sorted(round(f(p.stages.q[k]),3) for k in range(3)),[1.,1.,2.])
   self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0)
@@ -938,8 +968,8 @@ class Contract(unittest.TestCase):
   # .723: a projected set (COUNT3 | PROJECTED) whose q is exactly 1 at every vertex goes in the plain layout (s, t as they are, no S T R
   # mode, no projected sampler word): the same picture, the engine's projected layout drew Dragothic's q = 1 water wrong (T721). A q other
   # than 1 anywhere keeps the projected layout; VX_D3D_TestSet 2 (vx_d3d_q1on 0) keeps it too.
-  on=U.in_dll(lib,'vx_d3d_q1on');n=(U*2).in_dll(lib,'vx_d3d_q1');f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]
-  for q1,sw,want in [((1.,1.,1.),1,0),((1.,1.,2.),1,2),((1.,1.,1.),0,2)]:
+  on=U.in_dll(lib,'vx_d3d_q1on');n=(U*3).in_dll(lib,'vx_d3d_q1');f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]
+  for q1,sw,want in [((1.,1.,1.),1,0),((1.,1.,2.),1,0),((1.,1.,1.),0,2)]: # .724: (1, 1, 2) is folded into W now
    pts=[(8,8,.25,.5,q1[0]),(56,8,.75,.5,q1[1]),(8,56,.25,.9,q1[2])]
    vb=b''.join(struct.pack('<4fII3f',x,y,.5,1.,0xFFFFFFFF,0xFF000000,u,v,q) for x,y,u,v,q in pts)
    self._stages([(5,2,2,0,2,2,0,0)]);self.context.state.tss[0][24]=0x103;on.value=sw;a=(n[0],n[1])
@@ -947,10 +977,31 @@ class Contract(unittest.TestCase):
     self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb,stride=36,fvf=0x101C4),(0,0));p=self.calls[0]
    finally:on.value=1
    self.assertEqual(p.stages.layout,want,(q1,sw));self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0)
-   self.assertEqual(sorted((round(f(p.tex.uv[k][0]),3),round(f(p.tex.uv[k][1]),3)) for k in range(3)),[(.25,.5),(.25,.9),(.75,.5)])
+   dq=want==0 # .724: a folded set carries s / q, t / q
+   self.assertEqual(sorted((round(f(p.tex.uv[k][0]),3),round(f(p.tex.uv[k][1]),3)) for k in range(3)),sorted((round(u/(q if dq else 1),3),round(v/(q if dq else 1),3)) for (x,y,u,v),q in zip([(8,8,.25,.5),(56,8,.75,.5),(8,56,.25,.9)],q1)))
    w=self._trace(p)
    self.assertEqual(0x307001A0 in w,want==2,(q1,sw));self.assertEqual(any(v>>24==1 and v&0xFF==0x22 for v in w),want==2,(q1,sw))
-   if sw:self.assertEqual((n[0]-a[0],n[1]-a[1]),(1,0) if want==0 else (0,1))
+   if sw:self.assertEqual((n[0]-a[0],n[1]-a[1]),(1,0) if q1==(1.,1.,1.) else (0,0))
+   self._reset_stages()
+ def test_projected_q_folded_into_w(self):
+  # .724: a projected set with q other than 1 goes plain with s / q, t / q and rhw * q (the engine's per-pixel divide by the weighted W
+  # gives s / q exactly); table fog, a q at or below 0, and VX_D3D_TestSet 3 (vx_d3d_qfold 0) keep the projected layout
+  fo=U.in_dll(lib,'vx_d3d_qfold');n=(U*3).in_dll(lib,'vx_d3d_q1');f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]
+  base=[(8,8,.25,.5,.5,2.),(56,8,.75,.5,.25,1.),(8,56,.25,.9,.5,4.)] # x y s t rhw q
+  for name,qs,fog,sw,want in [('folded',(2.,1.,4.),0,1,0),('switch off',(2.,1.,4.),0,0,2),('q 0',(2.,0.,4.),0,1,2),('q < 0',(2.,-1.,4.),0,1,2),('table fog',(2.,1.,4.),1,1,2)]:
+   vb=b''.join(struct.pack('<4fII3f',x,y,.5,r,0xFFFFFFFF,0xFF000000,u,v,q) for (x,y,u,v,r,_),q in zip(base,qs))
+   self._stages([(5,2,2,0,2,2,0,0)]);self.context.state.tss[0][24]=0x103;fo.value=sw;a=n[2]
+   if fog:self.context.state.rs[28]=1;self.context.state.rs[35]=3
+   try:
+    self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb,stride=36,fvf=0x101C4),(0,0));p=self.calls[0]
+   finally:fo.value=1;self.context.state.rs[28]=0;self.context.state.rs[35]=0
+   self.assertEqual(p.stages.layout,want,name);self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0,name)
+   got=sorted((round(f(p.tex.uv[k][0]),5),round(f(p.tex.uv[k][1]),5),round(f(p.vertices[k].rhw),5)) for k in range(3))
+   if want==0:
+    self.assertEqual(n[2]-a,1,name)
+    self.assertEqual(got,sorted((round(u/q,5),round(v/q,5),round(r*q,5)) for (x,y,u,v,r,_),q in zip(base,qs)),name)
+    w=self._trace(p);self.assertNotIn(0x307001A0,w)
+   else:self.assertEqual(n[2]-a,0,name)
    self._reset_stages()
  def test_premodulate_and_three_units(self):
   # v10.206: PREMODULATE (T144) multiplies the next stage's texture in: t1 * t0 out, alpha t0
@@ -1596,9 +1647,66 @@ class Contract(unittest.TestCase):
  def test_inert_states_keep_the_batch(self):
   # v10.368 (audits N16, 2.1): render states nothing reads (vertex processing, WRAPn) do not send the batch; the value is still kept
   U.in_dll(lib,'vx_d3d_feat').value=ALLF
-  self.assertEqual(self.run_dp2(self.tri()+rs((137,0),(139,0x404040),(128,3))+self.tri(start=2))[0],0)
+  self.assertEqual(self.run_dp2(self.tri()+rs((137,0),(139,0x404040),(140,3))+self.tri(start=2))[0],0) # .730: WRAPn (128-135) are read now (test_wrap_state)
   self.assertEqual([p.vertex_count for p in self.calls],[6]);self.assertEqual((self.context.state.rs[137],self.context.state.rs[139]),(0,0x404040))
   self.calls.clear();self.assertEqual(self.run_dp2(self.tri()+rs((27,1))+self.tri(start=2))[0],0);self.assertEqual(len(self.calls),2)
+ def test_wrap_state(self):
+  # .730: WRAP0-7 reach the packet (ext.dither bits 12-17, slot A the set unit 0 reads) and a change sends the batch; untextured draws carry none
+  U.in_dll(lib,'vx_d3d_feat').value=ALLF
+  self.assertEqual(self.run_dp2(self.tri()+rs((128,3))+self.tri(start=2))[0],0)
+  self.assertEqual(len(self.calls),2)
+  for p in self.calls:self.assertEqual(p.ext.dither&0x3F000,0) # untextured: no wrap bits
+  # two units, unit 0 on set 0 (WRAP0 U), unit 1 on set 1 (WRAP1 V): slot A = 1, slot B = 2; point and wireframe fill carry none
+  T,CUR=2,1
+  self._stages([(5,2,T,CUR,2,T,CUR,0),(5,4,T,CUR,2,CUR,T,1)]);self.context.state.rs[128]=1;self.context.state.rs[129]=2
+  self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0));p=self.calls[0]
+  self.assertEqual(list(p.stages.set[:2]),[0,1]);self.assertEqual(p.ext.dither&0x3F000,(1|(2<<2))<<12)
+  self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0) # the VxD's check takes the wrap bits on a triangle packet
+  q=type(p)();C.memmove(C.byref(q),C.byref(p),C.sizeof(p));q.ext.prim=2;self.assertNotEqual(lib.vx3dn_validate(C.byref(q),C.byref(self.info)),0) # and refuses them on lines
+  self.context.state.rs[8]=2;self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0))
+  for p in self.calls:self.assertEqual(p.ext.dither&0x3F000,0)
+  self.context.state.rs[8]=3;self.context.state.rs[128]=0;self.context.state.rs[129]=0;self._reset_stages()
+ def test_third_coordinate_set(self):
+  # .731: three units on three sets: unit 2 has its own set (slot C, stages.set[2] = 2), its S and T in stages.q / stages.r1, the vertex's
+  # words 10-11; the VxD's check takes it; nothing aliased to set 1. T730: the engine reads slot C with FE/08 = 3 sets and FE/09.
+  U.in_dll(lib,'vx_d3d_feat').value=ALLF
+  T,CUR=2,1
+  self._stages([(5,4,T,CUR,2,T,CUR,0),(5,4,T,CUR,2,CUR,T,1),(5,4,T,CUR,2,CUR,T,2)])
+  pts=[(8,8,.1,.2,.3,.4,.5,.6),(56,8,.7,.8,.9,.15,.25,.35),(8,56,.45,.55,.65,.75,.85,.95)]
+  vb=b''.join(struct.pack('<4fII6f',x,y,.5,1.,0xA0C08040,0xFF204060,*uv) for x,y,*uv in pts)
+  a0=U.in_dll(lib,'vx_d3d_set3_alias').value
+  self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb,stride=48,fvf=0x3C4),(0,0));self.assertEqual(len(self.calls),1);p=self.calls[0]
+  self.assertEqual((p.stages.units,list(p.stages.set[:3])),(3,[0,1,2]));self.assertEqual(U.in_dll(lib,'vx_d3d_set3_alias').value,a0)
+  f=lambda w:struct.unpack('<f',struct.pack('<I',w))[0]
+  got=sorted((round(f(p.stages.q[k]),3),round(f(p.stages.r1[k]),3)) for k in range(3))
+  self.assertEqual(got,sorted((round(q[6],3),round(q[7],3)) for q in pts))
+  got1=sorted((round(f(p.stages.uv1[k][0]),3),round(f(p.stages.uv1[k][1]),3)) for k in range(3))
+  self.assertEqual(got1,sorted((round(q[4],3),round(q[5],3)) for q in pts))
+  self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0)
+  w=self._trace(p)
+  self.assertIn(0x08010103,w);self.assertIn(0x09000001,w);self.assertTrue(any(x>>24==1 and (x>>16)&0xFF==0x29 for x in w))
+  for u,v in [(q[6],q[7]) for q in pts]:self.assertTrue(any(w[i]==bits(u) and w[i+1]==bits(v) for i in range(len(w)-1)),(u,v)) # words 10-11
+  q=type(p)();C.memmove(C.byref(q),C.byref(p),C.sizeof(p));q.stages.set[1]=2;self.assertNotEqual(lib.vx3dn_validate(C.byref(q),C.byref(self.info)),0) # set 2 is unit 2's alone: refused for unit 1
+  # a fourth stage's set or two units on set 2 stay as before: a two-set vertex gives unit 2 its slot B copy when it names set 1
+  self._stages([(5,4,T,CUR,2,T,CUR,0),(5,4,T,CUR,2,CUR,T,0),(5,4,T,CUR,2,CUR,T,1)])
+  vb2=b''.join(struct.pack('<4fII4f',x,y,.5,1.,0xA0C08040,0xFF204060,*uv[:4]) for x,y,*uv in pts)
+  self.calls.clear();self.assertEqual(self.run_dp2(self.tri(),vb2,stride=40,fvf=0x2C4),(0,0));p=self.calls[0]
+  self.assertEqual(list(p.stages.set[:3]),[0,0,1]);self.assertEqual(lib.vx3dn_validate(C.byref(p),C.byref(self.info)),0)
+  self._reset_stages()
+ def test_setup_trim(self):
+  # .733 (ACCEL_D3D_TRIM): a packet xp_setup follows leaves out of setup() only words xp_setup writes again (the trimmed stream is the full
+  # one with words removed: 01/90-9B and the diffuse program, 04/00-04, 25, 28, the closing 01/01), at least 25 fewer
+  TR=U.in_dll(lib,'vx3dn_trim');r=self.context.state.rs;r[28]=1 # vertex fog: XP's T13 program (an xp_path packet)
+  self.calls.clear();self.assertEqual(self.run_dp2(self.tri()),(0,0));p=self.calls[0];r[28]=0;self.assertTrue(p.shader.count>0)
+  got={}
+  for on in (0,1):
+   TR.value=on;n0=U.in_dll(lib,'vx3dn_trim_n').value;lib.vx3dn_forget();got[on]=self._trace(p);got[on+2]=U.in_dll(lib,'vx3dn_trim_n').value-n0
+  TR.value=1
+  m9b=lambda ws:[w&0xFF000000 if w>>24==0x9B else w for w in ws] # xp_setup's tag (9B) moves on with every program change
+  full,trim=m9b(got[0]),m9b(got[1]);it=iter(full)
+  self.assertTrue(all(any(w==x for x in it) for w in trim),'the trimmed words in the same order')
+  self.assertGreaterEqual(len(full)-len(trim),25,(len(full),len(trim)));self.assertEqual((got[2],got[3]),(0,1))
+  self.assertEqual(full[-40:],trim[-40:]) # the draw's own words the same
  def test_phong_and_wbuffer_drawn(self):
   # v10.368 (audit N5): Phong as Gouraud, W-buffer as Z; both left every draw out
   self.assertEqual(self.run_dp2(rs((9,3))+self.tri())[0],0);self.assertEqual(len(self.calls),1)

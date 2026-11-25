@@ -187,6 +187,10 @@ static void translate(vxgl_ctx *c) {
  if(c->core.state.viewport.top<0)c->core.state.viewport.top=0;
  if(c->core.state.viewport.bottom>th)c->core.state.viewport.bottom=th;
  if(c->core.state.viewport.right>tw)c->core.state.viewport.right=tw;
+ /* .765 (audit of .757, 13): a scissor box wholly past one side (Mesa then gives _Xmax < _Xmin) reached the core inverted: every edge held
+  * to the surface, then an empty box where it was inverted (nothing drawn, as GL draws nothing) */
+ {vx3dn_rect *v=&c->core.state.viewport;if(v->left>tw)v->left=tw;if(v->top>th)v->top=th;if(v->right<0)v->right=0;if(v->bottom<0)v->bottom=0;
+  if(v->left>v->right)v->left=v->right;if(v->top>v->bottom)v->top=v->bottom;}
  /* not drawn by the engine yet */
  if(ctx->RenderMode!=GL_RENDER)fall|=VXGL_FB_RENDERMODE;
  /* v10.279 (review): GL_ARB_occlusion_query (GL 1.5) counts in swrast's fragment path; the engine's draws were not counted (a visible

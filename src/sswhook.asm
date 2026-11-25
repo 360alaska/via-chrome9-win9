@@ -84,6 +84,7 @@ handle_fn:
 	push	es			; v10.319 (audit F2): ES too, the C handler may change it
 	push	ds			; Save what we can
 	pushad
+	cld				; .754 (outside review): the C handler copies strings; the interrupted code may have left the direction flag set (as the RTC handler, .723)
 
 	; Establish data segment addressing
 	mov	bx, _DATA		; We'll overwrite BX later

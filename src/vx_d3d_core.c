@@ -4,6 +4,7 @@
 #include "vx_d3d_core.h"
 #include <string.h>
 #include <stddef.h>
+#include <math.h> /* .752: fabs (tn_vbx_out) */
 /* v10.222: these run several times per vertex. Byte-by-byte loads and a library memcpy call for each float reinterpretation were a
  * quarter of the HAL's instructions per triangle (emulator profile). x86 loads unaligned words directly; a union reinterprets. */
 #if defined(__GNUC__)
@@ -26,12 +27,14 @@ static uint32_t bits(float f) {
  return (n&0x7FFFFFFFUL)?n:0;
 }
 static uint32_t bits_any(float f) {vx_fu x;x.f=f;return x.n;}
-static int finite(uint32_t v) {return (v&0x7F800000UL)!=0x7F800000UL;}
+static int vx_f32_finite(uint32_t v) {return (v&0x7F800000UL)!=0x7F800000UL;} /* .754: was finite(), which glibc's math.h declares (the OpenGL host build stopped compiling with .752's #include) */
 static vx_d3d_state *state(vx_d3d_context *c) {return c->recording?&c->blocks[c->recording-1].state:&c->state;}
 void vx_d3d_tnl_reset(const vx_d3d_context *c); /* .540 (vx_d3d_tnl.inc) */
 static void template_reset(void); /* .553: below, with the template */
+static uint32_t tc_tn; /* .654 (declared here for vx_d3d_init, .765) */
 void vx_d3d_init(vx_d3d_context *c,const vx3dn_surface *t,const vx3dn_surface *z,uint32_t gen) {
  uint32_t s;
+ tc_tn=0; /* .765 (audit of .757, item 5): the template_reset below makes the next template without the T&L's mark */
  template_reset(); /* .553: a new context can have the address of a destroyed one: nothing kept for that address (the template, the answers kept for a state) outlives it, as its T&L state does not (.540, next line) */
  vx_d3d_tnl_reset(c); /* .540: a context made again at an address another had starts with fresh T&L state */
  memset(c,0,sizeof(*c));c->target=*t;if(z)c->depth=*z;c->generation=gen;
@@ -40,7 +43,7 @@ void vx_d3d_init(vx_d3d_context *c,const vx3dn_surface *t,const vx3dn_surface *z
  c->state.rs[16]=1;c->state.rs[19]=2;c->state.rs[20]=1;c->state.rs[22]=3;c->state.rs[23]=4;
  c->state.rs[25]=8;c->state.rs[40]=0;c->state.rs[47]=0;c->state.rs[48]=0;
  c->state.rs[56]=8;c->state.rs[57]=0;c->state.rs[58]=0xFFFFFFFFUL;c->state.rs[59]=0xFFFFFFFFUL;
- c->state.rs[136]=1;c->state.rs[137]=1;c->state.rs[168]=15;c->state.rs[60]=0xFFFFFFFFUL; /* v10.172: TEXTUREFACTOR default */
+ c->state.rs[136]=1;c->state.rs[137]=1;c->state.rs[141]=1;c->state.rs[142]=1;c->state.rs[145]=1;c->state.rs[146]=2; /* .762 (item 10): COLORVERTEX, LOCALVIEWER, DIFFUSEMATERIALSOURCE COLOR1, SPECULARMATERIALSOURCE COLOR2, Direct3D's defaults */c->state.rs[168]=15;c->state.rs[60]=0xFFFFFFFFUL; /* v10.172: TEXTUREFACTOR default */
  for(s=0;s<8;s++) {c->state.tss[s][1]=s?1:4;c->state.tss[s][2]=2;c->state.tss[s][3]=1;
   c->state.tss[s][4]=s?1:2;c->state.tss[s][5]=2;c->state.tss[s][6]=1;
   c->state.tss[s][11]=s;c->state.tss[s][13]=1;c->state.tss[s][14]=1;c->state.tss[s][16]=1;c->state.tss[s][17]=1;}
@@ -67,15 +70,20 @@ uint32_t vx_d3d_tss_seen[4],vx_d3d_addr_ring[16][2],vx_d3d_addr_count,vx_d3d_dp2
 /* v10.420 (diagnostic): the HAL's trace of render-state commands (ACCEL_D3D_LOG); 0 = off (VXGL never sets it) */
 void (*vx_d3d_rs_hook)(uint32_t id,uint32_t value,uint32_t at);
 uint32_t (*vx_d3d_clock)(void);uint32_t vx_d3d_op_t[64],vx_d3d_op_n[64];static uint32_t ck_last,ck_cur; /* v10.390 */
-void vx_d3d_ck_begin(void) {memset(vx_d3d_op_t,0,sizeof(vx_d3d_op_t));memset(vx_d3d_op_n,0,sizeof(vx_d3d_op_n));ck_cur=0;ck_last=vx_d3d_clock?vx_d3d_clock():0;}
+/* .757 (outside review, speed): the per-command clock ran in every DrawPrimitives2 call, monitor or not: two 256-byte clears a call and a
+ * time-stamp read for every command in it. The HAL now gives a clock only while a monitor has the phases on or the event log is on
+ * (vx_d3d_hal.c); without one nothing is cleared or read (the tables are cleared once when the clock goes away). */
+static uint32_t ck_dirty;
+void vx_d3d_ck_begin(void) {
+ if(!vx_d3d_clock){if(ck_dirty){memset(vx_d3d_op_t,0,sizeof(vx_d3d_op_t));memset(vx_d3d_op_n,0,sizeof(vx_d3d_op_n));ck_dirty=0;}ck_cur=0;return;}
+ memset(vx_d3d_op_t,0,sizeof(vx_d3d_op_t));memset(vx_d3d_op_n,0,sizeof(vx_d3d_op_n));ck_dirty=1;ck_cur=0;ck_last=vx_d3d_clock();}
 static void ck_switch(uint32_t op) {uint32_t now;if(!vx_d3d_clock)return;now=vx_d3d_clock();vx_d3d_op_t[ck_cur]+=now-ck_last;ck_last=now;ck_cur=op&63;vx_d3d_op_n[ck_cur]++;}
 void vx_d3d_ck_end(void) {uint32_t now;if(!vx_d3d_clock)return;now=vx_d3d_clock();vx_d3d_op_t[ck_cur]+=now-ck_last;ck_last=now;ck_cur=0;}
 uint32_t (*vx_d3d_phclock)(void);uint32_t vx_d3d_ph_call[VX_PH_N],vx_d3d_ph_cnt[VX_PH_N];static uint32_t ph_cur,ph_last; /* v10.431 */
 uint32_t vx_d3d_ph_set(uint32_t ph) {uint32_t now=vx_d3d_phclock(),o=ph_cur;vx_d3d_ph_call[o]+=now-ph_last;ph_last=now;ph_cur=ph<VX_PH_N?ph:VX_PH_HAL;vx_d3d_ph_cnt[ph_cur]++;return o;}
 void vx_d3d_ph_begin(uint32_t ph) {memset(vx_d3d_ph_call,0,sizeof(vx_d3d_ph_call));ph_cur=ph;ph_last=vx_d3d_phclock?vx_d3d_phclock():0;}
 void vx_d3d_ph_end(void) {if(vx_d3d_phclock){uint32_t now=vx_d3d_phclock();vx_d3d_ph_call[ph_cur]+=now-ph_last;ph_last=now;}}
-enum {A_D,A_T,A_F,A_BAD};
-static int arg(uint32_t a,int bound) {if(a<=1)return A_D;if(a==2)return bound?A_T:A_D;if(a==3)return A_F;return A_BAD;}
+/* .737 (review audit #56): arg() removed (no caller) */
 #define XR_TEX 0x00UL
 #define XR_DIF 0x40UL
 #define XR_SPE 0x41UL
@@ -324,7 +332,12 @@ static int compose_bump3(const vx_d3d_context *c,int bound0,vx_d3d_xp *x,uint32_
   0x020C06C0UL,0x9008C2EDUL,0x00F20124UL,0x000004A0UL,0x0140B6D0UL,0x502C1495UL,0x00700005UL,0x00000020UL}; /* T159 I2-I5 */
  static const uint32_t finB[4]={0x0140B6D0UL,0x302C0053UL,0x00F20005UL,0x00000820UL}; /* T157 I4, T159 I6: t0 x C0, colour and alpha */
  const uint32_t *t0=c->state.tss[0],*t1=c->state.tss[1],*t2=c->state.tss[2];
- const uint32_t s0=t0[11]&0xFFFF,s1=t1[11]&0xFFFF,s2=t2[11]&0xFFFF;
+ /* .737 (board, 3DMark 2001's Environment Bump Mapping test on .736, all three chips: the alien left out, 4,956 primitives in 13 s): since
+  * .735 the device says three coordinate sets (dwFVFCaps 3), and 3DMark then puts the environment map on set 2 (TEXCOORDINDEX 2) while its
+  * vertices carry two (FVF 212); with two offered it put it on set 1, which this program draws (T157, XP's). A third set on stage 2 is
+  * drawn with stage 1's set, as the driver draws a third set under a pixel program elsewhere (vx_d3d_set3_alias): exactly 3DMark's
+  * picture of before .735 */
+ const uint32_t s0=t0[11]&0xFFFF,s1=t1[11]&0xFFFF,s2r=t2[11]&0xFFFF,s2=(s2r!=s0&&s2r!=s1&&s1!=s0)?s1:s2r;
  uint32_t lum=t1[1]==23,nc=lum?4:2,n,k,w[4],op,aop,cx,cy,ax,ay,mcx=0,mcy=0,max=0,may=0,a1,a2,b1,b2,ra=0xFF;
  int shapeB,a2pass;
  memset(x,0,sizeof(*x));
@@ -344,7 +357,7 @@ static int compose_bump3(const vx_d3d_context *c,int bound0,vx_d3d_xp *x,uint32_
    0x0140B6D0UL,0x40200923UL,0x00F20105UL,0x00000820UL};
   for(k=0;k<12;k++)x->words[k]=w155[k];
   x->count=3;x->textured=1;x->units=3;
-  for(k=0;k<3;k++){x->unit_stage[k]=k;x->unit_set[k]=c->state.tss[k][11]&0xFFFF;}
+  for(k=0;k<3;k++){x->unit_stage[k]=k;x->unit_set[k]=c->state.tss[k][11]&0xFFFF;}x->unit_set[2]=s2;
   x->ps=1;x->ntau=3;x->h93=6;x->h90=0x18004UL;x->h91=3;x->h95=2;
   x->tau[0]=0x201001B0UL;x->tau[1]=0x311111B1UL;x->tau[2]=0x321101B2UL;
   x->nkc=1;x->kc_reg[0]=12;for(k=0;k<4;k++)x->kc[0][k]=t1[7+k];
@@ -405,6 +418,7 @@ static int compose_bump3(const vx_d3d_context *c,int bound0,vx_d3d_xp *x,uint32_
  g_treg=XR_TEX;
  x->count=n;x->textured=1;x->units=3;
  for(k=0;k<3;k++){x->unit_stage[k]=k;x->unit_set[k]=c->state.tss[k][11]&0xFFFF;}
+ if(s2!=s2r)x->unit_set[2]=s2; /* .737: stage 2's third set on stage 1's (the composer runs per state: not counted here) */
  for(k=0;k<x->count;k++)if(reads(x->words+k*4,XR_TF))x->tfactor=1;
  x->ps=1;x->ntau=3;x->h93=6;
  x->h90=lum?0x18003UL:0x18005UL;x->h91=lum?7:3;x->h95=shapeB?(lum?0x10:8):(lum?8:4);
@@ -606,7 +620,7 @@ static int compose_core(const vx_d3d_context *c,int bound,vx_d3d_xp *x,uint32_t 
  /* NULL texture + COLORARG1 TEXTURE terminates this stage and the cascade (before validating arguments or stage 1).
   * v10.335 (review #196; board, VXPROBE stages: SELECTARG2 DIFFUSE with ALPHAOP SELECTARG1 TFACTOR drew the diffuse alpha when the
   * unread ARG1 was TEXTURE, the TFACTOR alpha when it was TFACTOR): only when the colour operation reads ARG1, as at stages 1 and 2 */
- if(!bound&&t[2]==2&&op!=3)op=1;
+ if(!bound&&(t[2]&15)==2&&op!=3)op=1; /* .754 (outside review): the argument without its COMPLEMENT / ALPHAREPLICATE bits, as stages 1 and 2 test it */
  if(op==22||op==23)return compose_bump(c,bound,x,err); /* v10.208 */
  if(op!=1&&(c->state.tss[1][1]==22||c->state.tss[1][1]==23)&&c->state.tss[1][0])return compose_bump3(c,bound,x,err); /* .662 (with no bump texture the cascade ends at stage 1, as before) */
  if(op!=1&&(c->state.tss[1][1]!=1||op==24))return compose_multi(c,bound,x,err); /* v10.206 (DOT3 too); a disabled stage 0 ends the cascade */
@@ -910,13 +924,37 @@ static uint32_t submit_at(const vx_d3d_services *s,const vx3dn_packet *p,vx_d3d_
  * drawn by Direct3D's rules (host) smooth. The packets carry the right words (host replay), so the engine's projected layout is what
  * draws them wrong; the plain layout draws the same coordinates right (6M, 6P). Counted in vx_d3d_q1[0] (packets made plain) and [1]
  * (projected packets left as they are: a q other than 1). VX_D3D_TestSet 2 (VXTLP 6W) turns it off in its own process for the A/B. */
-uint32_t vx_d3d_q1on=1,vx_d3d_q1[2];
+uint32_t vx_d3d_q1on=1,vx_d3d_qfold=1,vx_d3d_q1[3];
+uint32_t vx_d3d_gband_vxd=1; /* .724: the guard band as the VxD allows it (vx_ddraw.c sets it from the VxD's answer; the host tests keep 1) */
 static void q1_plain(vx3dn_packet *d) {
  uint32_t v,n;
  if(!vx_d3d_q1on||d->op!=VX3DN_DRAW||d->stages.layout!=VX3DN_LAYOUT_PROJ||d->stages.units>1||d->stages.s3||d->pre.on)return;
  n=d->vertex_count;if(n>VX3DN_MAX_VERTICES)return;
- for(v=0;v<n;v++)if(d->stages.q[v]!=0x3F800000UL){vx_d3d_q1[1]++;return;}
- d->stages.layout=0;vx_d3d_q1[0]++;
+ for(v=0;v<n;v++)if(d->stages.q[v]!=0x3F800000UL)break;
+ if(v==n){d->stages.layout=0;vx_d3d_q1[0]++;return;}
+ /* .724: a q other than 1 (true projective texturing): s / q and t / q in the plain layout, with q folded into W (rhw * q). The engine
+  * divides the perspective-weighted coordinates by the weighted W at each pixel: ((s / q) * rhw * q) / (rhw * q) = s / q exactly what the
+  * projected layout asks, through the plain layout the engine draws right. W is read for nothing else here: depth comes from z, Gouraud
+  * colours and the fog factor are screen-linear on this engine (VXTLP 6P NA), a w-buffer is refused before any packet; table fog is the
+  * exception (its depth may come from W), so a packet with table fog keeps the projected layout, as does any q at or below 0 or not
+  * finite (behind the projector: the divide's sign). vx_d3d_q1[2] counts the packets folded; VX_D3D_TestSet 3 turns it off. */
+ if(!vx_d3d_qfold||(d->fog.enable&&(d->fog.r[0]&0xF))){vx_d3d_q1[1]++;return;}
+ for(v=0;v<n;v++){const uint32_t qb=d->stages.q[v];if((qb&0x80000000UL)||!(qb&0x7FFFFFFFUL)||(qb&0x7F800000UL)==0x7F800000UL){vx_d3d_q1[1]++;return;}}
+ for(v=0;v<n;v++){const double q=flt(d->stages.q[v]),r=flt(d->vertices[v].rhw)*q;
+  if(!vx_f32_finite(bits((float)r))||!(bits((float)r)&0x7FFFFFFFUL)|| /* .754 (outside review): or an rhw that underflowed to 0 (the VxD refuses it and the packet was lost) */!vx_f32_finite(bits((float)(flt(d->tex.uv[v][0])/q)))||!vx_f32_finite(bits((float)(flt(d->tex.uv[v][1])/q)))){vx_d3d_q1[1]++;return;}}
+ for(v=0;v<n;v++){const double q=flt(d->stages.q[v]);d->tex.uv[v][0]=bits((float)(flt(d->tex.uv[v][0])/q));d->tex.uv[v][1]=bits((float)(flt(d->tex.uv[v][1])/q));
+  d->vertices[v].rhw=bits((float)(flt(d->vertices[v].rhw)*q));d->stages.q[v]=0x3F800000UL;}
+ d->stages.layout=0;vx_d3d_q1[2]++;
+}
+/* .725 (review of .723): whether q1_plain would change the packet, read only (the unqueued path copies only then) */
+static int q1_would(const vx3dn_packet *d) {
+ uint32_t v,n=d->vertex_count;
+ if(!vx_d3d_q1on||d->op!=VX3DN_DRAW||d->stages.layout!=VX3DN_LAYOUT_PROJ||d->stages.units>1||d->stages.s3||d->pre.on||n>VX3DN_MAX_VERTICES)return 0;
+ for(v=0;v<n;v++)if(d->stages.q[v]!=0x3F800000UL)break;
+ if(v==n)return 1;
+ if(!vx_d3d_qfold||(d->fog.enable&&(d->fog.r[0]&0xF)))return 0;
+ for(v=0;v<n;v++){const uint32_t qb=d->stages.q[v];if((qb&0x80000000UL)||!(qb&0x7FFFFFFFUL)||(qb&0x7F800000UL)==0x7F800000UL)return 0;}
+ return 1;
 }
 static uint32_t submit_at_body(const vx_d3d_services *s,const vx3dn_packet *p,vx_d3d_context *c,uint32_t *completed,uint32_t cmd) {
  uint32_t rc;
@@ -933,7 +971,7 @@ static uint32_t submit_at_body(const vx_d3d_services *s,const vx3dn_packet *p,vx
   }
   rc=cq_flush(s,c,completed);if(rc)return rc;
  }
- if(p->op==VX3DN_DRAW&&p->stages.layout==VX3DN_LAYOUT_PROJ&&vx_d3d_q1on){static vx3dn_packet one_q;vx_d3d_packet_copy(&one_q,p);q1_plain(&one_q);p=&one_q;} /* .723: the unqueued path too */
+ if(q1_would(p)){static vx3dn_packet one_q;vx_d3d_packet_copy(&one_q,p);q1_plain(&one_q);p=&one_q;} /* .723: the unqueued path too; .725: copied only when it changes */
  rc=vx_d3d_submit_result(c,s->submit(s->context,p),*completed);
  if(!rc)(*completed)++;
  return rc;
@@ -1006,8 +1044,8 @@ void vx_d3d_packet_copy(vx3dn_packet *d,const vx3dn_packet *s) {
  if(s->tex.enable)memcpy(d->tex.uv,s->tex.uv,n*sizeof(s->tex.uv[0]));
  if(s->shader.count)memcpy(d->shader.spec,s->shader.spec,n*sizeof(s->shader.spec[0]));
  if(s->tex.enable&&s->stages.units>1)memcpy(d->stages.uv1,s->stages.uv1,n*sizeof(s->stages.uv1[0]));
- if(s->stages.layout||(s->stages.s3&1))memcpy(d->stages.q,s->stages.q,n*sizeof(s->stages.q[0]));
- if(s->stages.s3&2)memcpy(d->stages.r1,s->stages.r1,n*sizeof(s->stages.r1[0])); /* v10.321 */
+ if(s->stages.layout||(s->stages.s3&1)||VX3DN_C3(s))memcpy(d->stages.q,s->stages.q,n*sizeof(s->stages.q[0])); /* .731: VX3DN_C3, set C's S and T */
+ if((s->stages.s3&2)||VX3DN_C3(s))memcpy(d->stages.r1,s->stages.r1,n*sizeof(s->stages.r1[0])); /* v10.321 */
 }
 /* v10.295: the packet's write mask: COLORWRITEENABLE's channels (bits 3:0), and an OpenGL logic op as 0x100 | its truth table << 4 */
 static uint32_t vx_d3d_write_mask(const uint32_t *rs) {uint32_t m=rs[168]&15UL,l=rs[VX_D3D_RS_LOGICOP];return (l&0x10)?m|0x100UL|((l&15UL)<<4):m;}
@@ -1038,13 +1076,23 @@ static void packet(vx3dn_packet *p,const vx_d3d_context *c,uint32_t op) {
 }
 /* v10.195: fog registers 70..78 as XP writes them (cookbook 16.7; CLXP3D T16 vertex, T17 LINEAR, T18 EXP). rs: 34 FOGCOLOR, 35 FOGTABLEMODE
  * (0 none = vertex fog, 1 EXP, 2 EXP2, 3 LINEAR), 36 FOGSTART, 37 FOGEND, 38 FOGDENSITY (floats). */
+/* .733-.735 (ACCEL_D3D_TFOG removed in .735: T733 fogged GRID 0.4-2.9% faster on all three chips, VXTLP 12a/12b exact; always on in
+ * the HAL (vx_ddraw.c), 0 on the host for the tests written before it): the driver's T&L leaves depth vertex fog to the engine's fog unit
+ * (vx_d3d_tnl.inc: tn_tfog, the D3DFOG mode, 0 none); vx_d3d_tfog_n counts its set-ups */
+uint32_t vx_d3d_tfog,vx_d3d_tfog_n;static uint32_t tn_tfog;
+/* .734: the driver's T&L gives a third stage on a third set its own output set (vx_d3d_tnl.inc; 0 = stage 2 on set 1, as before); vx_d3d_tn3_n counts its set-ups */
+uint32_t vx_d3d_tn3=1,vx_d3d_tn3_n,vx_d3d_tn_shared01; /* .737: draws whose stages 0 and 1 shared an output set (the environment map on set 1) */
+static void fog_registers(vx3dn_fog *f,const uint32_t *rs);
+/* fog from W (the answers, s3ginv 0xd3dd0: 01/70 bit 4 set = Z, clear = W): the vertex fog's mode on the table's registers; 01/73-78 as
+ * fog_registers writes them (start, 1 / (end - start), end, density in eye units: W is eye Z here) */
+static void fog_w_registers(vx3dn_fog *f,const uint32_t *rs,uint32_t mode) {static const uint32_t m[4]={0,4,5,2};fog_registers(f,rs);f->r[0]=m[mode&3];} /* XP's word exactly (the answers' example, linear W fog: 01/70 = 02): bits 4 and 5 clear */
 static void fog_registers(vx3dn_fog *f,const uint32_t *rs) {
  static const uint32_t mode[4]={0,4,5,2};uint32_t col=rs[34],q;float s=flt(rs[36]),e=flt(rs[37]),inv;
  memset(f,0,sizeof(*f));f->enable=1;
  f->r[0]=0x30|mode[rs[35]<4?rs[35]:0];
  f->r[1]=(((col>>8)&255)*1024/255)<<12|((col&255)*1024/255);f->r[2]=((col>>16)&255)*1024/255;
  f->r[3]=(rs[36]>>16)&0x7FFF;f->r[7]=(rs[37]>>16)&0x7FFF;
- inv=(finite(rs[36])&&finite(rs[37])&&e!=s)?1.0f/(e-s):1.0f;if(!finite(bits_any(inv)))inv=1.0f;
+ inv=(vx_f32_finite(rs[36])&&vx_f32_finite(rs[37])&&e!=s)?1.0f/(e-s):1.0f;if(!vx_f32_finite(bits_any(inv)))inv=1.0f;
  q=bits_any(inv);f->r[5]=(q>>19)&0xF;f->r[6]=(q>>23)&0xFF;
  f->r[8]=((rs[38]>>18)&0x1FFF)<<8;
 }
@@ -1093,7 +1141,7 @@ static int ckey_c0(vx_d3d_xp *x,uint32_t fmt,uint32_t key) {
  x->kc_reg[2]=43;for(k=0;k<4;k++)x->kc[2][k]=f[k];
  return 1;
 }
-typedef struct cv {double x,y,z,rhw,c[4],u,v,s[4],u1,v1,q,q1;} cv; /* v10.206: u1 v1 = the second coordinate set; v10.208: q = set 0's third coordinate; v10.321: q1 = set 1's */
+typedef struct cv {double x,y,z,rhw,c[4],u,v,s[4],u1,v1,q,q1,u2,v2;} cv; /* .731: u2 v2 = unit 2's own (third) set */ /* v10.206: u1 v1 = the second coordinate set; v10.208: q = set 0's third coordinate; v10.321: q1 = set 1's */
 /* v10.169: byte offset of texture-coordinate set n in an FVF vertex, or 0 when the vertex has no such set. */
 static uint32_t texcoord_offset(uint32_t f,uint32_t n,uint32_t *size) {
  uint32_t off=16,i,count=(f>>8)&15;
@@ -1105,20 +1153,22 @@ static uint32_t texcoord_offset(uint32_t f,uint32_t n,uint32_t *size) {
 }
 static int rhw0_fix; /* .531: bad_prim (below) */
 static int zinf_fix; /* .642: bad_prim: a primitive with a z of + or - infinity is drawn, the z held to the depth range */
-static void vertex(cv *v,const uint8_t *p,uint32_t f,uint32_t set,uint32_t set1) {
+static void vertex(cv *v,const uint8_t *p,uint32_t f,uint32_t set,uint32_t set1,uint32_t set2) {
  uint32_t color=(f&0x40)?u32(p+16):0xFFFFFFFFUL,spec=(f&0x80)?u32(p+((f&0x40)?20:16)):0xFF000000UL,k,size=0,off=texcoord_offset(f,set1,&size);
  v->u1=off?flt(u32(p+off)):0;v->v1=(off&&size>=2)?flt(u32(p+off+4)):0;
- if(!finite(off?u32(p+off):0))v->u1=0;if(off&&size>=2&&!finite(u32(p+off+4)))v->v1=0;
- v->q1=(off&&size>=3&&finite(u32(p+off+8)))?flt(u32(p+off+8)):1.0; /* v10.321 */
+ if(!vx_f32_finite(off?u32(p+off):0))v->u1=0;if(off&&size>=2&&!vx_f32_finite(u32(p+off+4)))v->v1=0;
+ v->q1=(off&&size>=3&&vx_f32_finite(u32(p+off+8)))?flt(u32(p+off+8)):1.0; /* v10.321 */
+ v->u2=v->v2=0;if(set2!=0xFFFFFFFFUL){size=0;off=texcoord_offset(f,set2,&size); /* .731: unit 2's own set */
+  if(off&&vx_f32_finite(u32(p+off)))v->u2=flt(u32(p+off));if(off&&size>=2&&vx_f32_finite(u32(p+off+4)))v->v2=flt(u32(p+off+4));}
  size=0;off=texcoord_offset(f,set,&size);
- v->q=(off&&size>=3&&finite(u32(p+off+8)))?flt(u32(p+off+8)):1.0;
+ v->q=(off&&size>=3&&vx_f32_finite(u32(p+off+8)))?flt(u32(p+off+8)):1.0;
  for(k=0;k<4;k++)v->s[k]=(double)((spec>>(k*8))&255);
  v->x=flt(u32(p));v->y=flt(u32(p+4));v->z=flt(u32(p+8));v->rhw=flt(u32(p+12));
- if(zinf_fix&&!finite(u32(p+8)))v->z=(u32(p+8)&0x80000000UL)?0.0:1.0; /* .642 */
- if(rhw0_fix&&(!(u32(p+12)&0x7FFFFFFFUL)||!finite(u32(p+12))))v->rhw=1.0; /* .531: a primitive whose vertices all have rhw 0, in a state that does not read rhw (rhw0_ok); .722: or rhw NaN / infinite, the same rule (Hellbender) */
+ if(zinf_fix&&!vx_f32_finite(u32(p+8)))v->z=(u32(p+8)&0x80000000UL)?0.0:1.0; /* .642 */
+ if(rhw0_fix&&(!(u32(p+12)&0x7FFFFFFFUL)||!vx_f32_finite(u32(p+12))))v->rhw=1.0; /* .531: a primitive whose vertices all have rhw 0, in a state that does not read rhw (rhw0_ok); .722: or rhw NaN / infinite, the same rule (Hellbender) */
  for(k=0;k<4;k++)v->c[k]=(double)((color>>(k*8))&255);
  v->u=off?flt(u32(p+off)):0;v->v=(off&&size>=2)?flt(u32(p+off+4)):0;
- if(!finite(off?u32(p+off):0))v->u=0;if(off&&size>=2&&!finite(u32(p+off+4)))v->v=0;
+ if(!vx_f32_finite(off?u32(p+off):0))v->u=0;if(off&&size>=2&&!vx_f32_finite(u32(p+off+4)))v->v=0;
 }
 static double distance(const cv *v,const vx3dn_rect *r,uint32_t plane) {
  switch(plane) {case 0:return v->x-r->left;case 1:return r->right-v->x;
@@ -1129,10 +1179,11 @@ static cv interpolate(const cv *a,const cv *b,double t) {
  v.z=a->z+(b->z-a->z)*t;v.rhw=a->rhw+(b->rhw-a->rhw)*t;
  for(k=0;k<4;k++)v.c[k]=a->c[k]+(b->c[k]-a->c[k])*t;
  /* v10.172: texture coordinates are perspective-correct (u*rhw and v*rhw are linear in screen space) */
- if(v.rhw>0){v.u=(a->u*a->rhw+(b->u*b->rhw-a->u*a->rhw)*t)/v.rhw;v.v=(a->v*a->rhw+(b->v*b->rhw-a->v*a->rhw)*t)/v.rhw;
-  v.u1=(a->u1*a->rhw+(b->u1*b->rhw-a->u1*a->rhw)*t)/v.rhw;v.v1=(a->v1*a->rhw+(b->v1*b->rhw-a->v1*a->rhw)*t)/v.rhw;
-  v.q=(a->q*a->rhw+(b->q*b->rhw-a->q*a->rhw)*t)/v.rhw;v.q1=(a->q1*a->rhw+(b->q1*b->rhw-a->q1*a->rhw)*t)/v.rhw;}
- else {v.u=a->u+(b->u-a->u)*t;v.v=a->v+(b->v-a->v)*t;v.u1=a->u1+(b->u1-a->u1)*t;v.v1=a->v1+(b->v1-a->v1)*t;v.q=a->q+(b->q-a->q)*t;v.q1=a->q1+(b->q1-a->q1)*t;}
+ if(v.rhw>0){const double ir=1.0/v.rhw; /* .762 (audit of .757): one divide a clipped vertex (were eight) */v.u=(a->u*a->rhw+(b->u*b->rhw-a->u*a->rhw)*t)*ir;v.v=(a->v*a->rhw+(b->v*b->rhw-a->v*a->rhw)*t)*ir;
+  v.u1=(a->u1*a->rhw+(b->u1*b->rhw-a->u1*a->rhw)*t)*ir;v.v1=(a->v1*a->rhw+(b->v1*b->rhw-a->v1*a->rhw)*t)*ir;
+  v.q=(a->q*a->rhw+(b->q*b->rhw-a->q*a->rhw)*t)*ir;v.q1=(a->q1*a->rhw+(b->q1*b->rhw-a->q1*a->rhw)*t)*ir;
+  v.u2=(a->u2*a->rhw+(b->u2*b->rhw-a->u2*a->rhw)*t)*ir;v.v2=(a->v2*a->rhw+(b->v2*b->rhw-a->v2*a->rhw)*t)*ir;}
+ else {v.u=a->u+(b->u-a->u)*t;v.v=a->v+(b->v-a->v)*t;v.u1=a->u1+(b->u1-a->u1)*t;v.v1=a->v1+(b->v1-a->v1)*t;v.q=a->q+(b->q-a->q)*t;v.q1=a->q1+(b->q1-a->q1)*t;v.u2=a->u2+(b->u2-a->u2)*t;v.v2=a->v2+(b->v2-a->v2)*t;}
  for(k=0;k<4;k++)v.s[k]=a->s[k]+(b->s[k]-a->s[k])*t;
  return v;
 }
@@ -1195,11 +1246,15 @@ static void output(vx3dn_vertex *o,const cv *v) {
  * redone for every triangle (board, v10.220: 42 us of HAL time a triangle, 3 of every 4 seconds of a WinTune frame). It is now built
  * once and kept until a state command, a render-target change, a clear or the end of the call; each triangle only reads, clips and
  * appends its vertices. tc.err: the state's error (every primitive returns it); tc.skip: why every primitive is left out. */
-typedef struct {uint32_t fvf,coff,soff,t0,n0,t1,n1;} vx_layout; /* v10.222: byte offsets of diffuse, specular, the two coordinate sets (0 = none) and their sizes */
+typedef struct {uint32_t fvf,coff,soff,t0,n0,t1,n1,t2,n2;} vx_layout; /* .731: t2 n2, unit 2's own set */ /* v10.222: byte offsets of diffuse, specular, the two coordinate sets (0 = none) and their sizes */
 /* v10.358: a coordinate's float bits inside [lo, hi] (non-negative floats order as their bits), or with ACCEL_3D_GUARD on and the edge at 0,
  * between -0.5 and -0.0: the vertices Mesa's clipping puts on GL's window edge, the engine's -0.5 (the VxD takes them with the same switch) */
+/* .767's guard band offered to the runtime (vx_d3d_rtgb, VXREG GBAND) deleted in .768: T767, no gain with the runtime's software vertex
+ * processing (VX855 253.7 against 253.8 ms, VX900 106.2 against 106.1), and the runtime's unclipped triangles across a 4096-wide band
+ * shaded up to 28 of 255 off (VXTLP 6N / 6P against the hardware path, both chips): the engine's interpolation far past the screen */
 #define GB_IN(w,lo,hi) ((w)-(lo)<=(hi)-(lo)||(tc.guard&&!(lo)&&(w)>=0x80000000UL&&(w)<=0xBF000000UL))
-static uint32_t tc_tn; /* .654: the DrawPrimitives2 call draws the driver's T&L records (template_body: T13 without fog) */
+#define GB_INR(w,lo,rng) ((w)-(lo)<=(rng)||(tc.guard&&!(lo)&&(w)>=0x80000000UL&&(w)<=0xBF000000UL)) /* .769: GB_IN with hi - lo made once (tc.bxw, tc.byh) */
+/* tc_tn (above vx_d3d_init) .654: the DrawPrimitives2 call draws the driver's T&L records (template_body: T13 without fog) */
 /* .714: a triangle's area test (area == 0, or CW / CCW culling: rs[22] 2 culls area > 0, 3 culls area < 0) on the double's bits: Watcom
  * compiled each sign compare as FLDZ / FCOMP / FNSTSW / SAHF on the x87 (board, T713 pursuit: the culling loops' area lines 6-9% of
  * the frame). The same answers: zero and -0.0 culled; a NaN area (no compare true) kept; infinities by their sign. The area itself is
@@ -1220,7 +1275,7 @@ static __inline int vx_area_cull(double area,uint32_t cm) {
  return hi>>31?cm==3:cm==2;
 }
 #endif
-static struct {uint32_t valid,id,err,skip,tex,set,set1,units,layout,s3,pre;int prog;const vx_d3d_context *ctx;vx_layout lay;uint32_t bxl,bxr,byt,byb,guard;double zb;vx3dn_packet p;} tc; /* v10.368: zb = ZBIAS's depth offset */ /* v10.236: b* = the clip edges as float bits */
+static struct {uint32_t valid,id,err,skip,tex,set,set1,set2,units,layout,s3,pre;int prog;const vx_d3d_context *ctx;vx_layout lay;uint32_t bxl,bxr,byt,byb,guard,bxw,byh;double zb;vx3dn_packet p;} tc; /* .769: bxw, byh = bxr - bxl, byb - byt (made once with them: the T&L's record test read both edges and subtracted every vertex) */ /* v10.368: zb = ZBIAS's depth offset */ /* v10.236: b* = the clip edges as float bits */
 static uint32_t vxs_template_valid; /* .553 (.552): the span frame's constants are this template's (vx_d3d_span.inc, vxs_tc); cleared with the template, so a template id that comes round again cannot match */
 static uint32_t bq_tid;
 /* .552: what a draw asks of the state before it reaches the template, kept for as long as the template may stand (ep: ended by
@@ -1253,13 +1308,16 @@ static int ep_supported(const vx_d3d_context *c) { /* vx_d3d_supported's answer 
 /* v10.428: a render state taken from the runtime's own record (the HAL's resync, vx_d3d_hal.c dp2_impl): applied as a RENDERSTATE command
  * applies it, the template built again for the next draw. Not while a state block is being recorded. */
 uint32_t vx_d3d_rs_synced;
-int vx_d3d_state_adopt(vx_d3d_context *c,uint32_t id,uint32_t value) {if(!c||c->recording||id>=VX_D3D_RS)return 0;c->state.rs[id]=value;template_reset();vx_d3d_rs_synced++;return 1;}
+/* .737 (review audit #39): ZWRITEENABLE (14), ALPHATESTENABLE (15) and ALPHABLENDENABLE (27) are BOOLs: any value other than 0 is TRUE.
+ * They were refused above 1 (vx_d3d_unsupported), so a program passing another non-zero TRUE had its draws left out. Kept as 0 or 1 */
+static uint32_t rs_norm(uint32_t id,uint32_t v) {return (id==14||id==15||id==27)?(v!=0):v;}
+int vx_d3d_state_adopt(vx_d3d_context *c,uint32_t id,uint32_t value) {if(!c||c->recording||id>=VX_D3D_RS)return 0;c->state.rs[id]=rs_norm(id,value);template_reset();vx_d3d_rs_synced++;return 1;}
 /* v10.309 (review): a state command whose every value is already the state (apps send unchanged states constantly) changes nothing that a
  * flush or a template rebuild is for: the batch's draws and the next ones are drawn under the same state. A command being recorded into a
  * state block, an id out of range or a viewport out of the target goes the usual way. The template is reset at every DrawPrimitives2 call,
  * so a surface changed between calls is still seen. */
 /* v10.368 (audits N16, 2.1): render states nothing in the driver reads, which the runtime still forwards: changing one does not send the
- * batch or build the draw template again (the value is kept as before). WRAP0-7 (128-135), CLIPPING (136), LIGHTING (137), EXTENTS,
+ * batch or build the draw template again (the value is kept as before). (.730: WRAP0-7, 128-135, are read now: VX3DN_EXT_WRAP), CLIPPING (136), LIGHTING (137), EXTENTS,
  * AMBIENT, FOGVERTEXMODE, COLORVERTEX, LOCALVIEWER, NORMALIZENORMALS, COLORKEYBLENDENABLE, the four material sources (138-148), VERTEXBLEND,
  * CLIPPLANEENABLE, SOFTWAREVERTEXPROCESSING (151-153), POINTSCALE_A/B/C (158-160), MULTISAMPLEANTIALIAS/MASK (161, 162), PATCHEDGESTYLE,
  * PATCHSEGMENTS, DEBUGMONITORTOKEN (163-165), INDEXEDVERTEXBLENDENABLE (167), TWEENFACTOR (170), POSITIONORDER, NORMALORDER (172, 173).
@@ -1316,15 +1374,15 @@ static void legacy_rs(vx_d3d_context *c,vx_d3d_state *s,uint32_t id,uint32_t v,c
  }
  vx_d3d_legacy_stat[0]++;
 }
-static int rs_inert(uint32_t id) {return (id>=128&&id<=148)||(id>=151&&id<=153)||(id>=158&&id<=165)||id==167||id==170||id==172||id==173;}
+static int rs_inert(uint32_t id) {return (id>=136&&id<=148)||(id>=151&&id<=153)||(id>=158&&id<=165)||id==167||id==170||id==172||id==173;}
 static int state_same(const vx_d3d_context *c,uint32_t op,const uint8_t *p,uint32_t n) {
  uint32_t j;const vx_d3d_state *st=&c->state;
  if(c->recording)return 0;
- if(op==8){for(j=0;j<n;j++){uint32_t id=u32(p+j*8),v=u32(p+j*8+4);if(id>=256)return 0;if(id==VX_D3D_RS_LOGICOP||rs_inert(id))continue;
+ if(op==8){for(j=0;j<n;j++){uint32_t id=u32(p+j*8),v=u32(p+j*8+4);if(id>=256)return 0;if(id==VX_D3D_RS_LOGICOP||id==VX_D3D_RS_LEGACY_TB||rs_inert(id))continue; /* .762 (audit of .757, item 7): 254 is passed over when applied too */
    /* .663 (audit 09): a legacy state that sets texture stage states (legacy_rs) is the same only if those are: a stage's own ADDRESSU
     * after a legacy wrap, then the same legacy wrap again, kept the clamp; applied whenever it comes (it is rare: DirectX 3/5) */
    if(id==3||id==17||id==18||id==21||(id>=43&&id<=46)||id==49)return 0;
-   if(st->rs[id]!=v||(id==1&&st->tss[0][0]!=v))return 0;}return 1;}
+   if(st->rs[id]!=rs_norm(id,v)||(id==1&&st->tss[0][0]!=v))return 0;}return 1;} /* .762 (item 7): against the value as it is kept (a TRUE of 2 or FFFFFFFF for states 14, 15, 27 never compared equal: every such command flushed the batch) */
  if(op==25){for(j=0;j<n;j++){uint32_t stage=u16(p+j*8),id=u16(p+j*8+2),v=u32(p+j*8+4);if(stage>=8||id>=32)return 0;
    if(st->tss[stage][id]!=v||(id==12&&(st->tss[stage][13]!=v||st->tss[stage][14]!=v))||(!stage&&!id&&st->rs[1]!=v))return 0;}return 1;}
  for(j=0;j<n;j++){uint32_t x=u32(p+j*16),y=u32(p+j*16+4),w=u32(p+j*16+8),h=u32(p+j*16+12);
@@ -1350,7 +1408,15 @@ static uint32_t apply_maxmip(vx3dn_packet *p,const vx_d3d_context *c,const vx_d3
  if(!nl||nl>12||off[0]!=s->offset)return VX_D3D_WRONGTEXTUREFORMAT;
  for(k=1;k<nl;k++)if(off[k]<=off[k-1]||(off[k]&255)||((off[k]-off[0])>>8)>=0x10000UL)return VX_D3D_WRONGTEXTUREFORMAT;
  b=t[20]<nl?t[20]:nl-1;base=s->offset;delta=off[b]-base;
- s->offset=off[b];s->width>>=b;s->height>>=b;if(!s->width)s->width=1;if(!s->height)s->height=1;s->pitch=mip_pitch(s->format,s->width);
+ /* .737 (fourth review #7): a DXT chain's sampler reads every level from the top level's block, each right after the one before at the
+  * 32-byte row rule (vx_ddraw.c, VX_DXTCHAIN); a lower level's own block is only the CPU's copy. The chosen level's base is its packed
+  * place in the top block; one that is not 256-byte aligned is refused (the draw falls back) */
+ if(b&&s->format>=VX3DN_TEX_DXT1&&s->format<=VX3DN_TEX_DXT5){uint32_t acc=0,w,h;
+  for(k=0;k<b;k++){w=s->width>>k;h=s->height>>k;if(!w)w=1;if(!h)h=1;acc+=mip_pitch(s->format,w)*(h<4?1:h/4);}
+  if((base+acc)&255)return VX_D3D_CONFLICTINGSTATE;
+  {uint32_t sh=base+acc-off[b];for(k=b;k<nl;k++)off[k]+=sh;} /* the level offsets below keep their spacing (the sampler does not take them for DXT) */
+  delta=acc;}
+ s->offset=base+delta;s->width>>=b;s->height>>=b;if(!s->width)s->width=1;if(!s->height)s->height=1;s->pitch=mip_pitch(s->format,s->width);
  if(layout==VX3DN_LAYOUT_CUBE){uint32_t *faces=u?p->stages.uface[u-1]:p->stages.face;
   for(k=0;k<6;k++){if(faces[k]>0xFFFFFFFFUL-delta)return VX_D3D_WRONGTEXTUREFORMAT;faces[k]+=delta;}}
  mf=t[18]==2?1:t[18]==3?2:0;newn=mf&&vx_d3d_mips?nl-b:1;
@@ -1364,6 +1430,7 @@ static uint32_t apply_maxmip(vx3dn_packet *p,const vx_d3d_context *c,const vx_d3
 }
 /* v10.201: ZBIAS (47) pulls the primitive toward the viewer by 2^-12 of the depth range a step (an approximation: XP's 01/16 encoding
  * has one sample, CLXP3D T53) */
+static uint32_t tn_save[8][2];static int tn_ov; /* .730: (defined with the T&L's entry below) the application's TEXCOORDINDEX while the T&L's are in */
 static double zbias(const vx_d3d_context *c) {return c->state.rs[47]?(double)(c->state.rs[47]>16?16:c->state.rs[47])/4096.0:0;}
 static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int validate);
 /* v10.462: a template build's parts, while the phases are on (vx_d3d_ftprof; TSC cycles / 16): [0] builds measured, [1] composing the
@@ -1379,6 +1446,7 @@ uint32_t vx_d3d_tprof[8];static uint32_t tp_t;static uint32_t tp_rs[VX_D3D_RS],t
  * did not hold, a build runs on code and data it does. */
 static uint32_t template_build(vx_d3d_context *c,const vx_d3d_services *sv,int validate) {
  uint32_t o=VX_PH(VX_PH_STATE),rc;
+ tc.set2=0xFFFFFFFFUL; /* .731: none until a build gives unit 2 its own set */
  if(vx_d3d_ftprof&&vx_d3d_phclock&&!validate){uint32_t s,k,texonly=1,same;
   same=tp_have&&!memcmp(tp_rs,c->state.rs,sizeof(tp_rs))&&!memcmp(tp_tss,c->state.tss,sizeof(tp_tss));
   if(tp_have&&!same&&!memcmp(tp_rs,c->state.rs,sizeof(tp_rs))){for(s=0;s<VX_D3D_STAGES&&texonly;s++)for(k=1;k<VX_D3D_TSS;k++)if(tp_tss[s][k]!=c->state.tss[s][k]){texonly=0;break;}}else texonly=0;
@@ -1389,7 +1457,7 @@ static uint32_t template_build(vx_d3d_context *c,const vx_d3d_services *sv,int v
 }
 static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int validate) {
  static vx_d3d_xp xp;static vx3dn_packet p;
- uint32_t j,k,set=c->state.tss[0][11]&0xFFFF,set1,s0=0,hset[3],u,tex,perr;vx3dn_surface us[2];uint32_t face[6],vol[2];int prog,cube_mip=0;vx3dn_surface ts;
+ uint32_t j,k,set=c->state.tss[0][11]&0xFFFF,set1,set2=0xFFFFFFFFUL,s0=0,hset[3],u,tex,perr;vx3dn_surface us[2];uint32_t face[6],vol[2];int prog,cube_mip=0;vx3dn_surface ts;
  uint32_t ul[2]={0,0},uf[2][6]={{0}},ucm[2]={0,0},s3=0; /* v10.321: units 1 and 2's layouts and faces, a cube's shared levels, the 3D sets; v10.330 (review #165): faces zeroed (a volume set fills 0..2, the packet copies all six) */
  static const uint32_t addr3[6]={2,2,3,1,0,0}; /* D3DTSS_ADDRESSW (25) as U and V */
  prog=ep_compose(c,c->state.tss[0][0]!=0,&xp,&perr);TP(1); /* .552: the draw's support check composed it already */
@@ -1413,7 +1481,9 @@ static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int va
  * by a unit, v10.313), and the device says two sets (FVF caps 2), so a draw asking for a third is outside what it offers: it is drawn
  * with that unit on slot B (the second set's coordinates), counted (vx_d3d_set3_alias), as the driver's T&L does (vx_d3d_tn_nd[2]),
  * instead of left out. */
- for(u=1;tex&&u<xp.units;u++){if(xp.unit_set[u]==set)hset[u]=0;else if(set1==set||xp.unit_set[u]==set1){set1=xp.unit_set[u];hset[u]=1;}else{hset[u]=1;vx_d3d_set3_alias++;}}
+ for(u=1;tex&&u<xp.units;u++){if(xp.unit_set[u]==set)hset[u]=0;else if(set1==set||xp.unit_set[u]==set1){set1=xp.unit_set[u];hset[u]=1;}
+  else if(u==2&&xp.units==3&&!xp.ps){set2=xp.unit_set[2];hset[2]=2;} /* .731: set C, unit 2's own (T730: the engine reads slot C) */
+  else{hset[u]=1;vx_d3d_set3_alias++;}}
  /* v10.211: a bump unit's dependent read takes its base coordinates from TextureB (board, v10.210: texture 1 on set 0 read set B's
   * defaults, 0 + du dv, while set 1 was right). Unit 1 is put on the B slot, which carries unit 1's set either way (set1 == set here). */
  if(tex&&xp.units>1&&(c->state.tss[s0][1]==22||c->state.tss[s0][1]==23))hset[1]=1;
@@ -1444,7 +1514,7 @@ static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int va
  if(tex&&xp.units>1){if(xp.layout==VX3DN_LAYOUT_CUBE||xp.layout==VX3DN_LAYOUT_VOLUME||xp.layout==VX3DN_LAYOUT_PROJ)s3|=1;for(u=1;u<xp.units;u++)if(ul[u-1])s3|=1U<<hset[u];
   if(s3&&xp.units>2){tc.skip=0x1000;return 0;}} /* (two units: the VxD's layout has the two sets only) */
  TP(2);packet(&p,c,VX3DN_DRAW);
- if(c->state.rs[28])fog_registers(&p.fog,c->state.rs); /* v10.195 */
+ if(c->state.rs[28]){if(tc_tn&&tn_tfog)fog_w_registers(&p.fog,c->state.rs,tn_tfog);else fog_registers(&p.fog,c->state.rs);} /* v10.195; .733: W fog for the T&L's depth vertex fog */
  if(tex) {
   static const uint32_t address[5]={2,2,3,1,0}; /* D3DTADDRESS_ WRAP 1, MIRROR 2, CLAMP 3, BORDER 4 -> hardware 2 wrap (XP, CLXP3D T19), 3 mirror, 1 clamp;
                                                    v10.304: 0 border (HCM p125), BORDERCOLOR (15) in sampler 35 / 36 */
@@ -1464,7 +1534,7 @@ static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int va
    uint32_t off[12],nl=sv->mips(sv->context,t[0],off,12),l,ok=nl>1&&nl<=12&&off[0]==ts.offset; /* v10.330 (review #85): a count over the array's 12 is refused */ /* block 10030000 holds 8 level offsets; v10.304: up to 12 levels, the VxD samples 9 (maximum level 8) */
    for(l=1;l<nl&&ok;l++)if(off[l]<=off[0]||((off[l]-off[0])&255)||((off[l]-off[0])>>8)>=0x10000UL)ok=0;
    if(ok){double b=flt(t[19]);int bi;p.mip.levels=nl;p.mip.filter=t[18]==2?1:2;for(l=1;l<nl;l++)p.mip.level[l-1]=(off[l]-off[0])>>8;
-    if(!finite(t[19]))b=0;b*=2;if(b>127)b=127;if(b<-128)b=-128;bi=(int)(b<0?b-.5:b+.5);p.mip.bias=(uint32_t)bi&255;}
+    if(!vx_f32_finite(t[19]))b=0;b*=2;if(b>127)b=127;if(b<-128)b=-128;bi=(int)(b<0?b-.5:b+.5);p.mip.bias=(uint32_t)bi&255;}
   }
    if(xp.units>1) { /* v10.206: units 1 and 2 (filter and address as stage 0's; no mip chain); v10.304: their mip chains and border colours */
    static const uint32_t addr2[5]={2,2,3,1,0};
@@ -1483,7 +1553,7 @@ static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int va
     if((t2[18]==2||t2[18]==3)&&sv->mips&&vx_d3d_mips&&(vx_d3d_feat&VX_F_UNITMIP)&&(!ul[u-1]||(ul[u-1]==VX3DN_LAYOUT_CUBE&&ucm[u-1]))){uint32_t off[12],nl=sv->mips(sv->context,t2[0],off,12),l,ok=nl>1&&nl<=12&&off[0]==q->surface.offset; /* v10.330 (review #85) */
      for(l=1;l<nl&&ok;l++)if(off[l]<=off[0]||((off[l]-off[0])&255)||((off[l]-off[0])>>8)>=0x10000UL)ok=0;
      if(ok){double b=flt(t2[19]);int bi;p.stages.umip[u-1]=(nl>9?9:nl)|((t2[18]==2?1UL:2UL)<<8);for(l=1;l<nl&&l<=8;l++)p.stages.ulevel[u-1][l-1]=(off[l]-off[0])>>8;
-      if(!finite(t2[19]))b=0;b*=2;if(b>127)b=127;if(b<-128)b=-128;bi=(int)(b<0?b-.5:b+.5);p.stages.ubias[u-1]=(uint32_t)bi&255;}}
+      if(!vx_f32_finite(t2[19]))b=0;b*=2;if(b>127)b=127;if(b<-128)b=-128;bi=(int)(b<0?b-.5:b+.5);p.stages.ubias[u-1]=(uint32_t)bi&255;}}
     if(t2[17]==3){uint32_t an=t2[21];if(an<1)an=1;if(an>16)an=16;p.stages.umip[u-1]|=an<<16;}}
   }
  }
@@ -1518,12 +1588,21 @@ static uint32_t template_body(vx_d3d_context *c,const vx_d3d_services *sv,int va
  }
  TP(4);
  if(tex)for(u=0;u<xp.units;u++){uint32_t mr=apply_maxmip(&p,c,sv,&xp,u,u?ucm[u-1]:cube_mip);if(mr){tc.err=mr;return 0;}}
+ /* .730: D3DRS_WRAPn of the Direct3D set each slot carries (A unit 0's, B the first unit on slot B, C unit 2's with three units), from the
+  * stage's own TEXCOORDINDEX (the driver's T&L swaps in its output sets: tn_save keeps the application's); plain 2D sets only (no projected,
+  * cube or volume layout), solid fill only (VIA's drivers clear it for point and wireframe fill) */
+ if(tex&&!xp.layout&&c->state.rs[8]==3){uint32_t w=0,u,b=0;
+  #define WRAP_OF(st) (c->state.rs[128+((tn_ov?tn_save[(st)&7][0]:c->state.tss[(st)&7][11])&7)]&3UL)
+  w=WRAP_OF(s0);for(u=1;u<xp.units;u++)if(hset[u]){b=WRAP_OF(xp.unit_stage[u]);break;}w|=b<<2;
+  if(xp.units==3)w|=WRAP_OF(xp.unit_stage[2])<<4;
+  #undef WRAP_OF
+  p.ext.dither|=w<<VX3DN_EXT_WRAP_SHIFT;}
  {extern uint32_t vx_d3d_gband;if(tc_tn&&vx_d3d_gband&&!(xp.layout&&tex))p.ext.dither|=VX3DN_EXT_GUARD;} /* .703: the driver's T&L's packets may carry guard-band positions in every form (fast_triangle takes them). .721: not a projected, cube or volume layout (S, T, R): the engine draws those wrong past the viewport (VXTLP 6Q), so the T&L clips them to it (tn_gb) */
- tc.zb=zbias(c);pk_copy(&tc.p,&p);tc.tex=tex;tc.set=set;tc.set1=set1;tc.prog=prog;tc.units=tex?xp.units:0;tc.layout=(xp.layout&&tex)?xp.layout:0;tc.s3=tex?p.stages.s3:0;
+ tc.zb=zbias(c);pk_copy(&tc.p,&p);tc.tex=tex;tc.set=set;tc.set1=set1;tc.set2=(tex&&xp.units==3&&hset[2]==2)?set2:0xFFFFFFFFUL;tc.prog=prog;tc.units=tex?xp.units:0;tc.layout=(xp.layout&&tex)?xp.layout:0;tc.s3=tex?p.stages.s3:0;
  /* v10.441: prepacked vertices for this template's triangles when the words the arrays would carry are exactly the 10-word form (the
   * template's own fields agree with the packet's: textured, two units, an XP program) */
  tc.pre=vx_d3d_prepack&&VX3DN_PRE_FORM(&p)&&(tc.tex!=0)==(p.tex.enable!=0)&&((tc.tex&&tc.units>1)==(p.tex.enable&&p.stages.units>1))&&(tc.prog>=0)==(p.shader.count!=0)&&!tc.layout&&!tc.s3&&tc.units<=2;
- tc.bxl=bits((float)p.clip.left);tc.bxr=bits((float)p.clip.right);tc.byt=bits((float)p.clip.top);tc.byb=bits((float)p.clip.bottom);
+ tc.bxl=bits((float)p.clip.left);tc.bxr=bits((float)p.clip.right);tc.byt=bits((float)p.clip.top);tc.byb=bits((float)p.clip.bottom);tc.bxw=tc.bxr-tc.bxl;tc.byh=tc.byb-tc.byt;
  tc.guard=(vx_d3d_feat&VX_F_GUARD)!=0; /* v10.358: x or y down to -0.5 at a clip edge of 0 (ACCEL_3D_GUARD, the VxD's word) */
  tc.lay.fvf=0xFFFFFFFFUL; /* filled for the call's FVF at the first primitive */
  (void)j;(void)k;TP(5);
@@ -1535,7 +1614,7 @@ static uint32_t template_status(const vx_d3d_context *c,const vx_d3d_services *s
 }
 /* the primitive's vertices into packet d at d->vertex_count (the template's per-vertex fields). v10.221 (review): a texture coordinate
  * that is not finite as a float (perspective division by a tiny clipped rhw) is sent as 0; the VxD refuses the packet otherwise. */
-static uint32_t fbits(double d) {uint32_t b=bits_any((float)d);return finite(b)?b:0;}
+static uint32_t fbits(double d) {uint32_t b=bits_any((float)d);return vx_f32_finite(b)?b:0;}
 static void put_vertices(vx3dn_packet *d,const cv *vb,const uint32_t *ord,uint32_t no) {
  uint32_t j,b=d->vertex_count;
  if(vx_d3d_geo_on)vx_d3d_geo[12]+=no; /* v10.440 */
@@ -1553,8 +1632,8 @@ static void put_vertices(vx3dn_packet *d,const cv *vb,const uint32_t *ord,uint32
   if(tc.tex){d->tex.uv[b+j][0]=fbits(q->u);d->tex.uv[b+j][1]=fbits(q->v);}else{d->tex.uv[b+j][0]=0;d->tex.uv[b+j][1]=0;}
   if(tc.tex&&tc.units>1){d->stages.uv1[b+j][0]=fbits(q->u1);d->stages.uv1[b+j][1]=fbits(q->v1);}else{d->stages.uv1[b+j][0]=0;d->stages.uv1[b+j][1]=0;}
   if(tc.prog>=0){uint32_t ch,sp=0;double dd;for(ch=0;ch<4;ch++){dd=q->s[ch];if(dd<0)dd=0;if(dd>255)dd=255;sp|=u8r(dd)<<(ch*8);} /* v10.351: u8r */d->shader.spec[b+j]=sp;}else d->shader.spec[b+j]=0;
-  d->stages.q[b+j]=(tc.layout||(tc.s3&1))?fbits(q->q):0;
-  d->stages.r1[b+j]=(tc.s3&2)?fbits(q->q1):0; /* v10.321 */
+  d->stages.q[b+j]=(tc.layout||(tc.s3&1))?fbits(q->q):tc.set2!=0xFFFFFFFFUL?fbits(q->u2):0; /* .731: or set C's S */
+  d->stages.r1[b+j]=(tc.s3&2)?fbits(q->q1):tc.set2!=0xFFFFFFFFUL?fbits(q->v2):0; /* v10.321; .731: or set C's T */
  }
  d->vertex_count=b+no;
 }
@@ -1617,7 +1696,7 @@ static void swap_vertex(vx3dn_packet *d,uint32_t i,uint32_t j) {
 static vx3dn_packet one;
 static uint32_t open_slot(vx_d3d_context *c,const vx_d3d_services *sv,uint32_t no,uint32_t prim,uint32_t *completed,vx3dn_packet **d) {
  uint32_t rc;int st=strips_on(prim);
- if(!(vx_d3d_feat&VX_F_BATCH)){pk_copy(&one,&tc.p);one.ext.prim=prim;one.bursts.n=0;one.pre.on=tc.pre&&!prim;*d=&one;return 0;}
+ if(!(vx_d3d_feat&VX_F_BATCH)){pk_copy(&one,&tc.p);one.ext.prim=prim;if(prim)one.ext.dither&=~VX3DN_EXT_WRAP_MASK; /* .730: no wrap for points and lines */one.bursts.n=0;one.pre.on=tc.pre&&!prim;*d=&one;return 0;}
  /* v10.483: a batch's runs follow the batch, not this call: strips_on changes within a template since v10.482 (the engine's flat shading
   * takes strips only from the ICD's own strip calls, gl_strip_on), so list vertices joining a batch that has runs are counted in a run
   * (the triangles of a flat list after a flat strip run in one packet went uncounted: the VxD refused the packet), and the first run of
@@ -1628,7 +1707,7 @@ static uint32_t open_slot(vx_d3d_context *c,const vx_d3d_services *sv,uint32_t n
  if(bq_on){vx_d3d_cut_tag=bq_tid!=tc.id?1:bq.ext.prim!=prim?2:bq.pre.on==2?5:bq.vertex_count+no>VX3DN_MAX_VERTICES?3:4;vx_d3d_cut_hist[vx_d3d_cut_tag]++;if(vx_d3d_geo_on)vx_d3d_geo[16+vx_d3d_cut_tag]++;if(ft_sm)vx_d3d_ft[15]++;
   {uint32_t f0=ft_sm?vx_d3d_phclock():0;rc=vx_d3d_flush(c,sv,completed);if(ft_sm)vx_d3d_ft[19]+=(vx_d3d_phclock()-f0+8)>>4;} /* v10.445: the send's own time (in [5]) */
   if(rc)return rc;}
- bq_at_slot();pk_copy(&bq,&tc.p);bq.ext.prim=prim;bq.pre.on=tc.pre&&!prim;bq_tid=tc.id;bq_on=1;bq_cmd=cur_cmd;*d=&bq;strip_forget();bq.bursts.n=0;bq_ep=0xFFFFFFFFUL;if(st)list_add(&bq,no);return 0;
+ bq_at_slot();pk_copy(&bq,&tc.p);bq.ext.prim=prim;if(prim)bq.ext.dither&=~VX3DN_EXT_WRAP_MASK; /* .730 */bq.pre.on=tc.pre&&!prim;bq_tid=tc.id;bq_on=1;bq_cmd=cur_cmd;*d=&bq;strip_forget();bq.bursts.n=0;bq_ep=0xFFFFFFFFUL;if(st)list_add(&bq,no);return 0;
 }
 static uint32_t close_slot(vx_d3d_context *c,const vx_d3d_services *sv,vx3dn_packet *d,uint32_t *completed) {return d==&one?submit(sv,&one,c,completed):0;}
 static uint32_t emit(vx_d3d_context *c,const vx_d3d_services *sv,const cv *vb,const uint32_t *ord,uint32_t no,uint32_t prim,uint32_t *completed) {
@@ -1670,10 +1749,10 @@ static void fast_vertex_pre_w(uint32_t *w,const uint8_t *p,uint32_t ix,const uin
  if(!(x&0x7FFFFFFFUL))x=0;if(!(y&0x7FFFFFFFUL))y=0;if(!(z&0x7FFFFFFFUL))z=0;
  if(snap){if(ix<ps_lim){x=ps_xy[2*ix];y=ps_xy[2*ix+1];vx_d3d_ps_used++;}else{x=snapw(x,0);y=snapw(y,snap==2);}} /* v10.490: the pass's words (-0 as 0 there too) */
  if(tc.zb!=0){double f=(double)flt(z)-tc.zb;z=f>0?bits((float)f):0;}
- if(tex&&t0){u=u32(p+t0);if(!finite(u))u=0;if(n0>=2){vv=u32(p+t0+4);if(!finite(vv))vv=0;}}
+ if(tex&&t0){u=u32(p+t0);if(!vx_f32_finite(u))u=0;if(n0>=2){vv=u32(p+t0+4);if(!vx_f32_finite(vv))vv=0;}}
  w[0]=x;w[1]=y;w[2]=z;w[3]=u32(p+12);w[4]=coff?u32(pc+coff):0xFFFFFFFFUL;
  w[5]=prog>=0?(soff?cs_spec(p,pc,soff):0xFF000000UL):0;w[6]=u;w[7]=vv;
- if(two){uint32_t u1=0,v1=0;if(t1){u1=u32(p+t1);if(!finite(u1))u1=0;if(n1>=2){v1=u32(p+t1+4);if(!finite(v1))v1=0;}}w[8]=u1;w[9]=v1;}
+ if(two){uint32_t u1=0,v1=0;if(t1){u1=u32(p+t1);if(!vx_f32_finite(u1))u1=0;if(n1>=2){v1=u32(p+t1+4);if(!vx_f32_finite(v1))v1=0;}}w[8]=u1;w[9]=v1;}
  else{w[8]=u;w[9]=vv;}
 }
 static void fast_vertex_pre(vx3dn_packet *d,uint32_t b,const uint8_t *p,uint32_t ix,const uint8_t *pc) {fast_vertex_pre_w(&d->pre.w[b*10],p,ix,pc);}
@@ -1694,16 +1773,17 @@ static void fast_vertex_arrays(vx3dn_packet *d,uint32_t b,const uint8_t *p,uint3
  if(tc.zb!=0){double f=(double)flt(z)-tc.zb;z=f>0?bits((float)f):0;} /* v10.368 (audit N17): ZBIAS as primitive() applies it; it sent every
   * triangle through the general path */
  col=coff?u32(pc+coff):0xFFFFFFFFUL;
- if(tex&&t0){u=u32(p+t0);if(!finite(u))u=0;if(n0>=2){vv=u32(p+t0+4);if(!finite(vv))vv=0;}}
- if(two&&t1){u1=u32(p+t1);if(!finite(u1))u1=0;if(n1>=2){v1=u32(p+t1+4);if(!finite(v1))v1=0;}}
- if(qon){q=t0&&n0>=3?u32(p+t0+8):0x3F800000UL;if(!finite(q))q=0x3F800000UL;}
+ if(tex&&t0){u=u32(p+t0);if(!vx_f32_finite(u))u=0;if(n0>=2){vv=u32(p+t0+4);if(!vx_f32_finite(vv))vv=0;}}
+ if(two&&t1){u1=u32(p+t1);if(!vx_f32_finite(u1))u1=0;if(n1>=2){v1=u32(p+t1+4);if(!vx_f32_finite(v1))v1=0;}}
+ if(qon){q=t0&&n0>=3?u32(p+t0+8):0x3F800000UL;if(!vx_f32_finite(q))q=0x3F800000UL;}
  o->x=x;o->y=y;o->z=z;o->rhw=w;o->color=col;
  /* v10.272: every array entry written (0 where unused): the arrays are no longer cleared */
  d->tex.uv[b][0]=u;d->tex.uv[b][1]=vv;
  d->stages.uv1[b][0]=u1;d->stages.uv1[b][1]=v1;
  d->shader.spec[b]=prog>=0?(soff?cs_spec(p,pc,soff):0xFF000000UL):0;
  d->stages.q[b]=q;
- if(s3b){uint32_t r=t1&&n1>=3?u32(p+t1+8):0x3F800000UL;d->stages.r1[b]=finite(r)?r:0x3F800000UL;}else d->stages.r1[b]=0; /* v10.321 */
+ if(s3b){uint32_t r=t1&&n1>=3?u32(p+t1+8):0x3F800000UL;d->stages.r1[b]=vx_f32_finite(r)?r:0x3F800000UL;}else d->stages.r1[b]=0; /* v10.321 */
+ if(tc.set2!=0xFFFFFFFFUL){const uint32_t t2=tc.lay.t2;uint32_t a=0,c2=0;if(t2){a=u32(p+t2);if(!vx_f32_finite(a))a=0;if(tc.lay.n2>=2){c2=u32(p+t2+4);if(!vx_f32_finite(c2))c2=0;}}d->stages.q[b]=a;d->stages.r1[b]=c2;} /* .731: set C */
 }
 /* v10.444: the fast path's parts, sampled (one triangle in 16 of the triangle-token loop, while the phases are on; vx_d3d_phclock, TSC
  * cycles / 16): [0] triangles sampled, [1] the vertices fetched and range-checked (x y z rhw), [2] the area (doubles) and the cull, [3] the
@@ -1751,7 +1831,7 @@ static void gw_new(void) {if(!++gw_g){memset(gw_ok,0,sizeof(gw_ok));gw_g=1;}}
  if(!(z&0x7FFFFFFFUL))z=0;\
  if(snap&&ix<ps_lim){x=ps_xy[2*ix];y=ps_xy[2*ix+1];vx_d3d_ps_used++;}\
  else{if(!(x&0x7FFFFFFFUL))x=0;if(!(y&0x7FFFFFFFUL))y=0;if(snap){x=snapw(x,0);y=snapw(y,snap==2);}}\
- if(!finite(u))u=0;if(!finite(v))v=0;\
+ if(!vx_f32_finite(u))u=0;if(!vx_f32_finite(v))v=0;\
  w[0]=x;w[1]=y;w[2]=z;w[3]=u32(p+12);w[4]=u32(pc+(COFF));w[5]=(SOFF)?cs_spec(p,pc,(SOFF)):0xFF000000UL;w[6]=u;w[7]=v;w[8]=u;w[9]=v;vx_d3d_gw[1]++;return;}while(0)
 uint32_t vx_d3d_gw_fixed=1; /* .505: ACCEL_OPENGL_GLWORDS 2 (1: the recipe only) */
 static void gw_vertex(uint32_t *w,const uint8_t *p,uint32_t ix,const uint8_t *pc) { /* .505: pc the vertex whose colours it takes (cs_pc: the engine's flat strips), as fast_vertex_pre */
@@ -1763,10 +1843,10 @@ static void gw_vertex(uint32_t *w,const uint8_t *p,uint32_t ix,const uint8_t *pc
  x=u32(p);y=u32(p+4);z=u32(p+8);
  if(!(x&0x7FFFFFFFUL))x=0;if(!(y&0x7FFFFFFFUL))y=0;if(!(z&0x7FFFFFFFUL))z=0;
  if(snap){if(ix<ps_lim){x=ps_xy[2*ix];y=ps_xy[2*ix+1];vx_d3d_ps_used++;}else{x=snapw(x,0);y=snapw(y,snap==2);}}
- if((o=vr.ut0)!=0){u=u32(p+o);if(!finite(u))u=0;}
- if((o=vr.vt0)!=0){v=u32(p+o);if(!finite(v))v=0;}
+ if((o=vr.ut0)!=0){u=u32(p+o);if(!vx_f32_finite(u))u=0;}
+ if((o=vr.vt0)!=0){v=u32(p+o);if(!vx_f32_finite(v))v=0;}
  w[0]=x;w[1]=y;w[2]=z;w[3]=u32(p+12);w[4]=vr.coff?u32(pc+vr.coff):0xFFFFFFFFUL;w[5]=vr.soff?cs_spec(p,pc,vr.soff):vr.specc;w[6]=u;w[7]=v;
- if(vr.two){uint32_t u1=0,v1=0;if((o=vr.ut1)!=0){u1=u32(p+o);if(!finite(u1))u1=0;}if((o=vr.vt1)!=0){v1=u32(p+o);if(!finite(v1))v1=0;}w[8]=u1;w[9]=v1;}
+ if(vr.two){uint32_t u1=0,v1=0;if((o=vr.ut1)!=0){u1=u32(p+o);if(!vx_f32_finite(u1))u1=0;}if((o=vr.vt1)!=0){v1=u32(p+o);if(!vx_f32_finite(v1))v1=0;}w[8]=u1;w[9]=v1;}
  else{w[8]=u;w[9]=v;}
  vx_d3d_gw[0]++;
 }
@@ -1926,6 +2006,7 @@ static int fast_triangle(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
   if(!(GB_IN(wx,tc.bxl,tc.bxr)||(band&&flt(wx)>=tn_gxl&&flt(wx)<=tn_gxr))||!(GB_IN(wy,tc.byt,tc.byb)||(band&&flt(wy)>=tn_gyt&&flt(wy)<=tn_gyb))||
      u32(v[j]+8)>0x3F800000UL||u32(v[j]+12)-1UL>=0x7F7FFFFFUL){if(vx_d3d_geo_on)vx_d3d_geo[2]++;FT(1);if(ft_sm)vx_d3d_ft[7]++;return 0;}
   x[j]=flt(wx);y[j]=flt(wy);}}
+
  (void)r;(void)w;
  FT(1);
  area=((double)x[1]-x[0])*((double)y[2]-y[0])-((double)y[1]-y[0])*((double)x[2]-x[0]);
@@ -2028,7 +2109,7 @@ static uint32_t finish(vx_d3d_context *c,const vx_d3d_services *sv,cv *vs,uint32
    * left out instead of sent to the VxD, whose refusal of a packet after an earlier one was drawn loses the device */
   /* v10.221 (review): also an rhw that becomes 0 as a float (the VxD refuses rhw 0). The lower bounds are taken unless the value is
    * above them, so -0.0 becomes +0.0: the VxD compares IEEE encodings, where -0.0 (80000000) is above every limit and was refused. */
-  if(!finite(bits((float)v->x))||!finite(bits((float)v->y))||!finite(bits((float)v->z))||!finite(bits((float)v->rhw))||v->rhw<=0||!(bits((float)v->rhw)&0x7FFFFFFFUL)){drop(c);return 0;}
+  if(!vx_f32_finite(bits((float)v->x))||!vx_f32_finite(bits((float)v->y))||!vx_f32_finite(bits((float)v->z))||!vx_f32_finite(bits((float)v->rhw))||v->rhw<=0||!(bits((float)v->rhw)&0x7FFFFFFFUL)){drop(c);return 0;}
   if(!(v->x>tc.p.clip.left))v->x=tc.p.clip.left;if(v->x>tc.p.clip.right)v->x=tc.p.clip.right;
   if(!(v->y>tc.p.clip.top))v->y=tc.p.clip.top;if(v->y>tc.p.clip.bottom)v->y=tc.p.clip.bottom;
   if(!(v->z>0))v->z=0;if(v->z>1)v->z=1;
@@ -2071,7 +2152,8 @@ static uint32_t primitive_body(vx_d3d_context *c,const vx_d3d_input *in,const vx
 static uint32_t tc_ready(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv) {
  if(!tc.valid||tc.ctx!=c){uint32_t rc=template_build(c,sv,0);if(rc)return rc;}
  if(!tc.err&&!tc.skip&&tc.lay.fvf!=in->fvf){uint32_t f=in->fvf;tc.lay.fvf=f;tc.lay.coff=(f&0x40)?16:0;tc.lay.soff=(f&0x80)?((f&0x40)?20:16):0;
-  tc.lay.n0=tc.lay.n1=0;tc.lay.t0=texcoord_offset(f,tc.set,&tc.lay.n0);tc.lay.t1=texcoord_offset(f,tc.set1,&tc.lay.n1);}
+  tc.lay.n0=tc.lay.n1=0;tc.lay.t0=texcoord_offset(f,tc.set,&tc.lay.n0);tc.lay.t1=texcoord_offset(f,tc.set1,&tc.lay.n1);
+  tc.lay.n2=0;tc.lay.t2=tc.set2!=0xFFFFFFFFUL?texcoord_offset(f,tc.set2,&tc.lay.n2):0;}
  return 0;
 }
 static uint32_t primitive(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv,const uint32_t *idx,uint32_t nv,uint32_t *completed) {
@@ -2087,14 +2169,17 @@ static uint32_t primitive_body(vx_d3d_context *c,const vx_d3d_input *in,const vx
  if(tc.skip){drop(c);vx_d3d_drop_why|=tc.skip;return 0;}
  if(vx_d3d_geo_on&&nv==3){if(!geo_skip)geo_tri(in,idx);if(!prim_tried&&(FLATSW(c)||c->state.rs[8]!=3))vx_d3d_geo[10]++;} /* v10.440 */
  if(nv==3&&!prim_tried&&!FLATSW(c)&&c->state.rs[8]==3){uint32_t rc;VX_PH(VX_PH_ASM);if(fast_triangle(c,in,sv,idx,completed,&rc))return rc;VX_PH(VX_PH_VERT);}
+ /* .727 (Garak's review of .726, #2): only points, lines and triangles come here (every caller passes 1-3; vx_d3d_gl_prim checks): a
+  * triangle clipped by the six planes has at most 9 vertices, so verts[2][12], dist[12] and ord[36] are always enough */
+ if(nv<1||nv>3)return VX_D3D_INVALID;
  if(nv<3){uint32_t rc;VX_PH(VX_PH_ASM);if(fast_pl(c,in,sv,idx,nv,completed,&rc))return rc;VX_PH(VX_PH_VERT);} /* v10.317 */
- for(j=0;j<nv;j++)vertex(&verts[0][j],in->vertices+idx[j]*in->vertex_stride,in->fvf,tc.set,tc.set1);
+ for(j=0;j<nv;j++)vertex(&verts[0][j],in->vertices+idx[j]*in->vertex_stride,in->fvf,tc.set,tc.set1,tc.set2);
  /* v10.201: ZBIAS (47) pulls the primitive toward the viewer by 2^-12 of the depth range a step (an approximation: XP's 01/16 encoding
   * has one sample, CLXP3D T53) */
  if(c->state.rs[47]){double zb=zbias(c);for(j=0;j<nv;j++){verts[0][j].z-=zb;if(verts[0][j].z<0)verts[0][j].z=0;}}
  /* .663 (audit 12): flat shading takes the first vertex's colour and specular colour; the specular alpha is the vertex's fog factor, which
   * stays per vertex (Direct3D interpolates fog in flat shading too) */
- if(FLATSW(c))for(j=1;j<nv;j++)for(k=0;k<4;k++){verts[0][j].c[k]=verts[0][0].c[k];if(k<3)verts[0][j].s[k]=verts[0][0].s[k];}
+ if(c->state.rs[9]==1)for(j=1;j<nv;j++)for(k=0;k<4;k++){verts[0][j].c[k]=verts[0][0].c[k];if(k<3)verts[0][j].s[k]=verts[0][0].s[k];} /* .765 (audit of .757, item 9): under HWFLAT too: a clipped polygon's first vertex can be a made one, which the engine's flat shading would take */
  if(nv<3)VX_PH(VX_PH_ASM);
  if(nv==1)return point_square(c,sv,&verts[0][0],in==&gl_in,completed);
  if(nv==2)return segment(c,sv,&verts[0][0],&verts[0][1],completed);
@@ -2208,14 +2293,14 @@ static uint32_t valid_vertex(const vx_d3d_input *in,uint32_t idx) {
     size>in->vertex_bytes-idx*in->vertex_stride) return VX_D3D_INVALID;
  p=in->vertices+idx*in->vertex_stride;
  {const uint32_t zb=u32(p+8),zi=(zb&0x7FFFFFFFUL)==0x7F800000UL; /* .642: z + or - infinity */
- for(v=0;v<3;v++)if(!finite(u32(p+v*4))&&!(v==2&&zi)){vx_d3d_bad_why[0]++;bad_note(p,idx);return VX_VERTEX_BAD;}
+ for(v=0;v<3;v++)if(!vx_f32_finite(u32(p+v*4))&&!(v==2&&zi)){vx_d3d_bad_why[0]++;bad_note(p,idx);return VX_VERTEX_BAD;}
  /* .722 (board, VX855, Hellbender on .720: 4,326 primitives left out in 72 s, every one with all three vertices' rhw FFC00000 (NaN), untextured,
   * diffuse only; the fog and parts of the picture missing in hardware, right in software): a NaN or infinite rhw with x, y and z usable
   * is classed with rhw 0. bad_prim draws it with rhw 1 when every vertex of the primitive has an unusable rhw and the state reads rhw
   * nowhere (rhw0_ok: no table fog, no w-buffer): with one rhw on every corner the perspective weights are equal, so any common rhw gives
   * the same picture. A primitive mixing it with real rhw values is still left out (drop reason 2000). Counted as before in bad_why[1]
   * (VXD3DMON's "rhw not finite") and, when drawn, in vx_d3d_rhw0_prims (QueryPhases 242). */
- if(!finite(u32(p+12))){vx_d3d_bad_why[1]++;bad_note(p,idx);return zi?VX_VERTEX_BAD:VX_VERTEX_RHW0;}
+ if(!vx_f32_finite(u32(p+12))){vx_d3d_bad_why[1]++;bad_note(p,idx);return zi?VX_VERTEX_BAD:VX_VERTEX_RHW0;}
  if(!(u32(p+12)&0x7FFFFFFFUL)){vx_d3d_bad_why[2]++;bad_note(p,idx);return zi?VX_VERTEX_BAD:VX_VERTEX_RHW0;} /* .531: +0 or -0, drawable in some states (bad_prim) */
  if(flt(u32(p+12))<=0){vx_d3d_bad_why[3]++;bad_note(p,idx);return VX_VERTEX_BAD;}
  if(zi){bad_note(p,idx);return VX_VERTEX_ZINF;}}
@@ -2234,7 +2319,7 @@ uint32_t vx_d3d_draw_primitive(vx_d3d_context *c,const vx_d3d_input *in,
  if(!vx_d3d_supported(c)){drop(c);return 0;}
  if(!count)return 0;
  if(count<3||(type==4&&count%3))return VX_D3D_INVALID;
- n=type==4?count/3:count-2;bq_on=0;fail_set=0;if(cq_held){uint32_t z=0;if(sv->submit_n)(void)cq_send(sv,hold_c,&z);}cq_clear();template_reset(); /* .550: held packets (none in the ICD) sent first */
+ n=type==4?count/3:count-2;bq_on=0;fail_set=0;if(cq_held){uint32_t z=0;if(sv->submit_n){rc=cq_send(sv,hold_c,&z);if(rc){cq_clear();return rc;}}}cq_clear();template_reset(); /* .550: held packets (none in the ICD) sent first; .737 (review audit #40): a failure (the context lost) is this call's answer, as dp2_body's */
  for(i=0;i<count;i++) {
   j=ix?u16((const uint8_t*)ix+i*2):i;
   if(valid_vertex(in,j)==VX_D3D_INVALID)return VX_D3D_INVALID; /* v10.367: a bad value leaves only its triangles out (below) */
@@ -3067,7 +3152,7 @@ static uint32_t tnl_guard(vx_d3d_context *c,const vx_d3d_services *sv,uint32_t o
  tnl_undo_on=1;tnl_undo_pos=pos;return 0;
 }
 uint32_t vx_d3d_dp2(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv,uint32_t *error) {
- uint32_t o=VX_PH(VX_PH_CMD),rc=dp2_body(c,in,sv,error);VX_PH_BACK(o);return rc;
+ uint32_t o=VX_PH(VX_PH_CMD),rc=dp2_body(c,in,sv,error);VX_PH_BACK(o);vx_d3d_vbgen=0;if(tc_tn){tc_tn=0;tc.valid=0;} /* .765 (audit of .757, item 5): the T&L's template mark ends with the call (the stretch quad, DirectX 5 draws and ValidateDevice built theirs with it: T13 forced, W fog, the guard flag) */ /* .752: a generation holds for the call it was given in (bind_vertices) */return rc;
 }
 static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_services *sv,uint32_t *error) {
  uint32_t pos=0,rc=0,bound=0,completed=0,lastcmd=0,tlp_n=0,tn_on=0,tn_bound=0,tn_mpos=0;vx_d3d_input source,tn_src,tn_im; /* .534: tlp_n the untransformed draws in this call; .536: tn_on a call of untransformed vertices (tn_src, bound once), drawn from the scratch buffer */
@@ -3153,6 +3238,7 @@ static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
     if(op==23||op==24){static const uint16_t zero=0; /* .640: TRIANGLEFAN_IMM and LINELIST_IMM: the vertices in the command, as a fan or a line list from vertex 0 of them */
      const uint32_t s=tn_src.vertex_stride?tn_src.vertex_stride:vx_d3d_vertex_size(tn_src.fvf),k=op==23?n+2:n*2;
      tn_im=tn_src;tn_im.vertices=p+imm;tn_im.vertex_stride=s;tn_im.vertex_count=k;tn_im.vertex_bytes=k*s;ts=&tn_im;p=(const uint8_t*)&zero;op=op==23?21:15;}
+    tn_vbg=ts==&tn_src?vx_d3d_vbgen:0; /* .752: the bound vertex buffer's generation (the HAL's bind_vertices sets vx_d3d_vbgen; a draw that carries its own vertices has none) */
     r=tn_draw_t(c,ts,&op,&n,&p);
     if(r==3){tn_split=1;tn_k0=0;tn_more=0;vx_d3d_tn_split[0]++;r=tn_draw_t(c,ts,&op,&n,&p);} /* .640: too large for the scratch buffer: in pieces, this command again (the loop's top) while tn_more */
     if(r==2){rc=vx_d3d_flush(c,sv,&completed);if(!rc)rc=cq_flush(sv,c,&completed);if(rc)goto fail; /* the scratch buffer full: the batch sent, the buffer from the start */
@@ -3182,13 +3268,13 @@ static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
    if(id==VX_D3D_RS_LOGICOP)continue; /* v10.295: the ICD's, not a Direct3D state */
    if(id==VX_D3D_RS_LEGACY_TB)continue; /* .600: the core's own */
    if(vx_d3d_rs_hook)vx_d3d_rs_hook(id,value,start); /* v10.420 */
-   state(c)->rs[id]=value;
+   state(c)->rs[id]=rs_norm(id,value);
    if(c->recording)c->blocks[c->recording-1].rs_mask[id/32]|=1UL<<(id%32);
    /* v10.185: D3DRENDERSTATE_TEXTUREHANDLE (1) is stage 0's D3DTSS_TEXTUREMAP under another name (DDK: setting one sets the other); for a
     * DirectX 7 driver the value is a CreateSurfaceEx handle. It was refused as unsupported, which left out every textured DirectX 3/5 draw. */
    if(id==1){state(c)->tss[0][0]=value;if(c->recording)c->blocks[c->recording-1].tss_mask[0]|=1UL;if(state(c)->rs[VX_D3D_RS_LEGACY_TB])legacy_blend(c,state(c),sv);}
    vx_d3d_rs_seen[id>>5]|=1UL<<(id&31);legacy_rs(c,state(c),id,value,sv); /* .600 */
-   if((in->flags&2)&&in->render_states&&id<in->render_state_count)in->render_states[id]=value;
+   if((in->flags&2)&&in->render_states&&id<in->render_state_count&&!c->recording)in->render_states[id]=value; /* .762 (item 6): not while a state block is recorded (the runtime's live array took the recorded values) */
   } else if(op==25)for(j=0;j<n;j++) {
    uint32_t stage=u16(p+j*8),id=u16(p+j*8+2);
    if(stage>=8||id>=32){rc=VX_D3D_INVALID;goto fail;}
@@ -3209,7 +3295,7 @@ static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
    if(c->recording)c->blocks[c->recording-1].viewport_mask=1;
   } else if(op==29||op==32) {
    /* Check the whole payload before updating the T&L depth range. */
-   for(j=0;j<n*2;j++)if(!finite(u32(p+j*4))){rc=VX_D3D_INVALID;goto fail;}
+   for(j=0;j<n*2;j++)if(!vx_f32_finite(u32(p+j*4))){rc=VX_D3D_INVALID;goto fail;}
    if(op==32&&vx_d3d_tnl&&c->recording)tnl_blk_add(c,c->blocks[c->recording-1].handle,op,p,n,len); /* .663 (audit 17): recorded, not applied */
    else if(op==32&&vx_d3d_tnl){rc=tnl_guard(c,sv,op,n,start,&completed);if(rc)goto fail;tnl_command(c,op,p,n);tnl_undo_on=0;}
   } else if(op==39)for(j=0;j<n;j++){rc=stateset(c,p+j*12);if(rc)goto fail;}
@@ -3233,7 +3319,7 @@ static uint32_t dp2_body(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_s
     * it, or convert an unused NaN to an integer. v10.372: a finite depth outside 0..1 is clamped (XP passes the raw value on) */
    if(flags&2) {
     z=flt(u32(p+8));
-    if(!finite(u32(p+8))){rc=VX_D3D_UNSUPPORTED;goto fail;}
+    if(!vx_f32_finite(u32(p+8))){rc=VX_D3D_UNSUPPORTED;goto fail;}
     if(!(z>0))z=0;if(z>1)z=1;
    }
    packet(&q,c,VX3DN_CLEAR);q.clear_flags=(flags&7)|((flags&4)?(u32(p+12)&255UL)<<8:0);q.clear_color=color;q.clear_depth=(flags&2)?(uint32_t)((double)z*4294967295.0+0.5):0;
@@ -3442,7 +3528,10 @@ fail:
  * for 1); the kept set-ups and templates forgotten so the next draw is built with it. v 0xFFFFFFFF reads. Returns the value before, or
  * 0xFFFFFFFF for an id not known. id 2 (.723): q1_plain, a projected set with q = 1 everywhere sent plain (1, the default) or as it is. */
 uint32_t vx_d3d_test_set(uint32_t id,uint32_t v) {
- if(id==1){uint32_t old=vx_d3d_gband;if(v!=0xFFFFFFFFUL){vx_d3d_gband=v?1UL:0UL;tn_key.valid=0;template_reset();}return old;}
+ if(id==1){uint32_t old=vx_d3d_gband;if(v!=0xFFFFFFFFUL){vx_d3d_gband=v?vx_d3d_gband_vxd:0UL;tn_key.valid=0;template_reset();}return old;} /* .724: on only where the VxD
+  * takes the band (VX855 / VX875, ACCEL_D3D_GUARDBAND): the VX800's and VX900's VxD refuse guard-band packets, so forcing it on there lost
+  * 6Q's pictures; there the switch stays off and 6Q's band columns are drawn without it */
  if(id==2){uint32_t old=vx_d3d_q1on;if(v!=0xFFFFFFFFUL)vx_d3d_q1on=v?1UL:0UL;return old;} /* .723: the q = 1 plain layout (q1_plain) */
+ if(id==3){uint32_t old=vx_d3d_qfold;if(v!=0xFFFFFFFFUL)vx_d3d_qfold=v?1UL:0UL;return old;} /* .724: a q other than 1 folded into W (q1_plain) */
  return 0xFFFFFFFFUL;
 }

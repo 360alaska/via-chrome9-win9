@@ -35,6 +35,7 @@ def run(name,ttf0,ttf1,fvf,vb,stride,want):
            tau1=[x for x in w if x>>24==0x31],tau0=[x for x in w if x>>24==0x30],fe=[x for x in w if x>>24==1 and (x&0xFF0000)==0x010000])
   for k,v in want.items():
    if got[k]!=v and not (k in('tau0','tau1') and v[0] in got[k]):ok=False;print('   ',name,k,'got',[hex(x) for x in got[k]] if isinstance(got[k],list) else got[k],'want',v)
+ U.in_dll(lib,'vx_d3d_qfold').value=1
  print(('ok   ' if ok else 'FAIL ')+name);fails+=not ok
 pts=[(8,8,0.,0.,2.),(56,8,1.,0.,2.),(8,56,0.,1.,4.)]
 # FVF: XYZRHW 4 | DIFFUSE 40 | SPECULAR 80 | TEX2 200, set 1 with three coordinates (TEXCOORDSIZE3(1) = 1 << 18)
@@ -48,15 +49,16 @@ run('two units, neither projected (as before)',0,0,0x2C4,vbp,40,dict(units=2,s3=
 # carries the projected layout and q, the coordinates undivided (q = the eye-space z through the texture matrix's third column)
 IDM=struct.pack('<16f',1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)
 TM=struct.pack('<16f',.75,0,0,0, 0,-1,0,0, .5,.5,1,0, 0,0,0,1)
-def tnl(name,stage1,want):
+TM4=struct.pack('<16f',.75,0,0,0, 0,-1,0,0, .5,.5,1,1, 0,0,0,0) # .726: COUNT4, the fourth component z (q), the third 1
+def tnl(name,stage1,want,fold=0,ttf=0x103):
  global fails
- t=T();t.setUp()
+ t=T();t.setUp();U.in_dll(lib,'vx_d3d_qfold').value=fold # .724: the projected layout itself (fold 0), or q folded into W
  for n,v in [('vx_d3d_feat',ALLF),('vx_d3d_tnl',1),('vx_d3d_prepack',1),('vx_d3d_ixpass',1),('vx_d3d_indexed',1)]:U.in_dll(lib,n).value=v
  vb=b''.join(struct.pack('<6fI2f',x,y,z,0,0,-1,0xFFFFFFFF,.1,.2) for x,y,z in ((-.5,-.5,.4),(.5,-.5,.6),(-.5,.5,.8)))
  ent=[(0,0,5),(0,1,4),(0,2,2),(0,3,0)]
  if stage1:ent+=[(0,11,0),(0,24,0),(1,0,5),(1,1,4),(1,2,2),(1,3,1),(1,11,0x20000),(1,24,0x103)]
- else:ent+=[(0,11,0x20000),(0,24,0x103),(1,1,1)]
- pre=cmd(28,1,struct.pack('<4I',0,0,64,64))+cmd(36,4,struct.pack('<I',1)+IDM+struct.pack('<I',2)+IDM+struct.pack('<I',3)+IDM+struct.pack('<I',16 if not stage1 else 17)+TM)
+ else:ent+=[(0,11,0x20000),(0,24,ttf),(1,1,1)]
+ pre=cmd(28,1,struct.pack('<4I',0,0,64,64))+cmd(36,4,struct.pack('<I',1)+IDM+struct.pack('<I',2)+IDM+struct.pack('<I',3)+IDM+struct.pack('<I',16 if not stage1 else 17)+(TM4 if ttf==0x104 else TM))
  pre+=rs((22,1),(136,1),(137,0),(28,0))+cmd(25,len(ent),b''.join(struct.pack('<HHI',*e) for e in ent))
  t.calls.clear();r=t.run_dp2(pre+cmd(18,1,struct.pack('<H',0)),vb,stride=36,fvf=0x152)
  ok=r==(0,0) and len(t.calls)==1
@@ -69,8 +71,12 @@ def tnl(name,stage1,want):
    if got[k]!=v:ok=False;print('   ',name,k,'got',got[k],'want',v)
   # q is the vertex's eye z (.4 .6 .8); u = .75 x + .5 z undivided
   for k,(x,z) in enumerate(((-.5,.4),(.5,.6),(-.5,.8))):
-   if abs(qs[k]-z)>1e-5 or abs(us[k]-(.75*x+.5*z))>1e-5:ok=False;print('   ',name,'vertex',k,'q',qs[k],'u',us[k])
+   wq,wu=(1.0,(.75*x+.5*z)/z) if fold else (z,.75*x+.5*z) # .724: folded, u / q with q 1
+   if abs(qs[k]-wq)>1e-5 or abs(us[k]-wu)>1e-5:ok=False;print('   ',name,'vertex',k,'q',qs[k],'u',us[k])
  print(('ok   ' if ok else 'FAIL ')+name);fails+=not ok
 tnl("the driver's T&L: stage 1 projected (camera-space position, COUNT3 PROJECTED)",1,dict(units=2,s3=2,ul0=2,layout=0))
 tnl("the driver's T&L: stage 0 projected, one stage",0,dict(layout=2))  # one unit: the packet's stages block is not used (units 0)
+tnl("the driver's T&L: stage 0 projected, one stage, q folded into W (.724)",0,dict(layout=0),fold=1)
+tnl("the driver's T&L: stage 0 COUNT4 PROJECTED, q kept (.726)",0,dict(layout=2),ttf=0x104)
+tnl("the driver's T&L: stage 0 COUNT4 PROJECTED, q folded into W (.726)",0,dict(layout=0),fold=1,ttf=0x104)
 print('FAILED' if fails else 'PASS');sys.exit(1 if fails else 0)

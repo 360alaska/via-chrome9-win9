@@ -47,7 +47,6 @@ ULONG __cdecl _LinPageLock(ULONG page, ULONG npages, ULONG flags);
 ULONG __cdecl _LinPageUnLock(ULONG page, ULONG npages, ULONG flags);
 ULONG __cdecl _MapPhysToLinear(ULONG PhysAddr, ULONG nBytes, ULONG flags);
 ULONG __cdecl _SelectorMapFlat(ULONG VMHandle, ULONG Selector, ULONG flags);
-ULONG __cdecl GetNulPageHandle();
 ULONG __cdecl _PhysIntoV86(ULONG PhysPage, ULONG VM, ULONG VMLinPgNum, ULONG nPages, ULONG flags);
 DWORD __cdecl _RegOpenKey(DWORD hKey, char *lpszSubKey, DWORD *lphKey);
 DWORD __cdecl _RegCloseKey(DWORD hKey);
@@ -62,7 +61,6 @@ void __cdecl Wait_Semaphore(ULONG semHandle, ULONG flags);
 void __cdecl Signal_Semaphore(ULONG SemHandle);
 void __cdecl *Map_Flat(BYTE SegOffset, BYTE OffOfset);
 void __cdecl Install_IO_Handler(DWORD port, DWORD callback);
-DWORD __cdecl _GetFreePageCount(DWORD *pLockablePages);
 void __cdecl vx_demand_info(DWORD *d); /* .525 */
 
 DWORD __cdecl _PageReserve(ULONG page, ULONG npages, ULONG flags);
@@ -136,7 +134,6 @@ struct _VPICD_IRQ_Descriptor;
 
 /* extra FBHA */
 BOOL FBHDA_lock();
-void FBHDA_unlock();
 void FBHDA_release(BOOL owned); /* v10.319: with FBHDA_lock's own answer */
 
 #define PAGE_ALLOC_MIN 0x1001

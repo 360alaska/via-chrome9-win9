@@ -3866,7 +3866,7 @@ void vx3d_run_lab(const vx3d_io *io,const vx3d_sf_io *sf,vx3d_report *r,const vx
  if(q->lab_flags&256) {
   /* v9.79 throughput bench: repeat the operator's operation lab_bg times (host data every time) and time it.
    * flag 512 = CPU baseline: rotate-copy lab_data (w x h) into the desktop window with CPU framebuffer writes instead. */
-  uint32_t reps=q->lab_bg?q->lab_bg:1,rp,t0,t1,nd=q->lab_ndata>VX3D_LAB_DATA?VX3D_LAB_DATA:q->lab_ndata;
+  uint32_t reps=q->lab_bg?(q->lab_bg>4096UL?4096UL:q->lab_bg):1,rp,t0,t1,nd=q->lab_ndata>VX3D_LAB_DATA?VX3D_LAB_DATA:q->lab_ndata; /* .769 (audit VXD3D-H6): at most 4,096 repeats under the lock (VX2DLAB asks 500) */
   /* v10.330 (review #111): the CPU baseline reads lab_data[sy*w + sx] and writes the box rotated at (dx, dy): w x h within lab_data and
    * the rotated box within the saved 64 x 64 window, or nothing is done (it read past the request and wrote outside the window) */
   if((q->lab_flags&512) && (w>64 || h>64 || w*h>VX3D_LAB_DATA || q->lab_dx>64-h || q->lab_dy>64-w)) {r->result=VX3D_BAD_REQUEST; return;}

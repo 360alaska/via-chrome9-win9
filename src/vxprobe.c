@@ -1,4 +1,4 @@
-/* VXPROBE v1.5 (driver v10.339; v1.5: bios and modeset list every mode set a change made (one change made about three); v1.4: bios, the timing-block test at 1024x768 or less (#172); v1.3: ovkey reports the VxD's refusal reason and sends twenty updates in a row; v1.2: stages checks that an unread argument changes nothing; v1.1: no command runs all six, the log next to the program): probes for the open review items that need the board or applications. One command a run; each
+/* VXPROBE v1.6 (driver .769; v1.6: edid reports the EDID read again after boot and the sizes it gave back; v1.5: bios and modeset list every mode set a change made (one change made about three); v1.4: bios, the timing-block test at 1024x768 or less (#172); v1.3: ovkey reports the VxD's refusal reason and sends twenty updates in a row; v1.2: stages checks that an unread argument changes nothing; v1.1: no command runs all six, the log next to the program): probes for the open review items that need the board or applications. One command a run; each
  * appends to VXPROBE.TXT next to the program. Every display mode it sets is temporary (not saved) and put back at the end.
  *   VXPROBE cursor   review #80:  resolution changes (the DRV's ReEnable) and a DOS box round trip; the cursor state before and after
  *                    each, and what you see (one pointer, a second or stuck pointer, or none).
@@ -226,7 +226,9 @@ static void cmd_edid(void) {
  in=1; got=0;
  if(!DeviceIoControl(dev,VX_IOCTL_EDID,&in,4,&e,sizeof(e),&got,NULL)||got!=sizeof(e)) {out("   bus scan failed\n"); return;}
  for(i=0;i<3;i++) {const DWORD *q=(const DWORD*)e.scan+12*i; out("   bus %lu now: lines %lu, devices %lu, EDID address %s, EDID read %s\n",i,q[0],q[1],q[10]?"answered":"silent",q[11]?"VALID":"no");}
- out("   now: EDID %s\n",e.edid_valid==1?"valid since boot":e.edid_valid==2?"valid only now (a LATE EDID: the modes hidden at boot stay hidden until a restart)":"still not read");
+ out("   now: EDID %s\n",e.edid_valid==1?(e.late[1]?"valid, read after boot (the sizes it lists were given back)":"valid since boot"):e.edid_valid==2?"valid only now":"still not read");
+ out("   read again after boot (.769: when a hidden size is asked for, or this scan finds one): %lu tries, %lu EDIDs found, %lu sizes given back\n",e.late[0],e.late[1],e.late[2]);
+ if(e.late[2] && probe(1,0,o)) {out("   the driver's mode table now (%lu):",o[38]); for(i=0;i<o[38];i++) out(" %lux%lux%lu",o[40+i]&0xFFF,(o[40+i]>>12)&0xFFF,o[40+i]>>24); out("\n");}
 }
 
 /* ================= ovkey (review #157) ================= */
@@ -481,7 +483,7 @@ int main(int argc,char **argv) {
  GetModuleFileNameA(NULL,path,sizeof(path)); e=strrchr(path,'\\'); if(e) strcpy(e+1,"VXPROBE.TXT"); else strcpy(path,"VXPROBE.TXT");
  lf=fopen(path,"a"); GetLocalTime(&t);
  memset(&start_mode,0,sizeof(start_mode)); start_mode.dmSize=sizeof(start_mode); EnumDisplaySettings(NULL,ENUM_CURRENT_SETTINGS,&start_mode);
- out("\n==== VXPROBE v1.5 %s %04u-%02u-%02u %02u:%02u:%02u; %lux%lux%lu ====\n",c,t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,start_mode.dmPelsWidth,start_mode.dmPelsHeight,start_mode.dmBitsPerPel);
+ out("\n==== VXPROBE v1.6 %s %04u-%02u-%02u %02u:%02u:%02u; %lux%lux%lu ====\n",c,t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,start_mode.dmPelsWidth,start_mode.dmPelsHeight,start_mode.dmBitsPerPel);
  dev=CreateFile("\\\\.\\VX85598",0,0,NULL,OPEN_EXISTING,0,NULL);
  if(dev==INVALID_HANDLE_VALUE) out("Cannot open the VX85598 driver: cursor, modeset and edid need it.\n");
  if(!lf) MessageBoxA(NULL,"VXPROBE cannot write VXPROBE.TXT next to the program (a read-only folder?): the results go to the console only.","VXPROBE",MB_OK|MB_TOPMOST);

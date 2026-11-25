@@ -17,13 +17,7 @@ static context_slot *legacy_context(uint32_t handle,HRESULT *hr) {
 static int readable(const void *p,uint32_t bytes) {
  return (!bytes || (p&&(uint32_t)p<=0xFFFFFFFFUL-bytes&&!IsBadReadPtr(p,bytes)));
 }
-static const uint8_t *buffer_range(DDRAWI_DDRAWSURFACE_LCL *s,uint32_t at,uint32_t bytes) {
- uint32_t n=surface_bytes(s),base;
- if(!s||!s->lpGbl||at>n||bytes>n-at)return 0;
- base=(uint32_t)s->lpGbl->fpVidMem;
- if(!base||base>0xFFFFFFFFUL-at||!readable((const void*)(base+at),bytes))return 0;
- return (const uint8_t*)(base+at);
-}
+/* .737 (review audit #56): buffer_range removed (no caller) */
 static const uint8_t *legacy_mem(void *p) {
  LPDDRAWI_DDRAWSURFACE_INT i=(LPDDRAWI_DDRAWSURFACE_INT)p;DDRAWI_DDRAWSURFACE_LCL *l=surface_lcl(p);
  if(!l&&p&&!IsBadReadPtr(i,8))l=i->lpLcl;
@@ -56,7 +50,7 @@ static HRESULT legacy_token(context_slot *c,uint8_t op,uint32_t count,
  memset(&in,0,sizeof(in));in.commands=commands;in.command_bytes=bytes+4;
  in.vertices=vertices;in.vertex_bytes=vertex_bytes;in.vertex_count=vertex_bytes/32;
  in.vertex_stride=32;in.fvf=0x1C4;services(c,&sv);
- hold_tid=GetCurrentThreadId();hr=vx_d3d_dp2(&c->core,&in,&sv,&error);hold_tid=0;if(vx_d3d_held())hold_pid=GetCurrentProcessId(); /* .663 */
+ hold_tid=GetCurrentThreadId();hr=vx_d3d_dp2(&c->core,&in,&sv,&error);hold_tid=0;if(vx_d3d_held())hold_mark(); /* .663; .737: with its token */
  GlobalFree((HGLOBAL)commands);
  return (HRESULT)hr;
 }
@@ -147,7 +141,9 @@ DWORD WINAPI VX_D3D_Clear(vx_ddi_clear *p) {
   q.clear_color=color;p->ddrval=DD_OK;
   if(!q.clear_flags)goto done_clear;
   /* .663 (audit 04): the held draws first (the clear went ahead of them); a failure to send them is this call's answer */
-  if(vx_d3d_held()){uint32_t hr=hold_send_here();if(hr){p->ddrval=(HRESULT)hr;goto done_clear;}}
+  /* .737 (review audit #12): only this process's own held draws are sent (its handle); an ended process's are dropped, another running one's left */
+  if(vx_d3d_held()&&hold_dead()){vx_d3d_hold_drop();hold_why[6]++;}
+  if(vx_d3d_held()&&hold_is_me()){uint32_t hr=hold_send_here();if(hr){p->ddrval=(HRESULT)hr;goto done_clear;}}
   n=p->dwNumRects?p->dwNumRects:1;
   for(j=0;j<n;j++) {
    if(p->dwNumRects)memcpy(&q.clip,p->lpRects+j,16);else q.clip=c->core.state.viewport;

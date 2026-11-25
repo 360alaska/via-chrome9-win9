@@ -167,6 +167,8 @@ VDDPROC(REGISTER_DISPLAY_DRIVER, register_display_driver)
 	{
 		mouse_pm16 = map_pm16(state->Client_EBX, (DWORD)mouse_buffer(), MOUSE_BUFFER_SIZE);
 	}
+	/* .737 (review audit #48, checked and not taken): a 0 mouse selector is a valid answer: the display driver asks for the buffer
+	 * itself and turns the VxD cursor off when there is none (init.c), so failing the registration here would lose the whole driver */
 	
 	/* RETURN:
 		EAX -> VXD_VM (thisVM)
@@ -267,25 +269,6 @@ VDDPROCRET(CHECK_SCREEN_SWITCH_OK, check_screen_switch_ok)
 	return 0; /* CY */
 }
 
-/**
-GET_BANK_SIZE (Function 37) 
-Call With
-EBX: Contains the VM handle (always the currently executing VM). 
-ECX: Contains the VESA BIOS mode number that is currently running. 
-EBP: Points to the Windows VM's Client Registers. 
-Return Values
-Save everything that you use. CY returned means that mini-VDD handled the call. EDX contains the current bank size. EAX contains the physical address of the memory aperture or zero to indicate a standard memory aperture at physical address A000:0h. 
-Remarks
-This routine is called during the save process of a VESA hi-res screen. It tells the Main VDD how large each bank is (so that during the save and restore process, it will know how many bytes to process per pass of the save/restore loop). It also informs the Main VDD where to access the VRAM. Most VESA programs currently set their VRAM at A000:0h. However, VESA version 2 does allow for flat linear apertures. The mini-VDD should determine if the VESA program is using an aperture and return the correct data to the Main VDD. 
-
-**/
-VDDPROC(GET_BANK_SIZE, get_bank_size)
-{
-	state->Client_EAX = 0;
-	state->Client_EDX = 0x4000;
-	VDD_CY;
-}
-
 VDDPROC(GET_VDD_BANK, get_vdd_bank)
 {
 	state->Client_EDX = state->Client_ECX;
@@ -297,33 +280,6 @@ VDDPROC(SET_VDD_BANK, set_vdd_bank)
 }
 
 VDDPROC(RESET_BANK, reset_bank)
-{
-
-}
-
-/**
-GET_CURRENT_BANK_READ (Function 33) 
-The parameters and return values for this function are the same as for GET_CURRENT_BANK_WRITE. See GET_CURRENT_BANK_WRITE for details. 
-See also GET_CURRENT_BANK_WRITE. 
-
-**/
-VDDPROC(GET_CURRENT_BANK_READ, get_current_bank_read)
-{
-
-}
-
-/**
-GET_CURRENT_BANK_WRITE (Function 32) 
-Call With
-EBX: Contains the VM handle (always the currently executing VM). 
-EBP: Points to the Windows VM's Client Registers. 
-Return Values
-Save everything that you use. CY returned means that the mini-VDD handled the call. NC returned means that Main VDD should use a VESA call to retrieve the bank. If successful, EDX contains the current bank (write or read) as set in hardware. 
-Remarks
-GET_CURRENT_BANK_WRITE and GET_CURRENT_BANK_READ are made when the user presses ALT-TAB to switch away from a VESA hi-res application. The Main VDD uses GET_CURRENT_BANK_WRITE to retrieve the current state of the banking registers (which are "Windows" in VESA terminology). It then saves these for later restoration when the user presses ALT-TAB back to the VESA hi-res application. The Main VDD uses VESA function 4F05h to get the bank if the mini-VDD fails this call. 
-
-**/
-VDDPROC(GET_CURRENT_BANK_WRITE, get_current_bank_write)
 {
 
 }
@@ -350,114 +306,6 @@ VDDPROC(GET_TOTAL_VRAM_SIZE, get_total_vram_size)
 {
 	state->Client_ECX = hda->vram_size_virt;
 	VDD_CY;
-}
-
-/**
-PRE_HIRES_SAVE_RESTORE (Function 39) 
-Call With
-EBX: Contains the VM handle (always the currently executing VM). 
-EBP: Points to the Windows VM's Client Registers. 
-Return Values
-Save everything that you use. No values or flags need to be returned. 
-Remarks
-This call is very similar to PRE_HIRES_TO_VGA in that it allows the mini-VDD to modify port trapping, set flags, etc. in preparation for the mode change into the VESA/hi-res mode. In fact, the S3 example mini-VDD dispatches this call to the exact same routine as PRE_HIRES_TO_VGA. 
-
-**/
-VDDPROC(PRE_HIRES_SAVE_RESTORE, pre_hires_save_restore)
-{
-
-}
-
-/**
-POST_HIRES_SAVE_RESTORE (Function 40) 
-Call With
-EBX: Contains the VM handle (always the currently executing VM). 
-EBP: Points to the Windows VM's Client Registers. 
-Return Values
-Save everything that you use. No values or flags need to be returned. 
-Remarks
-This function is very similar to POST_HIRES_TO_VGA in that it allows the mini-VDD to modify port trapping, set flags, etc. after the mode change into the VESA/hi-res mode. The S3 example mini-VDD dispatches this call to the exact same routine as POST_HIRES_TO_VGA. 
-
-**/
-VDDPROC(POST_HIRES_SAVE_RESTORE, post_hires_save_restore)
-{
-
-}
-
-/**
-SET_BANK (Function 34) 
-Call With
-EAX: Contains the read bank to set. 
-EBX: Contains the VM handle (always the currently executing VM). 
-EDX: Contains the write bank to set. 
-EBP: Points to the Windows VM's Client Registers. 
-Return Values
-Save everything that you use. CY returned means that the mini-VDD handled the call. NC returned means that the Main VDD should use a VESA call to set the bank. 
-Remarks
-This call requests the mini-VDD to set the read/write bank passed in EAX/EDX. The mini-VDD simply needs to set the bank into hardware and return CY to the Main VDD. 
-
-**/
-VDDPROC(SET_BANK, set_bank)
-{
-
-}
-
-/**
-SET_HIRES_MODE (Function 38) 
-Call With
-EAX: Contains hi-res mode number to set (may be a VESA or non-VESA mode). 
-EBX: Contains the VM handle (always the currently executing VM). 
-EBP: Points to the Windows VM's Client Registers. 
-Return Values
-Save everything that you use. CY returned means that the mini-VDD handled the call. NC returned indicates that the mini-VDD did not handle the call. 
-Remarks
-This routine is called by the VESA/hi-res restore routine in the Main VDD when the user switches back to a full screen VESA/hi-res mode VM. If you are only interested in being able to restore VESA standard hi-res modes, then you do not need to implement this function since the Main VDD will call Interrupt 10h Function 4F02h in order to set the VESA mode number. You should only implement this function if you are going to save/restore chipset specific modes that are not VESA modes. 
-If the mode number passed in EAX is a VESA mode number, you should return NC and let the Main VDD set the mode. If the mode number passed in EAX is a non-VESA hi-res mode that is particular to your card, if possible, this function should not touch VRAM since this could cause page faults and confuse the register state of the mode set. In other words, try not to erase the screen during the mode set if possible. 
-
-**/
-VDDPROCRET(SET_HIRES_MODE, set_hires_mode)
-{
-	dbg_printf("SET_HIRES_MODE\n");
-	return 0;
-}
-
-/**
-VESA_CALL_POST_PROCESSING (Function 47) 
-Call With
-EBX: Contains the VM handle in which the VESA call was made. 
-EDX: The low word contains the VESA function code that was just done. The high word contains the VESA mode number if a VESA mode change (function 4F02h) has just occurred. 
-EBP: Points to the VM's client registers. The client registers contain the return values from the VESA call. 
-Return Values
-Save everything that you use. Nothing is returned to the caller. 
-Remarks
-This function allows a mini-VDD to perform any necessary processing after a VESA call. For example, this function could fix up the hardware that might have been put in an unexpected state by the VESA call, or it could readjust register trapping. The S3 sample mini-VDD has an example of how this hook could be used to by a mini-VDD. 
-
-**/
-VDDPROC(VESA_CALL_POST_PROCESSING, vesa_call_post_processing)
-{
-	
-}
-
-/**
-VESA_SUPPORT (Function 41) 
-Call With
-EBX: Contains the VM handle (always the currently executing VM). 
-EBP: Points to the Windows VM's Client Registers. Client registers contain the VESA call values. 
-Return Values
-Save everything that you use. CY returned means that the mini-VDD completely handled the VESA call and that the VESA.COM or VESA BIOS should not be called. NC returned means that the mini-VDD did not completely handle the call and that the VESA.COM or VESA BIOS should be called. The client registers contain the return values from the VESA call if the mini-VDD handles the call. 
-Remarks
-This routine is the "hook" by which a mini-VDD could implement an entire Ring 0 protected mode VESA support. This is recommended, since it eliminates all of the problems of old VESA.COM programs. It also allows much faster VESA performance since the functions are supported at 32 bit Ring 0. 
-The mini-VDD's VESA support decides what to do based on values in the Client registers. For example, Client_AX will contain 4Fxx indicating what VESA call the application is doing. Then, the mini-VDD can handle the call, filling in return structures (such as those returned by VESA function 4F00h), etc., and return CY to the Main VDD. 
-This routine could also be used to setup a VESA call while still letting the Ring 3 VESA BIOS handle the call. The mini-VDD would do what it wants to do, and then return NC indicating that the Main VDD should call the Ring 3 VESA BIOS or VESA.COM program. 
-
-**/
-VDDPROCRET(VESA_SUPPORT, vesa_support)
-{
-	if(vm != ThisVM)
-	{
-		return 0; /* STC*/
-	}
-	return 1; /* CLC */
 }
 
 VDDPROC(PRE_HIRES_TO_VGA, pre_hires_to_vga)
@@ -499,31 +347,6 @@ VDDPROC(POST_VGA_TO_HIRES, post_vga_to_hires)
 	VDD_NC;
 }
 
-VDDPROC(ENABLE_TRAPS, enable_traps)
-{
-	dbg_printf("ENABLE_TRAPS: VM: %ld\n", vm);
-
-	if(is_qemu)
-	{
-		Enable_Global_Trapping(0x1CE);
-		Enable_Global_Trapping(0x1CF);
-	}
-}
-
-VDDPROC(DISABLE_TRAPS, disable_traps)
-{
-
-}
-
-VDDPROC(DISPLAY_DRIVER_DISABLING, display_driver_disabling)
-{
-	if(is_qemu)
-	{
-		Disable_Global_Trapping(0x1CE);
-		Disable_Global_Trapping(0x1CF);
-	}
-}
-
 /**
 Entry:
 	EAX contains the mode that we're setting to (in AL).
@@ -544,11 +367,6 @@ of XGA HiRes mode if this is a windowed VM!
 Do nothing for the Windows VM:
 
 **/
-
-VDDPROC(PRE_INT_10_MODE_SET, pre_int_10_mode_set)
-{
-	dbg_printf("PRE_INT_10_MODE_SET: client eax=%lX, EAX=%lX\n", state->Client_EAX, extra_eax);
-}
 
 VDDPROC(SAVE_REGISTERS, save_registers)
 {

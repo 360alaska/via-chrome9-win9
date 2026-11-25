@@ -2,7 +2,7 @@
 """.575 (peer review of .572, finding 4; the fixture is the review's): the linked VXDDRAW.DLL with packets held and the callback lock taken
 by another thread of the process for longer than the wait. Lock, Blt and Flip answer DDERR_WASSTILLDRAWING, handled, and touch nothing
 (they went on with DD_OK); with the lock free the held packets are sent and the call goes on."""
-import re,sys,pathlib
+import struct,re,sys,pathlib
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent.parent/'verification'))
 from directdraw import HAL,ARENA,ROOT,pack
 from unicorn.x86_const import UC_X86_REG_EAX,UC_X86_REG_EIP,UC_X86_REG_ESP
@@ -20,6 +20,9 @@ def main():
  for name,entry,off in (('Lock','_VXLock@4',32),('Blt','_VXBlit@4',None),('Flip','_VXFlip@4',None)):
   h=FaultHAL()
   for n,v in (('cq_held',1),('hold_pid',0x1000),('hold_tid',0x3000)):h.u.mem_write(sym[n],pack([v]))
+  # .737: the held packets' owner is its process and its token (hold_tok): this process's own token (1 when the DLL's table has none for it)
+  tok=[struct.unpack('<I',bytes(h.u.mem_read(sym['tok_val']+4*k,4)))[0] for k in range(64) if struct.unpack('<I',bytes(h.u.mem_read(sym['tok_pid']+4*k,4)))[0]==0x1000]
+  h.u.mem_write(sym['hold_tok'],pack([tok[0] if tok and tok[0] else 1]))
   h.u.mem_write(sym['cb_enter'],b'\x31\xc0\xc3')  # the owning thread stays inside the HAL
   blk=ARENA+0xa000;h.u.mem_write(blk,pack([0,h.dst]+[0x5A5A5A5A]*40))
   ioc=len(getattr(h,'ioctls',[]))

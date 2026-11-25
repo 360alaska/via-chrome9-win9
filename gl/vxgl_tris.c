@@ -386,8 +386,8 @@ static void aa_triangle(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1,co
   for(iy=iyMin;iy<iyMax;iy++,x+=dxdy) {
    GLint ix,startX=(GLint)(x+xAdj);GLfloat cv=0.0F;
    if(startX>=ctx->DrawBuffer->_Xmax)startX=ctx->DrawBuffer->_Xmax-1;
-   while(startX>0){cv=aa_tri_cov(pMin,pMax,pMid,startX,iy);if(cv>0.0F)break;startX--;}
-   for(ix=startX;cv>0.0F;){aa_pixel(c,&r,ix,iy,cv);ix--;cv=aa_tri_cov(pMin,pMax,pMid,ix,iy);}
+   while(startX>=0){cv=aa_tri_cov(pMin,pMax,pMid,startX,iy);if(cv>0.0F)break;startX--;} /* .754 (outside review): column 0 too (was startX > 0) */
+   for(ix=startX;cv>0.0F;){aa_pixel(c,&r,ix,iy,cv);ix--;if(ix<0)break;cv=aa_tri_cov(pMin,pMax,pMid,ix,iy);} /* .754: never left of column 0 */
   }
  }
  aa_run(c,&r);quad_flush(c);
@@ -1195,7 +1195,8 @@ static void run_pipeline_t(GLcontext *ctx) {
     if(ctx->Light.Enabled||!col)bad=1;
     else if(col->stride&&col->size>=4&&VB->Count>1){ /* (fewer than 4 components: the alpha is 1 throughout) */GLuint k;const GLubyte *p=(const GLubyte*)col->data;GLfloat a0=((const GLfloat*)p)[3];
      for(i=0;i<VB->PrimitiveCount&&!bad;i++){GLenum m=VB->Primitive[i].mode;if(m!=GL_LINES&&m!=GL_LINE_LOOP&&m!=GL_LINE_STRIP)continue;
-      for(k=VB->Primitive[i].start;k<VB->Primitive[i].start+VB->Primitive[i].count&&k<VB->Count;k++)if(((const GLfloat*)(p+k*col->stride))[3]!=a0){bad=1;break;}}}}
+      for(k=VB->Primitive[i].start;k<VB->Primitive[i].start+VB->Primitive[i].count;k++){const GLuint e=VB->Elts?VB->Elts[k]:k; /* .729 (review of .723, #3): an indexed draw's positions are places in Elts */
+       if(e<VB->Count&&((const GLfloat*)(p+e*col->stride))[3]!=a0){bad=1;break;}}}}}
    c->atest_off=!bad&&pl;}
   else c->atest_off=0;
   if(bad!=((c->fallback&VXGL_FB_PRIMSTATE)!=0))vxgl_fallback(c,VXGL_FB_PRIMSTATE,bad?GL_TRUE:GL_FALSE);}

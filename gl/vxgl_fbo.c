@@ -50,7 +50,7 @@ void vxgl_fbo_settle(void) {
  vxgl_engine_unlock();
 }
 static int frb_alloc_mem(vxgl_frb *f,GLuint w,GLuint h) {
- memset(&f->m,0,sizeof(f->m));f->m.w=w;f->m.h=h;f->m.levels=1;f->m.format=VX3DN_TEX_XRGB8888;f->m.depth=1;f->m.block=vxgl_texmem_layout(&f->m);
+ memset(&f->m,0,sizeof(f->m));f->m.w=w;f->m.h=h;f->m.levels=1;f->m.format=f->kind==FRB_DEPTH?VX3DN_TEX_RGB565:VX3DN_TEX_XRGB8888;f->m.depth=1; /* .728 (Fable's check of Gemini's review, #8): a D16 depth buffer laid out at 2 bytes a pixel (it took 4), the pitch (w*2+31)&~31 as the HAL's D16 surfaces; its Coarse Z block follows that pitch below */f->m.block=vxgl_texmem_layout(&f->m);
  /* a depth buffer: room after it for the engine's Coarse Z storage (as the HAL's D16 surfaces, VX3DN_Z16_BLOCK) */
  if(f->kind==FRB_DEPTH){uint32_t zb=VX3DN_Z16_BLOCK(f->m.pitch[0],w,h);if(zb>f->m.block)f->m.block=zb;}
  if(vxgl_texmem_alloc(&f->m))return 1;

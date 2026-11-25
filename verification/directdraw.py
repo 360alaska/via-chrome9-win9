@@ -64,6 +64,8 @@ class HAL:
   elif name=='GetCurrentProcessId':args=0;ret=0x1000
   elif name=='InterlockedExchange':
    args=2;p=self.arg(0);ret=self.word(p);u.mem_write(p,pack([self.arg(1)]))
+  elif name in ('InterlockedIncrement','InterlockedDecrement'): # .737: the Blt signature slot claim
+   args=1;p=self.arg(0);ret=(self.word(p)+(1 if name=='InterlockedIncrement' else -1))&0xFFFFFFFF;u.mem_write(p,pack([ret]))
   elif name=='GetModuleFileNameA':
    args=3;text=b'C:\\TEST\\BENCH.EXE\0';u.mem_write(self.arg(1),text);ret=len(text)-1
   elif name=='DeviceIoControl':
@@ -86,7 +88,7 @@ class HAL:
    elif code==0x8550001C:
     assert n==80 and z==64;self.gpu.u.mem_write(REQ,bytes(u.mem_read(ip,n)));self.gpu.call('VX2D_ovl',(REQ,REP));blob=bytes(self.gpu.u.mem_read(REP,64))
    elif code==0x85500022: # v10.389: TEXDBG 0xBD 0x81 at a flip (the thread's run time): answered as the VxD does
-    assert n==8 and z==32 and (self.word(ip)==0xBD or (self.word(ip)==0xBC and self.word(ip+4) in (0x446,0x44B)));blob=pack([self.word(ip),self.word(ip+4),(getattr(self,'stretch3d',0) if self.word(ip+4)==0x446 else 1) if self.word(ip)==0xBC else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,0,3 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0]) # .681: o[7] bit 1 ACCEL_D3D_TNPF; .680: o[7] ACCEL_D3D_TNFASTIX 1; .677: ACCEL_D3D_PCLGATE, ACCEL_D3D_SPECSE 1, 1; .680: o[6] ACCEL_D3D_HWCULL 0 in the emulator (its draws cull on the CPU) # .675: BC 44B at the DLL's start (.676: ACCEL_D3D_PRECULL, ACCEL_D3D_IXSKIP: 1, 1) # .628: BC 446 = ACCEL_STRETCH3D (0: the CPU's stretch, as these checks expect)
+    assert n==8 and z==32 and (self.word(ip)==0xBD or (self.word(ip)==0xBC and self.word(ip+4) in (0x446,0x44B)));blob=pack([self.word(ip),self.word(ip+4),(getattr(self,'stretch3d',0) if self.word(ip+4)==0x446 else 1) if self.word(ip)==0xBC else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,1 if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0,0,getattr(self,'vbuf',0) if self.word(ip)==0xBC and self.word(ip+4)==0x44B else 0]) # .752: o[2] the T&L's cached boxes (1), o[7] the HAL's vertex buffers (0 at boot; a test sets vbuf) # .681: o[7] bit 1 ACCEL_D3D_TNPF; .680: o[7] ACCEL_D3D_TNFASTIX 1; .677: ACCEL_D3D_PCLGATE, ACCEL_D3D_SPECSE 1, 1; .680: o[6] ACCEL_D3D_HWCULL 0 in the emulator (its draws cull on the CPU) # .675: BC 44B at the DLL's start (.676: ACCEL_D3D_PRECULL, ACCEL_D3D_IXSKIP: 1, 1) # .628: BC 446 = ACCEL_STRETCH3D (0: the CPU's stretch, as these checks expect)
    elif code==0x85500028: # v10.432: VX_IOCTL_LOCKMEM (the VxD's own rules are checked in native3d.py): recorded, answered as locked
     assert n==12 and z==16;q=list(struct.unpack('<3I',u.mem_read(ip,12)));self.locks=getattr(self,'locks',[])+[q]
     pages=((q[1]+q[2]-1)>>12)-(q[1]>>12)+1;blob=pack([pages,q[1]&~4095,1,1])

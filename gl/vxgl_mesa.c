@@ -319,7 +319,7 @@ static GLbitfield zclear3d(GLcontext *ctx,vxgl_ctx *c,GLbitfield mask,GLbitfield
   * the host). The fragment program's and the colour sum's enables are not in Mesa's enable group: set back here too. */
  {GLenum dfunc=ctx->Depth.Func,pfront=ctx->Polygon.FrontMode,pback=ctx->Polygon.BackMode,mmode=ctx->Transform.MatrixMode;GLuint unit=ctx->Texture.CurrentUnit;
   GLint vx=ctx->Viewport.X,vy=ctx->Viewport.Y;GLsizei vw=ctx->Viewport.Width,vh=ctx->Viewport.Height;GLfloat vn=ctx->Viewport.Near,vf=ctx->Viewport.Far;
-  GLboolean cm[4],fp=ctx->FragmentProgram.Enabled,csum=ctx->Fog.ColorSumEnabled,dbounds=ctx->Depth.BoundsTest;GLfloat cur[4];
+  GLboolean cm[4],fp=ctx->FragmentProgram.Enabled,ati=ctx->ATIFragmentShader.Enabled,csum=ctx->Fog.ColorSumEnabled,dbounds=ctx->Depth.BoundsTest;GLfloat cur[4];
   cm[0]=ctx->Color.ColorMask[0];cm[1]=ctx->Color.ColorMask[1];cm[2]=ctx->Color.ColorMask[2];cm[3]=ctx->Color.ColorMask[3];
   COPY_4V(cur,ctx->Current.Attrib[VERT_ATTRIB_COLOR0]);
   err=ctx->ErrorValue;z=(GLfloat)(ctx->Depth.Clear*2.0-1.0);if(z>1.0F)z=1.0F;if(z<-1.0F)z=-1.0F;
@@ -342,6 +342,7 @@ static GLbitfield zclear3d(GLcontext *ctx,vxgl_ctx *c,GLbitfield mask,GLbitfield
   if(pfront!=GL_FILL||pback!=GL_FILL)CALL_PolygonMode(d,(GL_FRONT_AND_BACK,GL_FILL));
   CALL_Viewport(d,(0,0,(GLsizei)fb->Width,(GLsizei)fb->Height));CALL_DepthRange(d,(0.0,1.0));
   if(dz){CALL_Enable(d,(GL_DEPTH_TEST));CALL_DepthFunc(d,(GL_ALWAYS));}else CALL_Disable(d,(GL_DEPTH_TEST)); /* depth writes: the app's mask (on, when dz) */
+  if(st&&ctx->Stencil.ActiveFace&&!ctx->Extensions.ATI_separate_stencil)CALL_ActiveStencilFaceEXT(d,(GL_FRONT)); /* .765 (audit 13): StencilFunc / Op set the active face only: with the back face active the quad (drawn with the front's) kept the app's test; the pop puts the face back */
   if(st){CALL_Enable(d,(GL_STENCIL_TEST));CALL_StencilFunc(d,(GL_ALWAYS,ctx->Stencil.Clear,0xFF));CALL_StencilOp(d,(GL_REPLACE,GL_REPLACE,GL_REPLACE));} /* the app's write mask */
   else CALL_Disable(d,(GL_STENCIL_TEST));
   if(!col)CALL_ColorMask(d,(GL_FALSE,GL_FALSE,GL_FALSE,GL_FALSE)); /* no colour: the engine's depth-only mode; with colour, the app's dither as glClear's */
@@ -355,6 +356,7 @@ static GLbitfield zclear3d(GLcontext *ctx,vxgl_ctx *c,GLbitfield mask,GLbitfield
   if(pfront!=GL_FILL||pback!=GL_FILL){CALL_PolygonMode(d,(GL_FRONT,pfront));CALL_PolygonMode(d,(GL_BACK,pback));}
   if(!col)CALL_ColorMask(d,(cm[0],cm[1],cm[2],cm[3]));else CALL_Color4fv(d,(cur));
   if(fp)CALL_Enable(d,(GL_FRAGMENT_PROGRAM_ARB));if(csum)CALL_Enable(d,(GL_COLOR_SUM_EXT));
+  if(ati)CALL_Enable(d,(GL_FRAGMENT_SHADER_ATI)); /* .728 (Fable's check of Gemini's review, #3): Mesa 7.0.3's PushAttrib(GL_ENABLE_BIT) does not keep it either */
   if(dbounds)CALL_Enable(d,(GL_DEPTH_BOUNDS_TEST_EXT));
   ctx->ErrorValue=err; /* (none expected; an app's glGetError sees only its own) */
  }
@@ -367,6 +369,7 @@ static void clear_(GLcontext *ctx,GLbitfield mask) {
  vxgl_ctx *c=VXGL_CTX(ctx);GLframebuffer *fb=ctx->DrawBuffer;GLuint flags=0,col;vx3dn_rect r;GLubyte cc[4];
  GLbitfield hw;
  r.left=r.top=r.right=r.bottom=0;
+ if(c->new_state){vxgl_engine_lock();if(c->new_state)vxgl_translate_state(c);vxgl_engine_unlock();} /* .765 (audit of .757, item 8): before the target is chosen (front_hw, zclear3d): a glDrawBuffer or glBindFramebufferEXT just before glClear cleared the old target */
  hw=ctx->Visual.doubleBufferMode?(c->front_hw?BUFFER_BIT_FRONT_LEFT:BUFFER_BIT_BACK_LEFT):(BUFFER_BIT_FRONT_LEFT|BUFFER_BIT_BACK_LEFT);
  {GLbitfield z3=zclear3d(ctx,c,mask,(c->fallback&(VXGL_FB_NOHW|VXGL_FB_REGISTRY))?0:hw); /* v10.346: default (the 3D engine) */
   if(z3){mask&=~z3;
@@ -503,7 +506,7 @@ int vxgl_destroy_context(vxgl_ctx *c) {
  if(c->stats[3]){static const char *const bn[17]={"texture","engine state","logic op","colour mask","blend","stipple","draw buffer","render mode","no video memory buffers","programs",
    "ACCEL_OPENGL_HW 0","textured lines or points or q","occlusion query","polygon stipple with lines or points","points or lines condition","depth notice","depth bounds"};
   static const char *const wn[11]={"polygon stipple off","smooth points","smooth lines","smooth polygons","alpha test with smoothing","line stipple","attenuated points or sprites","wide line","point size","texture state","coverage alpha"};
-  char l[900];int k,n=0;l[0]=0; /* v10.500 (the review list: every software draw a bug to find): the context's draws in software by fallback bit and by the state behind it */
+  char l[900];int k,n=0;l[0]=0; /* v10.500 (Fable's list: every software draw a bug to find): the context's draws in software by fallback bit and by the state behind it */
   for(k=0;k<17;k++)if(c->fb_draws[k]&&n<(int)sizeof(l)-80)n+=_snprintf(l+n,sizeof(l)-1-n,"%s%s %lu",n?", ":"",bn[k],(unsigned long)c->fb_draws[k]);
   for(k=0;k<11;k++)if(c->fb_why_draws[k]&&n<(int)sizeof(l)-80)n+=_snprintf(l+n,sizeof(l)-1-n,"%s(%s) %lu",n?", ":"",wn[k],(unsigned long)c->fb_why_draws[k]);
   l[sizeof(l)-1]=0;vxgl_log("context %p: draws in software by reason: %s\n",(void*)c,l);}

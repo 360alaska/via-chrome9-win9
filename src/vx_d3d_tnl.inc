@@ -63,13 +63,42 @@ static float tn_gxl,tn_gxr,tn_gyt,tn_gyb; /* .698: the guard band's edges for TN
  * projected set: records of 11 words, never prepacked) went to the per-triangle path, whose packets cannot carry the band, so every
  * triangle with a corner past the viewport was clipped on the screen by the general path: 97.0 ms a frame against 88.6 without the band */
 static uint32_t tn_gb;
-static uint8_t tn_vc[16384+8]; /* .698: by place, the viewport's sides a vertex is beyond (tn_soa_pos; the guard band only; TN_MAX places) */
+#ifdef __WATCOMC__
+extern uint8_t tn_vc[16384+8]; /* .751: src/vx_tnl_data.asm */
+#else
+static uint8_t tn_vc[16384+8];
+#endif
+ /* .698: by place, the viewport's sides a vertex is beyond (tn_soa_pos; the guard band only; TN_MAX places) */
 /* .698: a T&L record's x or y inside the clip (the bits' order, as before) or, with the guard band, inside its edges (as floats) */
-#define TN_GX(w,f,lo,hi,gl,gh) (GB_IN(w,lo,hi)||(tn_gb&&(f)>=(gl)&&(f)<=(gh))) /* .699: inside the clip first (one unsigned compare, as before); the band's float test only outside it */
-static uint32_t tn_world_dirty,tn_same,tn_soa_stale;static int tn_soa_kept_valid; /* .648: here, cleared by a full tn_prepare */uint32_t vx_d3d_tn_setup[3]; /* tn_soa_stale: the matrices made again and not yet in the kernels' frame (a draw can be prepared, refused for room, and prepared again before tn_soa_prepare runs) */
+#define TN_GX(w,f,lo,rng,gl,gh) (GB_INR(w,lo,rng)||(tn_gb&&(f)>=(gl)&&(f)<=(gh))) /* .769: rng = hi - lo, made once (tc.bxw, tc.byh) */ /* .699: inside the clip first (one unsigned compare, as before); the band's float test only outside it */
+static uint32_t tn_world_dirty,tn_same,tn_soa_stale;static int tn_soa_kept_valid; /* .648: here, cleared by a full tn_prepare */uint32_t vx_d3d_tn_setup[3];
+/* .755 (counting, for the master review's items 2 and 4): vx_d3d_tn_why2, what made a set-up a full one. A command that changed the
+ * state other than the world matrix: [0] the view matrix, [1] the projection, [2] a texture matrix, [3] another transform, [4] the
+ * material, [5] a light, [6] the depth range, [7] another command. At the draw, the first thing that differed from the kept set-up:
+ * [8] none kept (a command above, a reset), [9] the vertex format or stride, [10] the viewport, [11] a render state ([14] which), [12] a
+ * stage state, [13] another context's state. vx_d3d_tn_seq, how triangles come: [0] plain lists in order (TRIANGLELIST), [1] strips and
+ * fans, [2] indexed, [3] of the indexed, those whose three indices follow on from the triangle before (i, i+1, i+2: counted only
+ * while a monitor has the phase clock on, as it reads every index). */
+uint32_t vx_d3d_tn_why2[15],vx_d3d_tn_seq[4];
+/* .756 (T755, pursuit on both boards: of 184,719 full set-ups, 130,658 followed a material that changed and nothing else kept apart
+ * from the world matrix; 30,751 a render state (LIGHTING), 22,890 a stage state). A material alone no longer drops the kept set-up:
+ * tn_mat_again makes again only what the material enters (its colours, the specular cut, the constant products with the lights) and
+ * the group frame is filled again from the set-up as after a full build; the matrices are made again only if the world matrix
+ * changed too. The lights' eye-space vectors, the vertex layout, the fog, the coordinate sets and the record's form are kept: none
+ * of them reads the material. Should the material switch specular lighting on or off (its specular colour to or from black), the
+ * record's kernels change and the set-up is built in full as before. The same state gives the same set-up, so the same words.
+ * vx_d3d_tn_matonly_on: always 1 on the board (.758: settled by T757, 0.33% on the VX855 and 0.72% on the VX900; the live switch is gone);
+ * 0 only in the host test that compares the two ways (tests/tnl_mtier_cases.py). vx_d3d_tn_matonly: [0] set-ups made again for a material
+ * only, [1] materials that changed specular lighting (built in full). */
+uint32_t vx_d3d_tn_matonly_on=1,vx_d3d_tn_matonly[2];static uint32_t tn_mat_dirty;static uint32_t tn_soa_matstale; /* .757: set here, used by tn_soa_prepare_b (vx_d3d_tnl_soa.inc) */ /* tn_soa_stale: the matrices made again and not yet in the kernels' frame (a draw can be prepared, refused for room, and prepared again before tn_soa_prepare runs) */
 #define TN_KRS 17
 static const uint16_t tn_krs[TN_KRS]={137,139,141,143,145,146,147,148,29,142,28,35,140,48,36,37,38};
-static struct {const void *t;uint32_t fvf,stride,rs[TN_KRS],tss[3][3],ns;int32_t vp[4];int valid;} tn_key;
+static struct tn_key_s {const void *t;uint32_t fvf,stride,rs[TN_KRS],tss[3][3],ns;int32_t vp[4];int valid;} tn_key;
+uint32_t vx_d3d_tn_opkey=1; /* .762: 1, a stage's COLOROP kept as on or off; 0 its value, as before. .763: settled on (T762B), set only by the host test */
+#define TN_OPK(v) (vx_d3d_tn_opkey?(uint32_t)((v)==1):(uint32_t)(v))
+static struct tn_key_s tn_key_k,tn_key_o;static int tn_key_was,tn_key_o_ok;uint32_t vx_d3d_tn_why3[24],vx_d3d_tn_hist[8]; /* .762 */
+/* .766's second kept set-up (tn_alt) deleted in .768: T767, full set-ups 81,901 -> 1,050 a run, the frame no faster (VX855 237.7 / 239.3 ms
+ * against 237.5 / 237.7 without, VX900 110.3 against 110.3): the full builds were not the set-up's cost */
 static void tnl_park_purge(const tnl_state *t);
 static void tnl_fresh(tnl_state *t) {uint32_t k;tn_key.valid=0;tnl_park_purge(t);memset(t,0,sizeof(*t));tnl_ident(t->world);tnl_ident(t->view);tnl_ident(t->proj);for(k=0;k<8;k++)tnl_ident(t->tex[k]);t->zmin=0.0f;t->zmax=1.0f;}
 static tnl_state *tnl_of(const vx_d3d_context *c) {
@@ -94,15 +123,16 @@ uint32_t vx_d3d_tnl_set(const vx_d3d_context *c,const void *s,uint32_t n) {tnl_s
  * while the index has a slot, and parking the same index again overwrites it (a retried command, tnl_undo, parks the same thing again).
  * Only a full park (1,024 indices put aside, every context together) loses one, the longest parked, counted in vx_d3d_tn_nd[1]. */
 #define TNL_PARK 1024
-static struct {const tnl_state *t;uint32_t idx,age;tnl_light l;} tnl_park[TNL_PARK];static uint32_t tnl_park_age;
-static int tnl_park_find(const tnl_state *t,uint32_t i) {int k;for(k=0;k<TNL_PARK;k++)if(tnl_park[k].t==t&&tnl_park[k].idx==i)return k;return -1;}
+static struct {const tnl_state *t;uint32_t idx,age;tnl_light l;} tnl_park[TNL_PARK];static uint32_t tnl_park_age,tnl_park_n; /* .741F (from the "TNX" core): tnl_park_n, the entries in use: with none parked a search is one test, not a walk of the whole table (a light made new looked through all 1,024) */
+static int tnl_park_find(const tnl_state *t,uint32_t i) {int k;if(!tnl_park_n)return -1;for(k=0;k<TNL_PARK;k++)if(tnl_park[k].t==t&&tnl_park[k].idx==i)return k;return -1;}
 static void tnl_park_put(const tnl_state *t,uint32_t i,const tnl_light *l) {
  int k=tnl_park_find(t,i),j;
  if(k<0){for(j=0;j<TNL_PARK&&tnl_park[j].t;j++){}k=j;
-  if(k==TNL_PARK){k=0;for(j=1;j<TNL_PARK;j++)if(tnl_park[j].age<tnl_park[k].age)k=j;vx_d3d_tn_nd[1]++;}}
+  if(k==TNL_PARK){k=0;for(j=1;j<TNL_PARK;j++)if(tnl_park[j].age<tnl_park[k].age)k=j;vx_d3d_tn_nd[1]++;}
+  else tnl_park_n++;}
  tnl_park[k].t=t;tnl_park[k].idx=i;tnl_park[k].age=++tnl_park_age;tnl_park[k].l=*l;
 }
-static void tnl_park_purge(const tnl_state *t) {int k;for(k=0;k<TNL_PARK;k++)if(tnl_park[k].t==t)memset(&tnl_park[k],0,sizeof(tnl_park[k]));}
+static void tnl_park_purge(const tnl_state *t) {int k;if(!tnl_park_n||!t)return;for(k=0;k<TNL_PARK;k++)if(tnl_park[k].t==t){memset(&tnl_park[k],0,sizeof(tnl_park[k]));tnl_park_n--;}}
 /* the slot light i gets (-1: none); add: make it when the index is new. tnl_light_k answers the same without changing anything. */
 static int tnl_light_k(const tnl_state *t,uint32_t i,int add) {
  uint32_t k;
@@ -123,7 +153,7 @@ static tnl_light *tnl_light_slot(tnl_state *t,uint32_t i,int add) {
   if(k<t->nslot){
    tnl_park[pk].idx=t->lidx[k];tnl_park[pk].l=t->light[k];
    tnl_park[pk].age=++tnl_park_age;t->full++;
-  }else{tnl_park[pk].t=0;t->nslot++;}
+  }else{tnl_park[pk].t=0;tnl_park_n--;t->nslot++;}
   t->light[k]=restored;
  }else{
   if(k<t->nslot){tnl_park_put(t,t->lidx[k],&t->light[k]);t->full++;}
@@ -235,26 +265,46 @@ static void tnl_blk_capture(vx_d3d_context *c,uint32_t h) { /* the recorded fiel
    for(r=0;r<3;r++){*(vx_f32a*)(d+52+r*4)=l->pos[r];*(vx_f32a*)(d+64+r*4)=l->dir[r];}
    *(vx_f32a*)(d+76)=l->range;*(vx_f32a*)(d+80)=l->falloff;*(vx_f32a*)(d+84)=l->a0;*(vx_f32a*)(d+88)=l->a1;*(vx_f32a*)(d+92)=l->a2;*(vx_f32a*)(d+96)=l->theta;*(vx_f32a*)(d+100)=l->phi;}}
 }
+/* .741: whether a light command (index i, type ty: 0 on, 1 off, 2 a definition at d) leaves the T&L state as it is: only for a light in a
+ * working slot (a parked light is moved into one, and a light never set gets one), compared bit for bit as the command would store it */
+static int tnl_light_same(const tnl_state *t,uint32_t i,uint32_t ty,const uint8_t *d) {
+ uint32_t k,q;const tnl_light *l=0;
+ for(k=0;k<t->nslot;k++)if(t->lidx[k]==i){l=&t->light[k];break;}
+ if(!l)return ty==1&&tnl_park_find(t,i)<0; /* .742 (the merged core): a disable of a light with no slot and none parked touches nothing */
+ if(ty==0)return l->on==1;
+ if(ty==1)return l->on==0;
+ if(ty!=2||!l->have||l->type!=u32(d))return 0;
+ for(q=0;q<4;q++)if(memcmp(&l->dif[q],d+4+q*4,4)||memcmp(&l->spe[q],d+20+q*4,4)||memcmp(&l->amb[q],d+36+q*4,4))return 0;
+ for(q=0;q<3;q++)if(memcmp(&l->pos[q],d+52+q*4,4)||memcmp(&l->dir[q],d+64+q*4,4))return 0;
+ return !memcmp(&l->range,d+76,4)&&!memcmp(&l->falloff,d+80,4)&&!memcmp(&l->a0,d+84,4)&&!memcmp(&l->a1,d+88,4)&&!memcmp(&l->a2,d+92,4)&&!memcmp(&l->theta,d+96,4)&&!memcmp(&l->phi,d+100,4);
+}
+uint32_t vx_d3d_tn_cmd_same; /* .740 */
 /* a T&L command into the state (the lengths were checked by the caller) */
 static void tnl_command(vx_d3d_context *c,uint32_t op,const uint8_t *p,uint32_t n) {
- tnl_state *t=tnl_of(c);uint32_t j,k;
- {int world=op==36&&n>0;for(j=0;world&&j<n;j++)if(u32(p+j*68)!=1)world=0; /* .647: a world matrix alone keeps the set-up but its matrices */
-  if(world)tn_world_dirty=1;else tn_key.valid=0;}
+ tnl_state *t=tnl_of(c);uint32_t j,k,chg=0; /* .740 (speed list O; T740 pursuit profile: the set-up built 258,028 times, kept 7,575, made again for a
+  * world matrix 41,199: a material set before nearly every draw dropped it, the same material as the draw before included): only a value that
+  * changes drops the set-up (chg: 1 a world matrix, 2 anything else). The same state gives the same set-up, so the same words. */
  if(op==36)for(j=0;j<n;j++){uint32_t ty=u32(p+j*68);float *m=ty==1?t->world:ty==2?t->view:ty==3?t->proj:ty>=16&&ty<24?t->tex[ty-16]:0;
-  if(m){tnl_log(t,m,64);for(k=0;k<16;k++)m[k]=tf(p+j*68+4+k*4);}}
- else if(op==33&&n){tnl_log(t,t->mat,sizeof(t->mat));for(k=0;k<17;k++)t->mat[k]=tf(p+(n-1)*68+k*4);}
- else if(op==34)for(j=0,k=0;j<n;j++){uint32_t i=u32(p+k),ty=u32(p+k+4);tnl_light *l;k+=8;
-  if(tnl_undo_on){int q=tnl_light_k(t,i,ty==0||ty==2);tnl_log(t,&t->nslot,4);tnl_log(t,&t->full,4);if(q>=0){tnl_log(t,&t->lidx[q],4);tnl_log(t,&t->light[q],sizeof(tnl_light));}}
+  if(m){if(memcmp(m,p+j*68+4,64)){tnl_log(t,m,64);for(k=0;k<16;k++)m[k]=tf(p+j*68+4+k*4);chg|=ty==1?1UL:2UL;if(ty!=1)vx_d3d_tn_why2[ty==2?0:ty==3?1:2]++;}}
+  else{chg|=2;vx_d3d_tn_why2[3]++;}}
+ else if(op==33&&n){if(memcmp(t->mat,p+(n-1)*68,sizeof(t->mat))){tnl_log(t,t->mat,sizeof(t->mat));for(k=0;k<17;k++)t->mat[k]=tf(p+(n-1)*68+k*4);chg|=vx_d3d_tn_matonly_on?4UL:2UL;vx_d3d_tn_why2[4]++;}}
+ else if(op==34){ /* .741: a light command that changes nothing (an enable of a light already on in its slot, the same definition again) keeps it */
+  for(j=0,k=0;j<n;j++){uint32_t i=u32(p+k),ty=u32(p+k+4);tnl_light *l;int sm;k+=8;
+  sm=tnl_light_same(t,i,ty,p+k);if(!sm){chg|=2;vx_d3d_tn_why2[5]++;}
+  if(tnl_undo_on&&!sm){ /* .741: nothing to undo for a light left as it was */int q=tnl_light_k(t,i,ty==0||ty==2);tnl_log(t,&t->nslot,4);tnl_log(t,&t->full,4);if(q>=0){tnl_log(t,&t->lidx[q],4);tnl_log(t,&t->light[q],sizeof(tnl_light));}}
   l=tnl_light_slot(t,i,ty==0||ty==2); /* .646: any index (a disable of a light never set needs no slot) */
   if(!l){if(ty==2)k+=104;if(ty!=1){vx_d3d_tn[11]++;vx_d3d_tn_nd[0]++;}continue;}
   if(ty==0)l->on=1;else if(ty==1)l->on=0;
   else if(ty==2){uint32_t q;l->type=u32(p+k);for(q=0;q<4;q++){l->dif[q]=tf(p+k+4+q*4);l->spe[q]=tf(p+k+20+q*4);l->amb[q]=tf(p+k+36+q*4);}
    for(q=0;q<3;q++){l->pos[q]=tf(p+k+52+q*4);l->dir[q]=tf(p+k+64+q*4);}
-   l->range=tf(p+k+76);l->falloff=tf(p+k+80);l->a0=tf(p+k+84);l->a1=tf(p+k+88);l->a2=tf(p+k+92);l->theta=tf(p+k+96);l->phi=tf(p+k+100);l->have=1;k+=104;}}
- else if(op==32&&n){tnl_log(t,&t->zmin,8);t->zmin=tf(p+(n-1)*8);t->zmax=tf(p+(n-1)*8+4);}
+   l->range=tf(p+k+76);l->falloff=tf(p+k+80);l->a0=tf(p+k+84);l->a1=tf(p+k+88);l->a2=tf(p+k+92);l->theta=tf(p+k+96);l->phi=tf(p+k+100);l->have=1;k+=104;}}}
+ else if(op==32&&n){if(memcmp(&t->zmin,p+(n-1)*8,4)||memcmp(&t->zmax,p+(n-1)*8+4,4)){tnl_log(t,&t->zmin,8);t->zmin=tf(p+(n-1)*8);t->zmax=tf(p+(n-1)*8+4);chg|=2;vx_d3d_tn_why2[6]++;}}
+ else{chg|=2;vx_d3d_tn_why2[7]++;}
+ if(chg&2)tn_key.valid=0;else{if(chg&4)tn_mat_dirty=1;if(chg&1)tn_world_dirty=1;} /* .756: 4, the material alone */ /* .756: 4, the material alone */
+ vx_d3d_tn_cmd_same+=!chg; /* .740: commands that changed nothing */
 }
-/* the square root without the C library (the host builds link none): a seed from the float's bits, three Newton steps (1e-7) */
-static float tn_sqrt(float x) {float y;uint32_t i;if(!(x>0.0f))return 0.0f;i=0x1FBD1DF5UL+(tn_bits(x)>>1);y=tn_flt(i);y=0.5f*(y+x/y);y=0.5f*(y+x/y);y=0.5f*(y+x/y);return y;}
+/* .742 (the merged core, from the ".741" outside core): the square root is sqrtss (one instruction, correctly rounded; the seed and three
+ * Newton divides it replaces were within 1e-7). Negative, NaN and zero stay 0. Its body is with the other SSE helpers below. */
 static void mmul(float *o,const float *a,const float *b) {uint32_t i,j;for(i=0;i<4;i++)for(j=0;j<4;j++)o[i*4+j]=a[i*4]*b[j]+a[i*4+1]*b[4+j]+a[i*4+2]*b[8+j]+a[i*4+3]*b[12+j];}
 /* e^x for x <= 0 (the fog), within 1e-6: 2^(x log2 e) by its integer part and a polynomial for the rest */
 /* .540 (review): a NaN failed both tests and reached the conversion to int (the x87 gives 0x80000000: a loop of 2^31 halvings, a hang):
@@ -297,14 +347,23 @@ static float tn_pow(float x,float p) {
  y=(double)p*tn_log(x);
  return tn_exp((float)y);
 }
-/* the scratch buffer: TN_MAX pretransformed vertices (at most 40 bytes), their clip-space positions and clip codes */
+/* the scratch buffer: TN_MAX pretransformed vertices (at most TN_REC bytes: 24 + 8 a coordinate set, 3 sets since .734, + 4 for a
+ * q / r word = 52), their clip-space positions and clip codes. .737 (review audit #4): it held 44 bytes a vertex while a three-set
+ * record is 48-52, and the room checks count vertices: a draw past about 15,000 vertices wrote beyond it */
+#define TN_REC 52
+typedef char tn_rec_fits[(24+3*8+4)<=TN_REC?1:-1]; /* the widest record tn_ostride can give (tn_sets <= 3) */
 #ifndef TN_MAX /* .718: a host test builds a small scratch (tests/run.py: the deferred side planes taken on every clipped scene) */
 #define TN_MAX 16384 /* the HAL image stays under the VxD lock's 2048 pages (ACCEL_LOCK_HAL; 1028 at .663) */
 #endif
 #define TN_TRIS 8192 /* triangles in; .540: out at most 3 a triangle in (two planes cut it to a pentagon): tn_tok holds TN_OUT (.539 held
  * TN_TRIS and dropped the rest of a draw whose clipping made more) */
 #define TN_OUT (TN_TRIS*3)
-static uint8_t tn_buf[(TN_MAX+8)*44],tn_cc[TN_MAX+8];static uint16_t tn_tok[3+TN_OUT*3]; /* .544: eight places of slack: the group kernels write whole groups of four */
+#ifdef __WATCOMC__
+extern uint8_t tn_buf[(TN_MAX+8)*TN_REC],tn_cc[TN_MAX+8]; /* .751: src/vx_tnl_data.asm */
+#else
+static uint8_t tn_buf[(TN_MAX+8)*TN_REC],tn_cc[TN_MAX+8];
+#endif
+static uint16_t tn_tok[3+TN_OUT*3]; /* .544: eight places of slack: the group kernels write whole groups of four */
 
 /* .707 (a review of .703: three byte-at-a-time passes over a draw's places after the SIMD kernels): the clip codes and viewport codes
  * read four places a word. tn_w4 reads four bytes (any alignment: the x86 allows it); tn_hasb, some byte of w equals b (the exact
@@ -326,14 +385,15 @@ static void tn_orand(const uint8_t *p,uint32_t n,uint32_t *por,uint32_t *pand) {
 }
 /* .540: tn_ref, the vertices a draw's triangles use (stamped with tn_epoch: only those are transformed, not every vertex between the
  * lowest and highest index); tn_uvq, a projected set's u, v and q before the divide (clipping interpolates them, then divides) */
-static uint32_t tn_ref[TN_MAX],tn_epoch;static uint16_t tn_map[TN_MAX];static float tn_uvq[TN_MAX][2][3];static uint32_t tn_proj[2];
+static uint32_t tn_ref[TN_MAX],tn_epoch;static uint16_t tn_map[TN_MAX];static float tn_uvq[TN_MAX][2][3];static uint32_t tn_proj[3]; /* .734: tn_proj[2], the third set's (never projected: tn_uvq keeps two) */
 static uint32_t tn_P,tn_ostride,tn_sets,tn_fvf,tn_stage_set[8]; /* .646: each stage's output set */
+static uint32_t tn_msrc[3]={0,1,2}; /* .737: the stage whose texture matrix an output set takes (its own, or stage 2's on set 1 below) */
 /* .656: tn_qs, the sets whose records carry q (u, v, q undivided: the HAL divides per pixel); tn_toff, each set's first word in a record */
-static uint32_t tn_qs,tn_r3,tn_toff[2]; /* .663 (audit 06): tn_r3, a set whose records carry its third coordinate (r: a cube map's direction, a
+static uint32_t tn_qs,tn_r3,tn_toff[3]; /* .663 (audit 06): tn_r3, a set whose records carry its third coordinate (r: a cube map's direction, a
  * volume's depth), not divided (the stage keeps TTF 0) */
 /* the call's own: the untransformed input (bound once) and the frame of the per-draw set-up */
 typedef struct {float wvp[16],wv[16],nrm[9],amb[4],mdif[4],mamb[4],memi[4],ld[16][3],lpos[16][3],fs,fe,fd;uint32_t lit,fog,fmode,rfog,nl,li[16],ldir[16];
- uint32_t gen[2],idx[2],ttf[2],ins,inormal,idif,ispe,itex[8],itn[8],dsrc,asrc,esrc,mat_sources,nnorm;
+ uint32_t gen[3],idx[3],ttf[3],ins,inormal,idif,ispe,itex[8],itn[8],dsrc,asrc,esrc,mat_sources,nnorm;
  /* .542: nrm16, the normal matrix as tn_x4's 4x4 (rows padded, no translation); mconst: no material colour from the
   * vertex, so base4 (emissive + global ambient x ambient + every directional light's ambient x ambient, alpha the diffuse's) and per
   * light ld4 (diffuse x diffuse) and la4 (ambient x ambient) are the draw's: a lit vertex is base4 + the lights' terms (b g r a order) */
@@ -377,6 +437,9 @@ static uint32_t tn_pk4(const float *bgra,const float *k255);
 #pragma aux tn_pk4 = 0x0F 0x10 0x00 0x0F 0x10 0x0A 0x0F 0x59 0xC1 0x66 0x0F 0x5B 0xC0 0x66 0x0F 0x6B 0xC0 0x66 0x0F 0x67 0xC0 0x66 0x0F 0x7E 0xC0 parm [eax] [edx] value [eax] modify exact [eax];
 static void tn_pf(uint32_t at);
 #pragma aux tn_pf = 0x0F 0x18 0x08 parm [eax] modify exact []; /* .681: prefetcht0 [eax] (a hint: never faults, changes no register) */
+static uint32_t tn_sqrt_bits(uint32_t n);
+#pragma aux tn_sqrt_bits = 0x66 0x0F 0x6E 0xC0 0xF3 0x0F 0x51 0xC0 0x66 0x0F 0x7E 0xC0 parm [eax] value [eax] modify exact [eax]; /* .741: movd xmm0,eax; sqrtss xmm0,xmm0; movd eax,xmm0 */
+static float tn_sqrt(float x) {if(!(x>0.0f))return 0.0f;return tn_flt(tn_sqrt_bits(tn_bits(x)));}
 #else
 #include <emmintrin.h>
 static void tn_x4(const float *m,const float *v,float *o) {__m128 a=_mm_set1_ps(v[0]),b=_mm_set1_ps(v[1]),d=_mm_set1_ps(v[2]);
@@ -386,6 +449,7 @@ static void tn_ma4(float *a,const float *s,const float *v) {_mm_storeu_ps(a,_mm_
 static uint32_t tn_pk4(const float *bgra,const float *k255) {__m128i i=_mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(bgra),_mm_loadu_ps(k255)));
  i=_mm_packs_epi32(i,i);i=_mm_packus_epi16(i,i);return (uint32_t)_mm_cvtsi128_si32(i);}
 static void tn_pf(uintptr_t at) {_mm_prefetch((const char*)at,_MM_HINT_T0);}
+static float tn_sqrt(float x) {float y;if(!(x>0.0f))return 0.0f;_mm_store_ss(&y,_mm_sqrt_ss(_mm_set_ss(x)));return y;} /* .741: the same sqrtss as the board */
 #endif
 /* the draw's set-up: the matrices, the lights in eye space, the input FVF's layout, the stages' coordinate sets */
 /* .647: the parts of the set-up made from the world matrix (tn_prepare; again on their own when only it changed) */
@@ -409,7 +473,7 @@ static void tn_nrm(tn_setup *s) {
  a[3]=s->wv[2]*s->wv[9]-s->wv[1]*s->wv[10];a[4]=s->wv[0]*s->wv[10]-s->wv[2]*s->wv[8];a[5]=s->wv[1]*s->wv[8]-s->wv[0]*s->wv[9];
  a[6]=s->wv[1]*s->wv[6]-s->wv[2]*s->wv[5];a[7]=s->wv[2]*s->wv[4]-s->wv[0]*s->wv[6];a[8]=s->wv[0]*s->wv[5]-s->wv[1]*s->wv[4];
  det=s->wv[0]*a[0]+s->wv[1]*a[1]+s->wv[2]*a[2];if(det==0.0f)det=1.0f;
- for(k=0;k<9;k++)s->nrm[k]=a[k]/det; /* nrm[i*3+j] = cofactor C(i,j) / det: the inverse transpose. n'(j) = sum over i of n(i) nrm[i*3+j]
+ {const float id=1.0f/det;if(id<3.0e38f&&id>-3.0e38f)for(k=0;k<9;k++)s->nrm[k]=a[k]*id;else for(k=0;k<9;k++)s->nrm[k]=a[k]/det;} /* (a determinant whose inverse is past a float: divided as before) */ /* .762 (audit of .757): one divide (were nine) at every world-matrix change that reads a normal */ /* nrm[i*3+j] = cofactor C(i,j) / det: the inverse transpose. n'(j) = sum over i of n(i) nrm[i*3+j]
   * (row vectors, as positions); .540 (review): .536 summed along the rows (n x the inverse: a rotation turned the normals the wrong way) */
  for(k=0;k<16;k++)s->nrm16[k]=0.0f;for(k=0;k<3;k++){s->nrm16[k*4]=s->nrm[k*3];s->nrm16[k*4+1]=s->nrm[k*3+1];s->nrm16[k*4+2]=s->nrm[k*3+2];}
 }
@@ -437,27 +501,74 @@ static uint32_t tnp_set(uint32_t p) {uint32_t o=tnp_cur;
 #define TNP_BACK(o) do{if(vx_d3d_phclock)(void)tnp_set(o);else tnp_cur=(o);}while(0)
 static int tn_prepare_full(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s);
 static int tn_prepare_b(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s);
+/* .756: the set-up's material parts made again in place (as tn_prepare_full makes them); 0 when the material turns specular lighting on
+ * or off, which a full build must follow */
+static int tn_mat_again(const tnl_state *t,const vx_d3d_state *st,tn_setup *s) {
+ uint32_t k,i,q;
+ for(k=0;k<4;k++){s->mdif[k]=t->mat[k];s->mamb[k]=t->mat[4+k];s->memi[k]=t->mat[12+k];}
+ for(q=0;q<4;q++)s->mspec[q]=t->mat[8+q];s->mpow=t->mat[16];
+ {const uint32_t vd=st->rs[141]&&s->idif!=0xFFFFFFFFUL?1:0,vs=st->rs[141]&&s->ispe!=0xFFFFFFFFUL?2:0;uint32_t ssrc=st->rs[146],on;
+  if(ssrc!=vd&&ssrc!=vs)ssrc=0;
+  on=s->lit&&st->rs[29]&&s->nl&&s->inormal!=0xFFFFFFFFUL&&(ssrc||s->mspec[0]!=0.0f||s->mspec[1]!=0.0f||s->mspec[2]!=0.0f);
+  if((on!=0)!=(s->spec_on!=0))return 0;}
+ s->spcut=0.0f;
+ if(s->spec_on&&s->mpow>0.0f){float K=0.0f;int bounded=1;uint32_t j,c2;
+  for(j=0;j<s->nl;j++){const tnl_light *l=&t->light[s->li[j]];float sm=0.0f,am=1.0f;
+   for(c2=0;c2<3;c2++){float v=l->spe[c2]*(s->ssrc?1.0f:s->mspec[c2]);if(v<0.0f)v=-v;if(v>sm)sm=v;}
+   if(!s->ldir[j]){if(!(l->a0>0.0f)||l->a1<0.0f||l->a2<0.0f){bounded=0;break;}am=1.0f/l->a0;}
+   if(sm*am>K)K=sm*am;}
+  if(bounded&&K>0.0f){const float x=1.0f/(510.0f*(float)s->nl*K);s->spcut=x>=1.0f?1.0f:tn_pow(x,1.0f/s->mpow);}}
+ if(s->lit&&s->mconst){static const uint32_t bgr[3]={2,1,0};
+  for(k=0;k<3;k++)s->base4[k]=s->memi[bgr[k]]+s->amb[bgr[k]]*s->mamb[bgr[k]];s->base4[3]=s->mdif[3];
+  for(i=0;i<s->nl;i++){const tnl_light *l=&t->light[s->li[i]];
+   for(k=0;k<3;k++){s->ld4[i][k]=l->dif[bgr[k]]*s->mdif[bgr[k]];s->la4[i][k]=l->amb[bgr[k]]*s->mamb[bgr[k]];}s->ld4[i][3]=s->la4[i][3]=0.0f;
+   if(s->ldir[i])for(k=0;k<3;k++)s->base4[k]+=s->la4[i][k];}}
+ return 1;
+}
+/* .766: a kept key against the draw's state (the kept set-up's test, for either kept set-up) */
+static int tn_key_eq(const struct tn_key_s *kk,const tnl_state *t,const vx_d3d_input *src,const vx_d3d_state *st,const int32_t *vp) {
+ uint32_t k;
+ if(!kk->valid||kk->t!=(const void*)t||kk->fvf!=src->fvf||kk->stride!=src->vertex_stride)return 0;
+ for(k=0;k<4;k++)if(kk->vp[k]!=vp[k])return 0;
+ for(k=0;k<TN_KRS;k++)if(kk->rs[k]!=st->rs[tn_krs[k]])return 0;
+ /* .762 (T760: 53,851 set-ups built in full for a stage state): a stage's COLOROP is kept as on or off, which is all the set-up reads of it
+  * (tn_prepare_full: tss[k][1] == 1, D3DTOP_DISABLE, for k = 0, 1, 2); before, any other operation (MODULATE to SELECTARG1) built it again */
+ for(k=0;k<3;k++)if(kk->tss[k][0]!=TN_OPK(st->tss[k][1])||kk->tss[k][1]!=st->tss[k][11]||kk->tss[k][2]!=st->tss[k][24])return 0;
+ return 1;
+}
 static int tn_prepare(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s) {uint32_t o=TNP(0);int r=tn_prepare_b(c,src,s);TNP_BACK(o);return r;}
 static int tn_prepare_b(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s) {
  tnl_state *t=tnl_of(c);const vx_d3d_state *st=&c->state;uint32_t k,n0;int eq;
  int32_t vp[4];
  vp[0]=st->viewport.left;vp[1]=st->viewport.top;vp[2]=st->viewport.right;vp[3]=st->viewport.bottom;
- eq=vx_d3d_tn_keep_on&&tn_key.valid&&tn_key.t==(const void*)t&&tn_key.fvf==src->fvf&&tn_key.stride==src->vertex_stride;
- for(k=0;eq&&k<4;k++)eq=tn_key.vp[k]==vp[k];
- for(k=0;eq&&k<TN_KRS;k++)eq=tn_key.rs[k]==st->rs[tn_krs[k]];
- for(k=0;eq&&k<3;k++)eq=tn_key.tss[k][0]==st->tss[k][1]&&tn_key.tss[k][1]==st->tss[k][11]&&tn_key.tss[k][2]==st->tss[k][24];
+ eq=vx_d3d_tn_keep_on&&tn_key_eq(&tn_key,t,src,st,vp);
  if(eq){
   s->lit_valid=0;vx_d3d_tn[11]+=tn_key.ns; /* the states not done count every draw, as before */
+  if(tn_mat_dirty){ /* .756 */
+   if(tn_mat_again(t,st,s)){tn_mat_dirty=0;if(tn_world_dirty){tn_world_dirty=0;tn_mats(t,s);tn_fogw(s);}
+    tn_same=1;tn_soa_stale=1;tn_soa_matstale=1;vx_d3d_tn_matonly[0]++;return 1;} /* .757: the kept group frame gets the matrices and the material's constants (tn_soa_mat); .756 filled it again in full */
+   vx_d3d_tn_matonly[1]++;goto full;}
   if(!tn_world_dirty){tn_same=2;vx_d3d_tn_setup[2]++;return 1;}
   tn_world_dirty=0;tn_mats(t,s);tn_fogw(s);tn_same=1;tn_soa_stale=1;vx_d3d_tn_setup[1]++;return 1;}
- n0=vx_d3d_tn[11];tn_key.valid=0;tn_world_dirty=0;tn_same=0;
+ full:
+ {uint32_t w=8,q; /* .755: the first thing that differed */
+  if(vx_d3d_tn_keep_on&&tn_key.valid){if(tn_key.t!=(const void*)t)w=13;else if(tn_key.fvf!=src->fvf||tn_key.stride!=src->vertex_stride)w=9;else{w=12;for(q=0;q<4;q++)if(tn_key.vp[q]!=vp[q]){w=10;break;}
+    if(w==12)for(q=0;q<TN_KRS;q++)if(tn_key.rs[q]!=st->rs[tn_krs[q]]){w=11;vx_d3d_tn_why2[14]=tn_krs[q];vx_d3d_tn_why3[q]++;break;} /* .762: by state */
+    if(w==12)for(q=0;q<3;q++){if(tn_key.tss[q][0]!=TN_OPK(st->tss[q][1])){vx_d3d_tn_why3[17]++;break;}if(tn_key.tss[q][1]!=st->tss[q][11]){vx_d3d_tn_why3[18]++;break;}if(tn_key.tss[q][2]!=st->tss[q][24]){vx_d3d_tn_why3[19]++;break;}}}
+   tn_key_was=1;tn_key_k=tn_key;} /* .762: the kept key, for the count of set-ups that go back to the one before */
+  else tn_key_was=0;
+  vx_d3d_tn_why2[w]++;}
+ n0=vx_d3d_tn[11];tn_key.valid=0;tn_world_dirty=0;tn_same=0;tn_mat_dirty=0;
  tn_soa_kept_valid=0; /* .648 (board, 3DMark 2001 on .647: 1,993,559 primitives left out for vertices with a NaN rhw): the group frame belongs to the
   * set-up it was made from. A draw prepared in full and refused for room (tn_draw 2, the record size changed) is prepared again after the
   * flush and found kept: the frame of the draw before (its record size, matrices and lights) must not be taken for it */
  if(!tn_prepare_full(c,src,s))return 0;
  tn_key.t=(const void*)t;tn_key.fvf=src->fvf;tn_key.stride=src->vertex_stride;for(k=0;k<4;k++)tn_key.vp[k]=vp[k];
  for(k=0;k<TN_KRS;k++)tn_key.rs[k]=st->rs[tn_krs[k]];
- for(k=0;k<3;k++){tn_key.tss[k][0]=st->tss[k][1];tn_key.tss[k][1]=st->tss[k][11];tn_key.tss[k][2]=st->tss[k][24];}
+ for(k=0;k<3;k++){tn_key.tss[k][0]=TN_OPK(st->tss[k][1]);tn_key.tss[k][1]=st->tss[k][11];tn_key.tss[k][2]=st->tss[k][24];} /* .762: on or off */
+ /* .762 (count first: a second kept set-up): this build's key the one before the kept one's (A, B, A: lighting switched off for a draw and on again) */
+ if(tn_key_o_ok&&tn_key_o.t==tn_key.t&&tn_key_o.fvf==tn_key.fvf&&tn_key_o.stride==tn_key.stride&&!memcmp(tn_key_o.vp,tn_key.vp,sizeof(tn_key.vp))&&!memcmp(tn_key_o.rs,tn_key.rs,sizeof(tn_key.rs))&&!memcmp(tn_key_o.tss,tn_key.tss,sizeof(tn_key.tss)))vx_d3d_tn_why3[20]++;
+ if(tn_key_was){tn_key_o=tn_key_k;tn_key_o_ok=1;}
  tn_key.ns=vx_d3d_tn[11]-n0;tn_key.valid=1;vx_d3d_tn_setup[0]++;
  return 1;
 }
@@ -531,6 +642,12 @@ static int tn_prepare_full(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s
    for(k=0;k<3;k++){s->ld4[i][k]=l->dif[bgr[k]]*s->mdif[bgr[k]];s->la4[i][k]=l->amb[bgr[k]]*s->mamb[bgr[k]];}s->ld4[i][3]=s->la4[i][3]=0.0f;
    if(s->ldir[i])for(k=0;k<3;k++)s->base4[k]+=s->la4[i][k];}}
  s->fog=st->rs[28]&&!st->rs[35]&&st->rs[140];s->fmode=st->rs[140];s->rfog=st->rs[48]!=0;
+ /* .733 (ACCEL_D3D_TFOG, the speed list's item F; under test): depth vertex fog (EXP, EXP2, LINEAR; not range fog) under a projection whose
+  * clip W is eye Z exactly (its fourth column 0, 0, 1, 0: W = z x 1) is drawn by the engine's fog unit from W (01/70 bit 4 clear, the
+  * fog's own start, end and density), per pixel; the T&L then works out no fog at all. The template takes it from tn_tfog (fog_w_registers) */
+ {uint32_t tf=0;
+  if(vx_d3d_tfog&&s->fog&&!s->rfog&&s->fmode>=1&&s->fmode<=3&&tn_bits(t->proj[3])==0&&tn_bits(t->proj[7])==0&&tn_bits(t->proj[11])==0x3F800000UL&&tn_bits(t->proj[15])==0){tf=s->fmode;s->fog=0;vx_d3d_tfog_n++;}
+  if(tf!=tn_tfog){tn_tfog=tf;template_reset();}}
  s->fs=tf((const uint8_t*)&st->rs[36]);s->fe=tf((const uint8_t*)&st->rs[37]);s->fd=tf((const uint8_t*)&st->rs[38]);
  /* the output sets: one a stage up to the first disabled one, at most two */
  /* .646 (board, 3DMark 2001: 453,331 draws with state not done): .536-.645 gave stage 2 stage 1's output set whatever it asked for (a
@@ -544,11 +661,30 @@ static int tn_prepare_full(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s
   * drew them with set 0's coordinates): a set the vertex lacks is read as set 0 (.653-.657 wrote 0, 0); none at all is still 0, 0 */
  for(k=0;k<tn_sets;k++)if(s->idx[k]>=s->ins&&s->ins)s->idx[k]=0;
  for(k=0;k<8;k++)tn_stage_set[k]=k<tn_sets?k:tn_sets-1;
- if(tn_sets>1&&st->tss[2][1]!=1){
+ tn_msrc[0]=0;tn_msrc[1]=1;tn_msrc[2]=2;
+ /* .737 (board, 3DMark 2001's Environment Bump Mapping on 737B, the YouTube reference against the VX800 / VX855 / VX900 pictures): the
+  * base (stage 0) and the bump (stage 1) both read set 1, and the environment map (stage 2) set 0 through its own texture matrix (COUNT2,
+  * moved every frame: the turning reflection). Three output sets made the bump program see three different sets; 737B drew stage 2 on
+  * stage 1's, frozen and wrong. Stages 0 and 1 asking for the same coordinates (index with its generation, the same transform) now share
+  * output set 0, and stage 2's own coordinates take set 1 with stage 2's matrix (tn_msrc): two sets, the bump program's T153 form, XP's */
+ if(tn_sets==2&&st->tss[2][1]!=1&&st->tss[1][11]==st->tss[0][11]&&st->tss[1][24]==st->tss[0][24]&&
+    (!(st->tss[1][24]&0xFF)||!memcmp(t->tex[1],t->tex[0],sizeof(t->tex[1])))&&
+    !(st->tss[2][11]==st->tss[0][11]&&st->tss[2][24]==st->tss[0][24]&&(!(st->tss[2][24]&0xFF)||!memcmp(t->tex[2],t->tex[0],sizeof(t->tex[2]))))&&
+    !(st->tss[2][24]&~0x1FFUL)){
+  const uint32_t i2=st->tss[2][11]&0xFFFF;
+  s->gen[1]=st->tss[2][11]>>16;s->idx[1]=(i2>=s->ins&&s->ins)?0:i2;s->ttf[1]=st->tss[2][24];tn_msrc[1]=2;
+  tn_stage_set[0]=0;tn_stage_set[1]=0;for(k=2;k<8;k++)tn_stage_set[k]=1;vx_d3d_tn_shared01++;}
+ else if(tn_sets>1&&st->tss[2][1]!=1){
   /* .663 (audit 08): and, when stage 2 transforms its coordinates, by the same matrix (each stage has its own) */
   const int m0=!(st->tss[2][24]&0xFF)||!memcmp(t->tex[2],t->tex[0],sizeof(t->tex[2])),m1=!(st->tss[2][24]&0xFF)||!memcmp(t->tex[2],t->tex[1],sizeof(t->tex[2]));
   if(st->tss[2][11]==st->tss[0][11]&&st->tss[2][24]==st->tss[0][24]&&m0)tn_stage_set[2]=0;
-  else if(!(st->tss[2][11]==st->tss[1][11]&&st->tss[2][24]==st->tss[1][24]&&m1)){vx_d3d_tn[11]++;vx_d3d_tn_nd[2]++;}}
+  else if(!(st->tss[2][11]==st->tss[1][11]&&st->tss[2][24]==st->tss[1][24]&&m1)){
+   /* .734: a third output set of its own (the engine's slot C, .731: proven T732, VXTLP 10c): stage 2's coordinates, read, generated or
+    * transformed as stages 0 and 1's, in the record's words 10-11; u and v only (not projected; the core's three-unit form, VX3DN_C3, has
+    * no q or r); below, a q or r set among the first two keeps the old way. Else stage 2 on set 1 as before, counted */
+   const uint32_t g2=st->tss[2][11]>>16,i2=st->tss[2][11]&0xFFFF,f2=st->tss[2][24],c2=f2&0xFF;
+   if(vx_d3d_tn3&&!(f2&~0xFFUL)){s->gen[2]=g2;s->idx[2]=(i2>=s->ins&&s->ins)?0:i2;s->ttf[2]=f2;tn_sets=3;tn_stage_set[2]=2;(void)c2;} /* u and v written (a third or fourth coordinate unused: the unit reads S and T) */
+   else{vx_d3d_tn[11]++;vx_d3d_tn_nd[2]++;}}}
  /* .540 (review): TEXTURETRANSFORMFLAGS' count is 0-4 (D3DTTFF_COUNT1-4) with PROJECTED (256); any other value is not a transform this
  * does (counted, the set passed through): .536 indexed o4[count - 1] with the count as given */
  for(k=0;k<tn_sets;k++){
@@ -564,17 +700,20 @@ static int tn_prepare_full(vx_d3d_context *c,const vx_d3d_input *src,tn_setup *s
   * triangle's edges): a set projected with COUNT3 (TTF 103) keeps u, v and q in its record (the FVF's TEXCOORDSIZE3) and its stage keeps
   * TTF 103, so the HAL divides per pixel (unit 0: layout 2; unit 1 on its own set: ulayout PROJ). One such set a draw (a record at most
   * 44 bytes), no third stage (the VxD's three-unit layout has no third coordinate); otherwise the divide at the vertex, as before */
- tn_qs=0;
+ tn_qs=0; /* .726 (outside review of .723): COUNT4 | PROJECTED keeps its fourth component as q the same way (o4[cnt - 1]); it was divided at
+  * the vertex, exact only along the edges (a midpoint s / q of 0.667 for 1.0) */
  if((vx_d3d_feat&VX_F_PROJECTED)&&st->tss[2][1]==1)for(k=0;k<tn_sets&&!tn_qs;k++)
-  if(tn_proj[k]&&(s->ttf[k]&0x1FFUL)==0x103UL&&(k==0?(tn_sets==1&&st->tss[1][1]==1)||(vx_d3d_feat&VX_F_UNIT3D):(vx_d3d_feat&VX_F_UNIT3D)!=0))tn_qs=1UL<<k;
+  if(tn_proj[k]&&((s->ttf[k]&0x1FFUL)==0x103UL||(s->ttf[k]&0x1FFUL)==0x104UL)&&(k==0?(tn_sets==1&&st->tss[1][1]==1)||(vx_d3d_feat&VX_F_UNIT3D):(vx_d3d_feat&VX_F_UNIT3D)!=0))tn_qs=1UL<<k;
  /* .663 (audit 06): a three-component set (one read with three or four, generated, or transformed to three without PROJECTED) keeps its
   * third coordinate in the record as a q set does (the same layout and limits), undivided: a cube map's r (the core's cube layout reads
   * it there) was written 1.0 */
  tn_r3=0;
- if(!tn_qs&&st->tss[2][1]==1)for(k=0;k<tn_sets&&!tn_r3;k++){uint32_t cnt=s->ttf[k]&0xFF,d;
+ if(!tn_qs&&st->tss[2][1]==1)for(k=0;k<tn_sets&&k<2&&!tn_r3;k++){uint32_t cnt=s->ttf[k]&0xFF,d; /* .734: (k < 2: a third set carries u and v only) */
   if(s->gen[k]&&!cnt)d=3;else if(cnt)d=tn_proj[k]?0:cnt;else d=s->idx[k]<s->ins?s->itn[s->idx[k]]:0;
   if(d>=3&&(k==0?(tn_sets==1&&st->tss[1][1]==1)||(vx_d3d_feat&VX_F_UNIT3D):(vx_d3d_feat&VX_F_UNIT3D)!=0))tn_r3=1UL<<k;}
- tn_toff[0]=6;tn_toff[1]=((tn_qs|tn_r3)&1)?9:8;
+ if(tn_sets==3&&(tn_qs|tn_r3)){tn_sets=2;tn_stage_set[2]=1;vx_d3d_tn[11]++;vx_d3d_tn_nd[2]++;} /* .734: a q or r set: the third stage on set 1 as before */
+ if(tn_sets==3)vx_d3d_tn3_n++;
+ tn_toff[0]=6;tn_toff[1]=((tn_qs|tn_r3)&1)?9:8;tn_toff[2]=10;
  /* .540 (review): XYZRHW | DIFFUSE | SPECULAR (C4) and the set count: .536 put the count over 1C4, which already says one set, so two
  * sets read as three (FVF 3C4, 48 bytes, against the records' 40: the core refused every two-stage draw, DDERR_INVALIDPARAMS) */
  tn_fvf=0xC4|(tn_sets<<8)|(((tn_qs|tn_r3)&1)?0x10000UL:0)|(((tn_qs|tn_r3)&2)?0x40000UL:0);tn_ostride=24+tn_sets*8+((tn_qs|tn_r3)?4:0); /* .656: TEXCOORDSIZE3 of the q set (.663: or the r set) */
@@ -704,13 +843,13 @@ static void tn_texsets(uint32_t o,const uint8_t *v,const float *e,const float *n
   else if(s->idx[k]<s->ins){const uint8_t *q=v+s->itex[s->idx[k]];uint32_t nc=s->itn[s->idx[k]],j;for(j=0;j<4;j++)in4[j]=j<nc?tf(q+j*4):j==nc?1.0f:0.0f;g=0;}
   else{in4[0]=0;in4[1]=0;in4[2]=1;in4[3]=0;}
   if(g||cnt)vx_d3d_tn[10]++;
-  if(cnt){const float *M=t->tex[k];float o4[4];uint32_t j;for(j=0;j<4;j++)o4[j]=in4[0]*M[j]+in4[1]*M[4+j]+in4[2]*M[8+j]+in4[3]*M[12+j];
+  if(cnt){const float *M=t->tex[tn_msrc[k<3?k:2]];float o4[4];uint32_t j;for(j=0;j<4;j++)o4[j]=in4[0]*M[j]+in4[1]*M[4+j]+in4[2]*M[8+j]+in4[3]*M[12+j];
    u=o4[0];vv=cnt>1?o4[1]:0;
    if(tn_proj[k]){float qq=o4[cnt-1];tn_uvq[o][k][0]=u;tn_uvq[o][k][1]=vv;tn_uvq[o][k][2]=qq;
     if(tn_qs&(1UL<<k)){r[tn_toff[k]+2]=tn_inf(qq)?0x3F800000UL:tn_bits(qq);} /* .656: q kept, the HAL divides; a q not finite as 1 (the VxD refuses it) */
     else if(qq!=0.0f){u/=qq;vv/=qq;}}} /* cnt 2-4 here */
   else{u=in4[0];vv=in4[1];}
-  if(tn_r3&(1UL<<k)){float rr=cnt?in4[0]*t->tex[k][2]+in4[1]*t->tex[k][6]+in4[2]*t->tex[k][10]+in4[3]*t->tex[k][14]:in4[2];r[tn_toff[k]+2]=tn_inf(rr)?0:tn_bits(rr);} /* .663: r */
+  if(tn_r3&(1UL<<k)){const float *Mr=t->tex[tn_msrc[k<3?k:2]];float rr=cnt?in4[0]*Mr[2]+in4[1]*Mr[6]+in4[2]*Mr[10]+in4[3]*Mr[14]:in4[2];r[tn_toff[k]+2]=tn_inf(rr)?0:tn_bits(rr);} /* .663: r */
   if(tn_inf(u))u=0;if(tn_inf(vv))vv=0; /* .540 (review): the VxD refuses a non-finite coordinate (vx_native3d_hw.c); the core does not check them */
   r[tn_toff[k]]=tn_bits(u);r[tn_toff[k]+1]=tn_bits(vv);}
 }
@@ -719,9 +858,8 @@ static void tn_attributes(uint32_t o) {uint32_t q=TNP(5);tn_attributes_b(o);TNP_
 static void tn_attributes_b(uint32_t o) {
  tn_setup *s=&tn_s;
  const uint8_t *v=tn_sp[o];
- const tnl_state *t=s->ts;
  float e[4]={0,0,0,0},nn[4]={0,0,0,0};
- uint32_t k,dc,sc,s32=0xFF000000UL;
+ uint32_t dc,sc,s32=0xFF000000UL; /* .737: unused t and k removed */
  uint32_t *r=(uint32_t*)(void*)(tn_buf+o*tn_ostride);
  const int haveN=s->inormal!=0xFFFFFFFFUL;
  tn_done[o]=1;vx_d3d_tn_one++; /* .643: vertices finished one at a time (QueryPhases 389) */
@@ -740,7 +878,7 @@ static void tn_attributes_b(uint32_t o) {
   s32=tn_pk4(sp,tn_255);
  }
  if(s->lit){uint32_t sw=0;vx_d3d_tn[8]++;r[4]=tn_diffuse(s,v,e,nn,haveN,dc,sc,&sw);s32|=sw;} /* .645: sw is 0 unless specular lighting is on */
- else{r[4]=dc;s32|=sc&0x00FFFFFFUL;}
+ else{r[4]=dc;s32|=sc&0x00FFFFFFUL;if(!s->fmode&&s->ispe!=0xFFFFFFFFUL)s32=sc;} /* .765 (audit of .757, item 3): unlit with FOGVERTEXMODE NONE, the vertex's specular whole, its alpha too (the application's own fog factor) */
  r[5]=s32;
  tn_texsets(o,v,e,nn,haveN,r);
 }
@@ -909,6 +1047,44 @@ static uint8_t tn_nd[TN_MAX+8];
  * The command is rewritten for the scratch buffer: points as runs {count, start}, lines as INDEXEDLINELIST2 with base 0.
  * 24 LINELIST_IMM carries its vertices in the command (the runtime's own clipped output: transformed) and is not taken here.
  * vx_d3d_tn_pl: [0] point draws, [1] points kept, [2] line draws, [3] lines kept, [4] lines cut, [5] points and lines outside. */
+/* .752 (the master review's item 1; T751, pursuit on the VX855: 49,224 of 299,227 dense draws, 16.5%, had every vertex outside one
+ * plane and were dropped whole only after every vertex had been read and given a position): a dense draw whose vertex range lies wholly
+ * outside one plane is dropped before the gather, from an object-space box of the range kept from an earlier draw of it.
+ * The box: the smallest and largest x, y and z of the range's vertices (tn_vbx_build, on the second draw of the same range from the same
+ * buffer contents; the fourth once the range has been rebuilt twice, so a buffer rewritten between draws is not measured over and over).
+ * It is good only for the buffer contents it was measured on: the HAL gives the vertex memory a generation (vx_d3d_vbgen: a number never
+ * used twice, changed whenever the buffer was locked for writing and 0 while it is locked or when the HAL does not see its locks), and
+ * the box is used only while the generation, the first vertex's address, the count and the stride are the ones it was made for.
+ * The test (tn_vbx_out): each clip test of tnk_pos / tnk_vcodes is an affine function of the source position, so its largest value over
+ * the box is its value at the centre plus the half sides times the coefficients' sizes. The draw is dropped when that largest value
+ * says "outside" for one plane with room to spare: 1e-5 of the sum of the sizes of the terms, some fifty times the rounding of the
+ * kernel's three additions, so every vertex's own code has that plane's bit whatever the kernel's rounding. With the guard band the
+ * sides tested are the viewport's (tn_vc's: x < -w/2 on the halved matrix), without it the clip codes' (x < -w); near is z < 0, far
+ * z > w. The path below drops exactly these draws (oa, or every vertex past one viewport side), so the packets are the same words
+ * either way; only the positions, the scratch places and the gather are saved. A range with a coordinate that is not finite gets no
+ * box. As a last check before a drop the range's first, middle and last vertex are read and must lie inside the box (an application
+ * that wrote the buffer outside a lock, through a pointer kept from an earlier one): if one does not, the box is dropped, not the draw.
+ * vx_d3d_vbox: 0 off, 1 on, 2 the test run and counted but no draw dropped by it (the path below then says whether the box was right:
+ * [7] must stay 0). vx_d3d_tn_vbox: [0] dense draws whose vertex memory had a generation, [1] of them with a box, [2] dropped before
+ * the gather (2: would have been), [3] their vertices, [4] boxes made, [5] boxes dropped by the three-vertex check, [6] draws
+ * with a box that was not outside, found wholly outside after the gather, [7] mode 2: a box said outside and the full path did not. */
+typedef struct tn_vbx_e {const uint8_t *v;uint32_t ns,gen;uint16_t seen,builds;uint8_t ok,pad[3];float lo[3],hi[3];} tn_vbx_e;
+#define TN_VBX_N 1024
+static tn_vbx_e tn_vbx[TN_VBX_N];
+uint32_t vx_d3d_vbox,vx_d3d_vbgen,vx_d3d_tn_vbox[8];
+static uint32_t tn_vbg; /* this draw's vertex memory generation (dp2_body: vx_d3d_vbgen for a draw from the bound vertex buffer, else 0) */
+#define TN_VBX_K 1e-5
+static int tn_vbx_out(const tn_vbx_e *b);
+static void tn_vbx_build(tn_vbx_e *b,const uint8_t *v,uint32_t nv,uint32_t st) {
+ float lo[3],hi[3];uint32_t q,k,bad=0;const uint8_t *p=v;
+ for(k=0;k<3;k++)lo[k]=hi[k]=tf(v+4*k);
+ for(q=0;q<nv;q++,p+=st)for(k=0;k<3;k++){const float f=tf(p+4*k);if((u32(p+4*k)&0x7F800000UL)==0x7F800000UL)bad=1;if(f<lo[k])lo[k]=f;if(f>hi[k])hi[k]=f;}
+ if(b->builds<0xFFFF)b->builds++;
+ if(bad){b->ok=0;b->seen=0xFFFF;return;} /* no box for this generation */
+ for(k=0;k<3;k++){b->lo[k]=lo[k];b->hi[k]=hi[k];}
+ b->ok=1;vx_d3d_tn_vbox[4]++;
+}
+static int tn_vbx_has(const tn_vbx_e *b,const uint8_t *p) {uint32_t k;for(k=0;k<3;k++){const float f=tf(p+4*k);if(!(f>=b->lo[k]&&f<=b->hi[k]))return 0;}return 1;} /* a vertex inside the box (a NaN is not) */
 uint32_t vx_d3d_tn_dense[4],vx_d3d_tn_dense_on=1; /* .642; _on: 0 in host tests that compare the two ways */
 uint32_t vx_d3d_tn_pl[6],vx_d3d_tn_split[2]; /* tn_split: [0] draws taken in pieces, [1] pieces */
 #define TN_PIECE 2340 /* triangles a piece: 7 places each under TN_MAX */
@@ -924,6 +1100,12 @@ static uint32_t tn_pl_index(uint32_t o,const uint8_t *d,uint32_t k) { /* the k-t
  default:return (uint32_t)u16(d)+u16(d+2+j*4+e*2); /* 27 */
  }
 }
+/* .768B (ACCEL_D3D_OSK, VXREG OSK ON / OFF, taken at each program's start from BC 44B word 7 bit 1; 1 here for the host): tn_draw's
+ * and tn_ix_b's triangle loops with the record address a constant multiple (stride 40 or 32) instead of the stride read from memory
+ * and multiplied (imul) three times a triangle. The same loop, the same results; vx_d3d_osk_n counts the calls by form: tn_draw [0] 40,
+ * [1] 32, [2] the stride in memory; tn_ix_b [3] 40, [4] 32, [5] the stride in memory (QueryPhases 556-559 hold [0]+[1], [2],
+ * [3]+[4], [5]). */
+uint32_t vx_d3d_osk=1,vx_d3d_osk_n[6];
 static int tn_draw_pl(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32_t *n,const uint8_t **p) {
  static const uint8_t bit[6]={1,2,8,16,32,64};
  const uint32_t o=*op,cnt=*n,per=o==1?1U:2U,k0=tn_split?tn_k0:0,lim=tn_split?(per==1?(uint32_t)TN_MAX:(uint32_t)TN_PIECE_L):0xFFFFFFFFUL;const uint8_t *data=*p;uint16_t *st;
@@ -1005,9 +1187,41 @@ static int tn_draw_pl(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uin
 static int tn_pcull_on(const vx_d3d_context *c) {const uint32_t cm=c->state.rs[22];return cm==2||cm==3;} /* .682: ACCEL_D3D_PRECULL removed, always on (T681 GRID 6l: off, through .680's engine cull, 32% slower) */
 /* .714: TN_OK's test on one record r (a pointer variable: each use reads it, no multiply): window x and y inside the clip or the guard
  * band, 0 <= z <= 1, 1/w positive and finite. A macro: Watcom called a static function for it (T714: driver T&L 1.5% slower) */
-#define TN_OKR(r) (TN_GX(u32(r),tf(r),tc.bxl,tc.bxr,tn_gxl,tn_gxr)&&TN_GX(u32((r)+4),tf((r)+4),tc.byt,tc.byb,tn_gyt,tn_gyb)&&u32((r)+8)<=0x3F800000UL&&u32((r)+12)-1UL<0x7F7FFFFFUL)
+#define TN_OKR(r) (TN_GX(u32(r),tf(r),tc.bxl,tc.bxw,tn_gxl,tn_gxr)&&TN_GX(u32((r)+4),tf((r)+4),tc.byt,tc.byh,tn_gyt,tn_gyb)&&u32((r)+8)<=0x3F800000UL&&u32((r)+12)-1UL<0x7F7FFFFFUL)
+/* .749: T748, both boards: a cull kernel run over the piece before the triangle loop (the outside review's double-precision one and this
+ * driver's single-precision filter, .747-.748) made pursuit 2.0% slower (VX855 268.6 -> 274.2 ms, VX900 125.3 -> 127.8), though each was
+ * 20-29% faster than the loop's x87 area in VXKBENCH: the second pass over the indices and records costs more than the arithmetic saved.
+ * Both deleted with their hook. */
+/* .753 (T752, both boards: the test as .752 had it took 0.8-1.0% of the frame, about 1,600 cycles a draw on the C7, and ate what the
+ * drops saved: tnk_pos fell 12%, pursuit by 0.3% on the VX855 and rose 0.5% on the VX900). The centre goes first: a plane's largest
+ * value over the box is the centre's value plus a radius that is never negative, so the whole box can be outside only a plane the
+ * centre itself is outside. A draw whose centre is inside all six (most draws on the screen) is answered after the centre's twelve
+ * multiplies; for the others only the planes the centre is outside are worked out. The answers are the ones .752 gave. */
+static int tn_vbx_out(const tn_vbx_e *b) { /* .752: 1, every position in the box is outside one plane by more than the kernels' rounding */
+ const float *m=tn_s.wvp;const double h=tn_gb?0.5:1.0;
+ const double c0=((double)b->lo[0]+b->hi[0])*0.5,c1=((double)b->lo[1]+b->hi[1])*0.5,c2=((double)b->lo[2]+b->hi[2])*0.5;
+ const double X=c0*m[0]+c1*m[4]+c2*m[8]+m[12],Y=c0*m[1]+c1*m[5]+c2*m[9]+m[13],Z=c0*m[2]+c1*m[6]+c2*m[10]+m[14],W=c0*m[3]+c1*m[7]+c2*m[11]+m[15];
+ const double hW=h*W;uint32_t o=0;
+ if(Z<0)o|=1;if(W-Z<0)o|=2;if(X+hW<0)o|=4;if(hW-X<0)o|=8;if(Y+hW<0)o|=16;if(hW-Y<0)o|=32; /* a NaN sets none */
+ if(!o)return 0;
+ {const double e0=((double)b->hi[0]-b->lo[0])*0.5,e1=((double)b->hi[1]-b->lo[1])*0.5,e2=((double)b->hi[2]-b->lo[2])*0.5;
+  const double a0=fabs(c0)+e0,a1=fabs(c1)+e1,a2=fabs(c2)+e2;
+  const double SX=a0*fabs(m[0])+a1*fabs(m[4])+a2*fabs(m[8])+fabs(m[12]),SY=a0*fabs(m[1])+a1*fabs(m[5])+a2*fabs(m[9])+fabs(m[13]);
+  const double SZ=a0*fabs(m[2])+a1*fabs(m[6])+a2*fabs(m[10])+fabs(m[14]),SW=a0*fabs(m[3])+a1*fabs(m[7])+a2*fabs(m[11])+fabs(m[15]);
+  const double T=SX+SY+SZ+SW;
+  if(!(T<1e30)||!(T>1e-20))return 0; /* no number, or sizes where the rounding is not relative */
+  if((o&1)&&Z+e0*fabs(m[2])+e1*fabs(m[6])+e2*fabs(m[10])<-TN_VBX_K*SZ)return 1; /* near: z < 0 */
+  if((o&2)&&W-Z+e0*fabs(m[3]-m[2])+e1*fabs(m[7]-m[6])+e2*fabs(m[11]-m[10])<-TN_VBX_K*(SZ+SW))return 1; /* far: z > w */
+  if((o&4)&&X+hW+e0*fabs(m[0]+h*m[3])+e1*fabs(m[4]+h*m[7])+e2*fabs(m[8]+h*m[11])<-TN_VBX_K*(SX+SW))return 1; /* x < -h w */
+  if((o&8)&&hW-X+e0*fabs(h*m[3]-m[0])+e1*fabs(h*m[7]-m[4])+e2*fabs(h*m[11]-m[8])<-TN_VBX_K*(SX+SW))return 1; /* x > h w */
+  if((o&16)&&Y+hW+e0*fabs(m[1]+h*m[3])+e1*fabs(m[5]+h*m[7])+e2*fabs(m[9]+h*m[11])<-TN_VBX_K*(SY+SW))return 1; /* y < -h w */
+  if((o&32)&&hW-Y+e0*fabs(h*m[3]-m[1])+e1*fabs(h*m[7]-m[5])+e2*fabs(h*m[11]-m[9])<-TN_VBX_K*(SY+SW))return 1; /* y > h w */
+ }
+ return 0;
+}
+static uint32_t tn_fanc; /* .765: a folded fan piece's centre, its vertex index + 1 */
 static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32_t *n,const uint8_t **p) {
- uint32_t o=*op,cnt=*n,base=0,lo=0xFFFFFFFFUL,hi=0,i,m=0,nv,need,mask,used=0,P0,k0=0,wide;uint16_t dlv=0;const uint8_t *data=*p;uint16_t *tri;int soa,pcull=0;
+ uint32_t o=*op,cnt=*n,base=0,lo=0xFFFFFFFFUL,hi=0,i,m=0,nv,need,mask,used=0,P0,k0=0,wide,kf=0,fanc=0;uint16_t dlv=0;const uint8_t *data=*p;uint16_t *tri;int soa,pcull=0;const tn_vbx_e *vbx_in=0;uint32_t vbx_w=0; /* .752: vbx_in, this draw had a box that was not outside; vbx_w, mode 2: the box said outside */
  if(o==1||o==2||o==15||o==16||o==17||o==27)return tn_draw_pl(c,src,op,n,p); /* .640 */
  if(o!=18&&o!=19&&o!=20&&o!=21&&o!=22&&o!=26&&o!=3){vx_d3d_tn[7]++;return 0;}
  if(o!=3){base=u16(data);data+=2;}
@@ -1019,6 +1233,12 @@ static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32
  if(!cnt){vx_d3d_tn[7]++;return 0;}
  if(tn_split){if(tn_k0>=cnt){vx_d3d_tn[7]++;return 0;}cnt-=tn_k0;if(cnt>TN_PIECE)cnt=TN_PIECE;k0=tn_k0;}
  else if(cnt>TN_TRIS)return 3;
+ /* .765 (outside audit of .757, item 2): a piece of a non-indexed draw past its first takes its start into base (32 bits), so the staged
+  * 16-bit indices stay small: a TRIANGLELIST of more than 21,845 triangles (or a strip or fan of more than 65,533) made indices past
+  * 65535, cut to 16 bits while lo and hi were not (qq below indexed tn_ref and tn_map out of range). A strip keeps its parity (an even
+  * fold); a fan keeps its centre where it was (tn_fanc, read by the per-vertex gather: the piece taken wide) */
+ kf=k0;tn_fanc=0;
+ if(tn_split&&k0){if(o==18){base+=k0*3;kf=0;}else if(o==19){base+=k0&~1UL;kf=k0&1;}else if(o==21){fanc=1;tn_fanc=base+1;base+=k0;kf=0;}}
  /* Stage the source-relative triples at the tail of the output token.
   * Reserve the space before it for all potential expansion. */
  tri=tn_tok+3+(TN_OUT-cnt)*3;
@@ -1030,16 +1250,20 @@ static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32
  else for(i=0;i<cnt;i+=VX_TRI_CHUNK){
   const uint32_t chunk=cnt-i<VX_TRI_CHUNK?cnt-i:VX_TRI_CHUNK;
   uint32_t j;
-  tri_fill(o,data,0,k0+i,chunk);
+  tri_fill(o,data,0,kf+i,chunk);
   for(j=0;j<chunk*3;j++){
    const uint32_t idx=tri3[j];
+   if(fanc&&j%3==2){tri[i*3+j]=0xFFFFU;continue;} /* .765: the folded fan's centre (tn_fanc) */
    if(idx<lo)lo=idx;
    if(idx>hi)hi=idx;
    tri[i*3+j]=(uint16_t)idx;
   }
  }
+ vx_d3d_tn_seq[o==18?0:(o==26||o==3)?2:1]+=cnt; /* .755 */
+ vx_d3d_tn_hist[cnt<=2?0:cnt<=8?1:cnt<=32?2:cnt<=128?3:cnt<=512?4:5]++; /* .762: the draws by size (a path for small draws: count first) */
+ /* .756: the count of indexed triangles in order is gone (T755: 1,972,224 of 32,805,112, with 512,610 plain lists: 7.5% of all triangles; the pass over the indices cost about 1% under the monitor) */
  nv=hi-lo+1;hi+=base; /* the staged indices and lo are still relative to base */
- wide=nv>TN_MAX; /* .640: indices across more vertices than tn_ref and tn_map hold: each index takes a place of its own (before: the draw left out) */
+ wide=nv>TN_MAX||fanc; /* .765: a folded fan wide (its centre a place of its own each time); .640: indices across more vertices than tn_ref and tn_map hold: each index takes a place of its own (before: the draw left out) */
  need=(nv<3*cnt&&!wide?nv:3*cnt)+cnt*4; /* the vertices used (at most 3 a triangle, at most the span), then each clipped triangle makes at most four */
  if(!src->vertices||!src->vertex_stride||hi>=src->vertex_bytes/src->vertex_stride){vx_d3d_tn[7]++;return 0;}
  if(need>TN_MAX){if(tn_split){vx_d3d_tn[7]++;return 0;}return 3;}
@@ -1065,6 +1289,19 @@ static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32
   * triangles) shows whether ranges with unused vertices are being transformed: 1.62 on .641, 1.52 on .642. */
  if(vx_d3d_tn_dense_on&&!wide&&nv<=cnt*3){uint32_t q,oo=0,oa=0x7F;const uint32_t st=src->vertex_stride;const uint8_t *v=src->vertices+(base+lo)*st;uint16_t dl;
   P0=tn_P;if(!P0)tn_slot_reset();
+  if(tn_vbg&&vx_d3d_vbox){tn_vbx_e *b=tn_vbx+((((uint32_t)(uintptr_t)v>>2)*2654435761UL^nv*40503UL)>>22&(TN_VBX_N-1));const uint32_t ns=nv|st<<16; /* .752 */
+   vx_d3d_tn_vbox[0]++;
+   if(b->v!=v||b->ns!=ns){b->v=v;b->ns=ns;b->gen=tn_vbg;b->seen=1;b->builds=0;b->ok=0;}
+   else if(b->gen!=tn_vbg){b->gen=tn_vbg;b->seen=1;b->ok=0;}
+   else if(b->ok){vx_d3d_tn_vbox[1]++;
+    if(!tn_vbx_out(b))vbx_in=b;
+    else if(!tn_vbx_has(b,v)||!tn_vbx_has(b,v+(size_t)(nv>>1)*st)||!tn_vbx_has(b,v+(size_t)(nv-1)*st)){vx_d3d_tn_vbox[5]++;b->ok=0;b->seen=1;}
+    else{vx_d3d_tn_vbox[2]++;vx_d3d_tn_vbox[3]+=nv;
+     if(vx_d3d_vbox==1){ /* dropped as the path below drops it, with no place taken */
+      if(tn_split){tn_k0+=cnt;tn_more=tn_k0<*n;vx_d3d_tn_split[1]++;}
+      vx_d3d_tn[0]++;vx_d3d_tn[1]+=cnt;tn_lz0=P0;vx_d3d_tn_dense[0]++;vx_d3d_tn_dense[2]++;vx_d3d_tn[4]+=cnt;m=0;goto tn_out;}
+     vbx_w=1;}}
+   else if(b->seen!=0xFFFF&&++b->seen>=(b->builds<2?2U:4U))tn_vbx_build(b,v,nv,st);}
   {const uintptr_t ah=(uintptr_t)st*8U; /* .681: the prefetch eight vertices ahead */
    for(q=0;q<nv;q++,v+=st){const uint32_t pl=P0+q,ln=q&(TN_CH-1);tn_pf((uintptr_t)v+ah);tn_sp[pl]=v;tn_sx[ln]=tf(v);tn_sy[ln]=tf(v+4);tn_sz[ln]=tf(v+8);if(ln==TN_CH-1)tn_soa_pos(pl+1-TN_CH,TN_CH);}}
   if(nv&(TN_CH-1))tn_soa_pos(P0+(nv&~(TN_CH-1)),nv&(TN_CH-1));
@@ -1075,6 +1312,8 @@ static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32
   if(tn_split){tn_k0+=cnt;tn_more=tn_k0<*n;vx_d3d_tn_split[1]++;}
   vx_d3d_tn[0]++;vx_d3d_tn[1]+=cnt;vx_d3d_tn[2]+=used;tn_P+=used;tn_lz0=P0;vx_d3d_tn_dense[0]++;vx_d3d_tn_dense[3]+=used;
   dl=(uint16_t)(P0-lo);
+  if(vbx_w&&!oa)vx_d3d_tn_vbox[7]++; /* .752, mode 2: the box said outside and the vertices do not (must not happen) */
+  if(oa&&vbx_in)vx_d3d_tn_vbox[6]++; /* .752: a box that was not outside one plane though every vertex is */
   if(oa){vx_d3d_tn_dense[2]++;vx_d3d_tn[4]+=cnt;m=0;goto tn_out;} /* every vertex outside one plane (or none finite) */
   /* .703 (T702, board B: GRID 6k, 30 tori with eight lights, CULL_NONE, 196.8 ms with the guard band against 186.9 without in four
    * alternating runs): a torus reaching past the viewport but inside the
@@ -1104,7 +1343,7 @@ static int tn_draw(vx_d3d_context *c,const vx_d3d_input *src,uint32_t *op,uint32
  P0=tn_P;
  if(!P0)tn_slot_reset();
  for(i=0;i<cnt*3;i++){const uint32_t qq=tri[i]-lo;
-  if(wide||tn_ref[qq]!=tn_epoch){const uint8_t *v=src->vertices+(base+tri[i])*src->vertex_stride;const uint32_t pl=P0+used,ln=used&(TN_CH-1);
+  if(wide||tn_ref[qq]!=tn_epoch){const uint8_t *v=src->vertices+((fanc&&tri[i]==0xFFFFU)?tn_fanc-1:base+tri[i])*src->vertex_stride;const uint32_t pl=P0+used,ln=used&(TN_CH-1);
    if(!wide){tn_ref[qq]=tn_epoch;tn_map[qq]=(uint16_t)pl;}tn_sp[pl]=v;tn_sx[ln]=tf(v);tn_sy[ln]=tf(v+4);tn_sz[ln]=tf(v+8);used++;
    if(ln==TN_CH-1)tn_soa_pos(pl+1-TN_CH,TN_CH);
    tri[i]=(uint16_t)pl;
@@ -1150,23 +1389,34 @@ tn_tris:
   /* Each source triple is loaded before its output is written. Six
    * extra triples per crossing fit ahead of the unread tail. For the
    * near/far fallback, TN_OUT already reserves two extras per input. */
-  for(i=0;i<cnt;i++){const uint32_t x=(uint16_t)(tri[i*3]+dlv),y=(uint16_t)(tri[i*3+1]+dlv),z=(uint16_t)(tri[i*3+2]+dlv),u=(tn_cc[x]|tn_cc[y]|tn_cc[z])&mask;
-   if(tn_efon)tn_clip_ef=(u16(data+(k0+i)*8+6)>>8)&7; /* .663 */
-   /* .676: culled before lighting (tn_pcull_on): a wholly inside triangle by the area of its records' window positions, as tn_ix tests
-    * it, so its vertices are lit only if a kept triangle uses them; its places marked for tn_ix (tn_ok: tests done) */
-   if(pcull&&!(tn_cc[x]|tn_cc[y]|tn_cc[z])){const float *f0=(const float*)(const void*)(tn_buf+x*tn_ostride),*f1=(const float*)(const void*)(tn_buf+y*tn_ostride),*f2=(const float*)(const void*)(tn_buf+z*tn_ostride);
-    const double area=((double)f1[0]-f0[0])*((double)f2[1]-f0[1])-((double)f1[1]-f0[1])*((double)f2[0]-f0[0]);const uint32_t cm=c->state.rs[22];
-    if(vx_area_cull(area,cm)){vx_d3d_tn_pcull[1]++;continue;}
-    tn_ok[x]=1;tn_ok[y]=1;tn_ok[z]=1;} /* .682: ACCEL_D3D_IXSKIP removed, always on */
-   if(!u&&tn_vany&&(tn_vc[x]&tn_vc[y]&tn_vc[z])){vx_d3d_tn[4]++;continue;} /* .698: wholly beyond one side of the viewport, inside the guard band: dropped as before */
-   if(!u){if(m>=TN_OUT){vx_d3d_tn[7]++;break;}if(tn_efon)tn_tef[m]=(uint8_t)tn_clip_ef;ix[m*3]=(uint16_t)x;ix[m*3+1]=(uint16_t)y;ix[m*3+2]=(uint16_t)z;m++;
-    if(soa){
-     if(!tn_nd[x]){tn_nd[x]=1;tn_need[nneed++]=(uint16_t)x;}
-     if(!tn_nd[y]){tn_nd[y]=1;tn_need[nneed++]=(uint16_t)y;}
-     if(!tn_nd[z]){tn_nd[z]=1;tn_need[nneed++]=(uint16_t)z;}
-    }}
-   else if((tn_cc[x]&tn_cc[y]&tn_cc[z]&0x7F)||(u&4))vx_d3d_tn[4]++; /* .538: 4, a position not finite; .543: wholly outside any plane */
+  /* .768B (OSK, VXREG OSK; BC 44B word 7 bit 1 at each program's start): the loop below three times, its record address RX a
+   * constant multiple when the stride is 40 or 32 (Watcom multiplied tn_ostride from memory three times a triangle here: T767,
+   * tn_draw+C90..+ED0, 11% of the VX855 frame), the stride in memory otherwise or with OSK 0 (the loop as it was) */
+#define TN_TRILOOP(RX) \
+  for(i=0;i<cnt;i++){const uint32_t x=(uint16_t)(tri[i*3]+dlv),y=(uint16_t)(tri[i*3+1]+dlv),z=(uint16_t)(tri[i*3+2]+dlv),u=(tn_cc[x]|tn_cc[y]|tn_cc[z])&mask; \
+   if(tn_efon)tn_clip_ef=(u16(data+(k0+i)*8+6)>>8)&7; /* .663 */ \
+   /* .676: culled before lighting (tn_pcull_on): a wholly inside triangle by the area of its records' window positions, as tn_ix tests \
+    * it, so its vertices are lit only if a kept triangle uses them; its places marked for tn_ix (tn_ok: tests done) */ \
+   if(pcull&&!(tn_cc[x]|tn_cc[y]|tn_cc[z])){const float *f0=(const float*)(const void*)(RX(x)),*f1=(const float*)(const void*)(RX(y)),*f2=(const float*)(const void*)(RX(z)); /* .743: as .740 had it (.741's reuse of u and .742's values held in locals: T742, this phase 8% slower on the VX855, 4.5% on the VX900; Watcom kept its three multiplies) */ \
+    const double area=((double)f1[0]-f0[0])*((double)f2[1]-f0[1])-((double)f1[1]-f0[1])*((double)f2[0]-f0[0]);const uint32_t cm=c->state.rs[22]; \
+    if(vx_area_cull(area,cm)){vx_d3d_tn_pcull[1]++;continue;} \
+    tn_ok[x]=1;tn_ok[y]=1;tn_ok[z]=1;} /* .682: ACCEL_D3D_IXSKIP removed, always on */ \
+   if(!u&&tn_vany&&(tn_vc[x]&tn_vc[y]&tn_vc[z])){vx_d3d_tn[4]++;continue;} /* .698: wholly beyond one side of the viewport, inside the guard band: dropped as before */ \
+   if(!u){if(m>=TN_OUT){vx_d3d_tn[7]++;break;}if(tn_efon)tn_tef[m]=(uint8_t)tn_clip_ef;ix[m*3]=(uint16_t)x;ix[m*3+1]=(uint16_t)y;ix[m*3+2]=(uint16_t)z;m++; \
+    if(soa){ \
+     if(!tn_nd[x]){tn_nd[x]=1;tn_need[nneed++]=(uint16_t)x;} \
+     if(!tn_nd[y]){tn_nd[y]=1;tn_need[nneed++]=(uint16_t)y;} \
+     if(!tn_nd[z]){tn_nd[z]=1;tn_need[nneed++]=(uint16_t)z;} \
+    }} \
+   else if((tn_cc[x]&tn_cc[y]&tn_cc[z]&0x7F)||(u&4))vx_d3d_tn[4]++; /* .538: 4, a position not finite; .543: wholly outside any plane */ \
    else{vx_d3d_tn[3]++;m=tn_clip(c,x,y,z,ix+m*3,m,u);}}
+#define TN_RX40(i) (tn_buf+(((i)+((i)<<2))<<3)) /* (i * 5) * 8: two lea, no multiply */
+#define TN_RX32(i) (tn_buf+(i)*32)
+#define TN_RXV(i) (tn_buf+(i)*tn_ostride)
+  if(vx_d3d_osk&&tn_ostride==40){vx_d3d_osk_n[0]++;TN_TRILOOP(TN_RX40)}
+  else if(vx_d3d_osk&&tn_ostride==32){vx_d3d_osk_n[1]++;TN_TRILOOP(TN_RX32)}
+  else{vx_d3d_osk_n[2]++;TN_TRILOOP(TN_RXV)}
+#undef TN_TRILOOP
   if(tn_P>P0+used)memset(tn_ok+P0+used,0,tn_P-(P0+used)); /* .676: the clipper's places: tested in tn_ix */
   if(pcull)vx_d3d_tn_pcull[0]++;
   /* phase L: the kept triangles' vertices not yet finished (a clipped edge's end may be) */
@@ -1211,7 +1461,7 @@ static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_se
  if(cur&&tn_slot_g!=ix_g)tn_slot_reset();
  if(cur&&tn_gb)bq.bursts.b[0]|=VX3DN_IX_GUARD; /* .698: the packet may carry guard-band vertices (ix_open sets it on a new one below) */
  #define TN_OK(i) (tn_okp=tn_buf+(i)*tn_ostride,TN_OKR(tn_okp)) /* .714: the record's address made once (Watcom multiplied tn_ostride four times a test: board, T713 pursuit, tn_ix_b's hottest lines) */ /* (.680: defined before the block path) */
- /* .680 (PLAN_SPEED.md I, the first step of the kernels' direct output; ACCEL_D3D_TNFASTIX, a feature under work): a run of triangles
+ /* .680 (the first step of the kernels' direct output, cookbook 33; ACCEL_D3D_TNFASTIX, a feature under work): a run of triangles
   * whose places span at most 3 a triangle and 32 more, every place of the span finished and inside the screen and the depth range (the
   * loop's TN_OK), goes in as a block: the span's records copied in place order to the packet's next slots, each index one addition
   * (place - lo + the first slot). No slot lookup, no per-triangle test: the loop below costs three lookups, three tests and the
@@ -1219,6 +1469,8 @@ static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_se
   * the engine's cull) and the template takes the record's words as they are (plain). A span that fails ends the block path; the loop
   * takes the rest as before. vx_d3d_tn_fastix_stat: [0] runs, [1] their triangles, [2] their vertices, [3] spans refused (sparse,
   * unfinished or outside) */
+ /* .743: .742's counter (would the block path take draws culled on the CPU?) answered and removed: T742 pursuit, 15% of 7.4 million
+  * triangles in passing spans and none after a draw's first refused span (the vertices of culled faces are never finished): not built */
  while(vx_d3d_tn_fastix&&plain&&noarea&&k<n) {
   uint32_t lo,hi,m=0,j,rv,rt,nv,i;const uint8_t *p=q;uint16_t *ix;uint16_t d;
   rv=cur?VX3DN_IX_VERTICES-bq.vertex_count:VX3DN_IX_VERTICES;rt=cur?(VX3DN_MAX_INDICES-ix_ni)/3:VX3DN_MAX_INDICES/3;
@@ -1246,44 +1498,60 @@ static uint32_t tn_ix_b(vx_d3d_context *c,const vx_d3d_input *in,const vx_d3d_se
    ix_ni+=3*m;bq.bursts.b[0]=(bq.bursts.b[0]&0xFFFF0000UL)|ix_ni;drawn+=m;k+=m;q+=m*ist;
    vx_d3d_tn_fastix_stat[0]++;vx_d3d_tn_fastix_stat[1]+=m;vx_d3d_tn_fastix_stat[2]+=nv;}
  }
- if(!*rc) /* (review of .680: a packet the block path could not open ends the call here, as the loop's own ix_open failure does) */
- for(;k<n;k++,q+=ist) {
-  const uint32_t i0=base+u16(q),i1=base+u16(q+2),i2=base+u16(q+4);
-  uint32_t l0=IX_NONE,l1=IX_NONE,l2=IX_NONE;uint16_t *ix;
-  if(cur){
-   const uint32_t a=tn_slot[i0]^tn_slot_tag,b=tn_slot[i1]^tn_slot_tag,d=tn_slot[i2]^tn_slot_tag;
-   if(a<VX3DN_IX_VERTICES)l0=a;
-   if(b<VX3DN_IX_VERTICES)l1=b;
-   if(d<VX3DN_IX_VERTICES)l2=d;
-  }
-  /* .543's test, on the record (the words of a kept triangle are inside the viewport and the depth range when the side planes were
-   * clipped; not when the room allowed near and far only, and a vertex made by clipping can have a 1/w of 0 or not finite): such a
-   * triangle and the rest go back to the caller's per-triangle path, which clips them on the screen (tested before a packet is opened:
-   * the per-triangle path then adds to the open one) */
-  if((l0==IX_NONE&&!TN_OK(i0))||(l1==IX_NONE&&!TN_OK(i1))||(l2==IX_NONE&&!TN_OK(i2)))break; /* .677: always (.676 skipped it for a triangle culled before lighting: its window position and the clip codes are two calculations that need not agree at an edge) */
-  if(tn_ok[i0]&tn_ok[i1]&tn_ok[i2])vx_d3d_tn_pcull[2]++; /* .676: a triangle culled before lighting and wholly inside: its back-face test is done (tn_draw) */
-  else{
-  if(!noarea){double area;const vx_f32a *const f0=(const vx_f32a *)(vb+i0*st),*const f1=(const vx_f32a *)(vb+i1*st),*const f2=(const vx_f32a *)(vb+i2*st);
-   area=((double)f1[0]-f0[0])*((double)f2[1]-f0[1])-((double)f1[1]-f0[1])*((double)f2[0]-f0[0]);
-   if(vx_area_cull(area,cull)){culled++;continue;}}
-  else if(i0==i1||i1==i2||i0==i2){culled++;continue;}}
-#undef TN_OK
-  if(!cur||bq.vertex_count+3>VX3DN_IX_VERTICES||ix_ni+3>VX3DN_MAX_INDICES) {
-   const uint32_t g=ix_g;
-   if(ix_open(c,in,sv,3,1,completed,rc))break;
-   if(tn_gb)bq.bursts.b[0]|=VX3DN_IX_GUARD; /* .698 */
-   if(ix_g!=g||tn_slot_g!=ix_g){tn_slot_reset();l0=l1=l2=IX_NONE;}
-   cur=1;}
-#define TN_PUT(i,l) do{const uint8_t *p_=tn_buf+(i)*tn_ostride;const uint32_t *r_=(const uint32_t*)(const void*)p_;uint32_t *w_;l=bq.vertex_count++;tn_slot[i]=(uint16_t)(tn_slot_tag|l);if((i)>=tn_slot_hi)tn_slot_hi=(i)+1;if(!tn_done[i])tn_attributes(i);w_=IXW(l); \
+#define TN_OKX(i) (tn_okp=TN_RXI(i),TN_OKR(tn_okp)) /* .768B: the record by TN_RXI, the stride below */
+#define TN_PUT(i,l) do{const uint8_t *p_=TN_RXI(i);const uint32_t *r_=(const uint32_t*)(const void*)p_;uint32_t *w_;l=bq.vertex_count++;tn_slot[i]=(uint16_t)(tn_slot_tag|l);if((i)>=tn_slot_hi)tn_slot_hi=(i)+1;if(!tn_done[i])tn_attributes(i);w_=IXW(l); \
  if(plain){w_[0]=r_[0];w_[1]=r_[1];w_[2]=r_[2];w_[3]=r_[3];w_[4]=r_[4];w_[5]=r_[5];w_[6]=r_[6];w_[7]=r_[7];if(!(bq.bursts.b[0]&VX3DN_IX_V8)){w_[8]=r_[6+2*ten];w_[9]=r_[7+2*ten];}} \
  else fast_vertex_pre_w(w_,p_,0xFFFFFFFFUL,p_);newv++;}while(0)
-  if(l0==IX_NONE)TN_PUT(i0,l0);
-  if(l1==IX_NONE)TN_PUT(i1,l1);
-  if(l2==IX_NONE)TN_PUT(i2,l2);
-#undef TN_PUT
-  ix=VX3DN_IDX(&bq)+ix_ni;ix[0]=(uint16_t)l0;ix[1]=(uint16_t)l1;ix[2]=(uint16_t)l2;
-  ix_ni+=3;bq.bursts.b[0]=(bq.bursts.b[0]&0xFFFF0000UL)|ix_ni;drawn++;
+/* .768B (OSK): the loop three times, as tn_draw's: the record address by a constant stride of 40 or 32 (TN_PUT and TN_OKX read TN_RXI
+ * as defined where the loop is expanded), the stride in memory otherwise or with OSK 0 */
+#define TN_IXLOOP \
+ for(;k<n;k++,q+=ist) { \
+  const uint32_t i0=base+u16(q),i1=base+u16(q+2),i2=base+u16(q+4); \
+  uint32_t l0=IX_NONE,l1=IX_NONE,l2=IX_NONE;uint16_t *ix; \
+  if(cur){ \
+   const uint32_t a=tn_slot[i0]^tn_slot_tag,b=tn_slot[i1]^tn_slot_tag,d=tn_slot[i2]^tn_slot_tag; \
+   if(a<VX3DN_IX_VERTICES)l0=a; \
+   if(b<VX3DN_IX_VERTICES)l1=b; \
+   if(d<VX3DN_IX_VERTICES)l2=d; \
+  } \
+  /* .543's test, on the record (the words of a kept triangle are inside the viewport and the depth range when the side planes were \
+   * clipped; not when the room allowed near and far only, and a vertex made by clipping can have a 1/w of 0 or not finite): such a \
+   * triangle and the rest go back to the caller's per-triangle path, which clips them on the screen (tested before a packet is opened: \
+   * the per-triangle path then adds to the open one) */ \
+  if((l0==IX_NONE&&!TN_OKX(i0))||(l1==IX_NONE&&!TN_OKX(i1))||(l2==IX_NONE&&!TN_OKX(i2)))break; /* .677: always (.676 skipped it for a triangle culled before lighting: its window position and the clip codes are two calculations that need not agree at an edge) */ \
+  if(tn_ok[i0]&tn_ok[i1]&tn_ok[i2])vx_d3d_tn_pcull[2]++; /* .676: a triangle culled before lighting and wholly inside: its back-face test is done (tn_draw) */ \
+  else{ \
+  if(!noarea){double area;const vx_f32a *const f0=(const vx_f32a *)(vb+i0*st),*const f1=(const vx_f32a *)(vb+i1*st),*const f2=(const vx_f32a *)(vb+i2*st); \
+   area=((double)f1[0]-f0[0])*((double)f2[1]-f0[1])-((double)f1[1]-f0[1])*((double)f2[0]-f0[0]); \
+   if(vx_area_cull(area,cull)){culled++;continue;}} \
+  else if(i0==i1||i1==i2||i0==i2){culled++;continue;}} \
+  if(!cur||bq.vertex_count+3>VX3DN_IX_VERTICES||ix_ni+3>VX3DN_MAX_INDICES) { \
+   const uint32_t g=ix_g; \
+   if(ix_open(c,in,sv,3,1,completed,rc))break; \
+   if(tn_gb)bq.bursts.b[0]|=VX3DN_IX_GUARD; /* .698 */ \
+   if(ix_g!=g||tn_slot_g!=ix_g){tn_slot_reset();l0=l1=l2=IX_NONE;} \
+   cur=1;} \
+  if(l0==IX_NONE)TN_PUT(i0,l0); \
+  if(l1==IX_NONE)TN_PUT(i1,l1); \
+  if(l2==IX_NONE)TN_PUT(i2,l2); \
+  ix=VX3DN_IDX(&bq)+ix_ni;ix[0]=(uint16_t)l0;ix[1]=(uint16_t)l1;ix[2]=(uint16_t)l2; \
+  ix_ni+=3;bq.bursts.b[0]=(bq.bursts.b[0]&0xFFFF0000UL)|ix_ni;drawn++; \
  }
+ if(!*rc){ /* (review of .680: a packet the block path could not open ends the call here, as the loop's own ix_open failure does) */
+#define TN_RXI(i) (tn_buf+(((i)+((i)<<2))<<3))
+  if(vx_d3d_osk&&tn_ostride==40){vx_d3d_osk_n[3]++;TN_IXLOOP}
+#undef TN_RXI
+#define TN_RXI(i) (tn_buf+(i)*32)
+  else if(vx_d3d_osk&&tn_ostride==32){vx_d3d_osk_n[4]++;TN_IXLOOP}
+#undef TN_RXI
+#define TN_RXI(i) (tn_buf+(i)*tn_ostride)
+  else{vx_d3d_osk_n[5]++;TN_IXLOOP}
+#undef TN_RXI
+ }
+#undef TN_IXLOOP
+#undef TN_OKX
+#undef TN_PUT
+#undef TN_OK
  vx_d3d_batched+=drawn;vx_d3d_ix[0]+=drawn;vx_d3d_ix[1]+=newv;vx_d3d_tk[8]+=k;vx_d3d_tk[9]+=culled;
  if(vx_d3d_geo_on){vx_d3d_geo[6]+=drawn;vx_d3d_geo[3]+=culled;}
  return k;

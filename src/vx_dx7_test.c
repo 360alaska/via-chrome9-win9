@@ -1233,45 +1233,6 @@ static void seam_tests(void) {
   }}
  seam_add_state(0);fflush(logfile);
 }
-/* v2.94 (.628): part 6 of --seam, the seam cover (ACCEL_D3D_SEAM). Part 4's picture (a long slanted edge against fifteen short ones that
- * share it without its vertices) drawn as GTA3 draws its map: an indexed list, opaque, depth test and depth write on. With the value 0
- * the pixels left undrawn are counted as part 4 counts them; with it set (SEAMON.BAT: 513 = 1/16 pixel right, 2/16 down; SEAM1PX.BAT: 4112 = one pixel each way) the driver sends
- * each burst a second time moved by that much, and the count should fall to nothing. The VxD's own counters say whether it did. */
-static void seam_cover_test(void) {
- static tl_vertex v[40];static WORD ix[100];DDSURFACEDESC2 s;DWORD in[2],o0[8],o1[8],gt=0,gaps=0,frames=0;int f,j,x,y;HDC dc=GetDC(0);int bpp=GetDeviceCaps(dc,BITSPIXEL);ReleaseDC(0,dc);
- fprintf(logfile,"== seam, part 6 (v2.96): the seam cover\n");
- drop_device();if(!setup_z(bpp==16?2:1)){check("   6 a device with a depth buffer",0);return;}
- rs_set(D3DRENDERSTATE_ZENABLE,TRUE);rs_set(D3DRENDERSTATE_ZWRITEENABLE,TRUE);rs_set(D3DRENDERSTATE_ZFUNC,D3DCMP_LESSEQUAL);rs_set(D3DRENDERSTATE_ALPHABLENDENABLE,FALSE);
- /* v2.95: textured, as GTA3's map is (board, v2.94 on .629: untextured, the draw did not go by index from the vertex area and the cover
-  * never ran: 0 packets drawn twice with the value set). The texture's four quadrants are red, green, blue and white: no black. */
- {LPDIRECTDRAWSURFACE7 st=make_texture(32,32,0,DDSCAPS_VIDEOMEMORY,0,"seam cover");
-  if(!st){check("   6 the texture",0);return;}
-  IDirect3DDevice7_SetTexture(dev,0,st);ts(D3DTSS_COLOROP,D3DTOP_SELECTARG1);ts(D3DTSS_COLORARG1,D3DTA_TEXTURE);ts(D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);ts(D3DTSS_ALPHAARG1,D3DTA_TEXTURE);
-  ts(D3DTSS_MAGFILTER,D3DTFG_POINT);ts(D3DTSS_MINFILTER,D3DTFN_POINT);IDirectDrawSurface7_Release(st);}
- memset(o0,0,sizeof(o0));memset(o1,0,sizeof(o1));in[0]=0xBC;in[1]=0x445;
- if(endpoint!=INVALID_HANDLE_VALUE)DeviceIoControl(endpoint,0x85500022UL,in,8,o0,32,&gt,0);
- /* v2.96: the scan begins at x 44, not 40. The shape's left edge is at 30 + 0.19 f, past 40 from frame 53 on, and v2.95 counted the
-  * columns left of it (board, .631 VX855: 1168 = 8 columns of 146 rows, all at x 40 and 41; the cover off counted 1251, the seam's own 83 more). */
- for(f=0;f<60;f++) {
-  float ox=f*0.19f,oy=f*0.11f,lean=20.0f+(float)(f%7)*3.0f,xt=120.4f+ox-lean*0.5f,xb=120.4f+ox+lean*0.5f,y0=20.3f+oy,y1=170.3f+oy;int nv=0,ni=0;
-  seam_v(&v[nv++],30.0f+ox,y0,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],xt,y0,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],30.0f+ox,y1,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],xb,y1,0xFFFFFFFFUL,0.3f,0.3f);
-  ix[ni++]=0;ix[ni++]=1;ix[ni++]=2;ix[ni++]=1;ix[ni++]=3;ix[ni++]=2;
-  for(j=0;j<=15;j++){float t=(float)j/15.0f;seam_v(&v[nv++],xt+(xb-xt)*t,y0+(y1-y0)*t,0xFFFFFFFFUL,0.3f,0.3f);seam_v(&v[nv++],220.0f+ox,y0+(y1-y0)*t,0xFFFFFFFFUL,0.3f,0.3f);}
-  for(j=0;j<15;j++){WORD a=(WORD)(4+j*2);ix[ni++]=a;ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+2);ix[ni++]=(WORD)(a+1);ix[ni++]=(WORD)(a+3);ix[ni++]=(WORD)(a+2);}
-  IDirect3DDevice7_Clear(dev,0,0,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0xFF000000UL,1.0f,0);
-  if(FAILED(IDirect3DDevice7_BeginScene(dev)))break;
-  IDirect3DDevice7_DrawIndexedPrimitive(dev,D3DPT_TRIANGLELIST,D3DFVF_TLVERTEX,v,nv,ix,ni,0);IDirect3DDevice7_EndScene(dev);
-  if(!seam_lock(&s))break;
-  for(y=(int)(y0+2.0f);y<(int)(y1-2.0f);y++)for(x=44;x<214;x++)if(!(rgb(&s,(DWORD)x,(DWORD)y)&0xFFFFFFUL)){gaps++;if(gaps<=6)fprintf(logfile,"      6, frame %d: (%d,%d) not drawn\n",f,x,y);}
-  IDirectDrawSurface7_Unlock(rt,0);frames++;
- }
- if(endpoint!=INVALID_HANDLE_VALUE)DeviceIoControl(endpoint,0x85500022UL,in,8,o1,32,&gt,0);
- fprintf(logfile,"   6 ACCEL_D3D_SEAM is %lu (0 = off; x + 256 * y sixteenths of a pixel); the driver drew %lu packet(s) twice in this part (%lu indices sent again)\n",(unsigned long)o1[2],(unsigned long)(o1[3]-o0[3]),(unsigned long)(o1[4]-o0[4]));
- fprintf(logfile,"   6 a long slanted edge against fifteen short ones, opaque with depth, %lu frames: %lu pixels not drawn\n",(unsigned long)frames,(unsigned long)gaps);
- if(o1[2])check("   6 with the seam cover on, no pixel is left undrawn",frames==60&&gaps==0&&o1[3]!=o0[3]);
- else fprintf(logfile,"   6 (the cover is off: the count above is the game's own gaps on this chip; run SEAMON.BAT, restart and run this again)\n");
- fflush(logfile);
-}
 static void raster_tests(void) {
  static const DWORD fsrc[]={D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLEND_ONE,D3DBLEND_SRCCOLOR,D3DBLEND_INVSRCCOLOR,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,
   D3DBLEND_DESTALPHA,D3DBLEND_INVDESTALPHA,D3DBLEND_DESTCOLOR,D3DBLEND_INVDESTCOLOR,D3DBLEND_SRCALPHASAT,D3DBLEND_BOTHSRCALPHA,D3DBLEND_BOTHINVSRCALPHA,
@@ -2372,7 +2333,7 @@ int main(int argc,char **argv) {
  {int k;for(k=1;k<argc;k++)if(!strcmp(argv[k],"--nohang"))no_hang=1;} /* v2.72 */
  if(argc==2&&no_hang)do_tex=1; /* VXDX7 --nohang: the texture tests without the hang */
  logfile=fopen("VXDX7.TXT","w");if(!logfile)return 1;
- fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.98); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
+ fprintf(logfile,"VX855 Direct3D M2 (VXDX7 v2.99); mode=%s%s. No software device fallback.\n",do_ss?"the supersampling test":do_modes?"Tunnel full screen through display modes":do_tunnel?"Tunnel (DirectX 5 SDK), windowed":do_wt?"WinTune 98 Direct3D test, repeated":do_enum?"DirectX 5/6 device enumeration":do_raster?"blend, alpha test, depth formats, clears":do_stencil?"stencil through Direct3D":do_splane?"stencil plane layout":do_tex?"textures":do_flip?"full-screen flip chains":do_draw?"draw+readback":do_draws?"draw states another application sent":"query only",(do_tunnel||do_modes)?(sysmem?", -systemmemory":", HAL"):"");
  code_probe("at start, before DirectDraw");
  ddlib=LoadLibraryA("DDRAW.DLL");if(!ddlib){fprintf(logfile,"DDRAW.DLL missing\n");failures++;goto done;}
  create=(HRESULT (WINAPI *)(GUID *,void **,REFIID,IUnknown *))GetProcAddress(ddlib,"DirectDrawCreateEx");
@@ -2408,7 +2369,7 @@ int main(int argc,char **argv) {
  if(do_draw){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(with_depth)&&run_tests(with_depth)&&!failures)preview();}
  if(do_tex){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))texture_tests();}
  if(do_raster){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))raster_tests();}
- if(do_seam){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0)){seam_tests();seam_cover_test();}}
+ if(do_seam){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0)){seam_tests();} /* .739: part 6 (the seam cover) gone with ACCEL_D3D_SEAM */}
  if(do_ss){ShowWindow(window,SW_SHOW);UpdateWindow(window);ss_tests();}
  if(do_stencil){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))stencil_tests();}
  if(do_splane){ShowWindow(window,SW_SHOW);UpdateWindow(window);if(setup(0))splane_tests();}

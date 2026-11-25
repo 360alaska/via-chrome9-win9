@@ -6,7 +6,7 @@
  3  65 light indices set, enabled and disabled in turn, then the first enabled again (.646-.667 cleared its definition for the 65th): lit
  3b the same through a state block that records the first light's enable
  4  transformed vertices with three coordinate sets, three stages on sets 0, 1, 2 (HarborBench's stages3; .667 left them out): drawn,
-    unit 2 on the second set's slot
+    unit 2 on its own set (.731: slot C, set 2; .668-.730 drew it on the second set's slot)
 usage: review667_cases.py [core.so]    (exit 1 when any case fails)"""
 import sys,os,struct,ctypes as C
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
@@ -49,7 +49,7 @@ def c4():
  t=mk(0);t._stages([(5,4,2,0,2,2,0,0),(5,4,2,1,2,2,1,1),(5,4,2,1,2,2,1,2)])
  vs=b''.join(struct.pack('<4fI6f',x,y,.5,1,0xFFFFFFFF,u,v,u*2,v*2,1-u,v) for (x,y),(u,v) in zip([(8,8),(56,8),(8,56)],[(0,0),(1,0),(0,1)]))
  t.calls.clear();rc=t.run_dp2(T.rs((22,1),(28,0))+t.tri(),vs,stride=44,fvf=0x344)
- got=[(p.stages.units,list(p.stages.set[:3])) for p in t.calls];return rc==(0,0) and got==[(3,[0,1,1])],(rc,got)
+ got=[(p.stages.units,list(p.stages.set[:3])) for p in t.calls];return rc==(0,0) and got==[(3,[0,1,2])],(rc,got) # .731: unit 2's own set
 def main():
  bad=0
  for name,f in [('1a',c1a),('1b',c1b),('2',c2),('3',c3),('3b',c3b),('4',c4)]:

@@ -47,6 +47,8 @@ static void SetRAMDAC( UINT bStart, UINT bCount, RGBQUAD FAR *lpPal )
 {
 	  BYTE    bIndex = bStart;
 
+    if( bStart >= 256 ) return; /* .728 (Gemini review #17): the BYTE index wrapped past 255 to 0 */
+    if( bCount > 256 - bStart ) bCount = 256 - bStart;
     while( bCount-- ) {
     	 DWORD rgb = ((DWORD)lpPal[bIndex].rgbRed << 16) |
     	     ((DWORD)lpPal[bIndex].rgbGreen << 8) | (DWORD)lpPal[bIndex].rgbBlue;
@@ -63,6 +65,7 @@ void __far SetRAMDAC_far( UINT bStart, UINT bCount, RGBQUAD FAR *lpPal )
 
 UINT WINAPI __loadds SetPalette( UINT wStartIndex, UINT wNumEntries, LPVOID lpPalette )
 {
+    if( !lpDriverPDevice ) return( 0 ); /* .729 (review of .723, #5): no device yet (SwitchToFgnd checks it too) */
     /* Let the DIB engine do what it can. */
     DIB_SetPaletteExt( wStartIndex, wNumEntries, lpPalette, lpDriverPDevice );
 

@@ -837,6 +837,65 @@ def checks():
     assert rc==1 and g.pend is None and g.snapshot()==exp,(late,bpp,flags,rc,g.pend)
    g.call('VX2D_control',(0xFFFFFE47,ARENA+0x3000),strict=False);r=[g.word(ARENA+0x3000+4*i) for i in range(4)];assert r[0]>=2 and r[3]==0,r
  cases.append('.593: a fill whose first 1, 2 or 3 status reads are 00000000 before the engine shows busy is finished when the request returns (GDI and DirectDraw, 16 and 32 bpp, nothing pending, the ring-paused rule not in use)')
+ cases+=edid_late_checks()
  return cases
+def edid_late_edid(sizes):
+ """.769: an EDID block (header, checksum) listing the given sizes as standard timings (4:3 / 5:4 / 16:10 / 16:9 by aspect)"""
+ e=bytearray(128);e[0:8]=bytes([0,255,255,255,255,255,255,0]);e[18]=1;e[19]=3
+ for k in range(8):e[38+2*k]=1;e[39+2*k]=1
+ for k,(w,h) in enumerate(sizes[:8]):
+  a={(4,3):1,(5,4):2,(16,10):0,(16,9):3}[next(r for r in ((4,3),(5,4),(16,10),(16,9)) if w*r[1]==h*r[0])]
+  e[38+2*k]=w//8-31;e[39+2*k]=a<<6
+ e[127]=(-sum(e[:127]))&255;return bytes(e)
+def edid_late_checks():
+ """.769 (the late EDID): with no EDID at boot the sizes above 1024x768 are hidden (VESA_configure_noedid) and kept aside; a hidden size
+ asked for (VESA_validmode) reads the EDID again (the driver's DDC finds none here; the BIOS's VBE/DDC call answers), and every hidden
+ size the EDID lists comes back while the others stay hidden; no second read within 3 seconds; with no EDID anywhere nothing comes back;
+ with NOEDIDHIGHRES=1 nothing is hidden and nothing is read"""
+ cases=[];LOW=0x90000;TAB=0x98000;MS=56 # vesa_mode_t: 5 DWORDs, 2 WORDs, 16 WORDs
+ import re as _re,validate as _v
+ st={};mod=None # vxd_vesa.c's statics (the image's symbols keep only the globals): from its own section of the map
+ for line in (_v.MAP_PATH/'VX85598_VXD.map').read_text().splitlines():
+  if line.startswith('Module:'):mod=line;continue
+  m=_re.match(r'(\d{4}):([0-9a-fA-F]{8})s\s+(\S+)',line)
+  if m and mod and 'vxd_vesa.obj' in mod:st[m[3]]=IMAGE.bases[int(m[1])-1]+int(m[2],16)
+ A=lambda g,n:st[n] if n in st else g.addr(n)
+ sizes=[(640,480),(800,600),(1024,768),(1280,1024),(1280,960),(1600,1200),(1440,900),(1680,1050)]
+ lists=[(1280,1024),(1440,900)]
+ def run(answer,hr=0):
+  g=GPU(32);g.ddc=0
+  def v86():
+   regs=g.arg(0);eax=u32(g.u.mem_read(regs+0x1c,4),0)
+   if (eax&0xFFFF)==0x4F15:
+    g.ddc+=1
+    if answer:g.u.mem_write(LOW+1536,answer)
+    g.u.mem_write(regs+0x1c,pack([0x4f if answer else 0x14f]))
+  g.hook('vesa_bios_V86',v86);g.probes=0
+  def probe():g.probes+=1 # the driver's own DDC finds no EDID here (its bus reads are the board's: VX2EDID); the BIOS's call answers
+  g.hook('VX_edid_probe',probe)
+  for n,v in (('vesa_buf_v86',LOW),('vesa_buf',LOW),('vesa_valid',1),('vx_edid_ok',0),('vesa_modes',TAB),('vx_edid_late_ok',0)):g.u.mem_write(A(g,n),pack([v]))
+  for k,(w,h) in enumerate(sizes):g.u.mem_write(TAB+k*MS,pack([w,h,32,w*4,0])+bytes(MS-20))
+  g.u.mem_write(A(g,'vesa_modes_cnt'),pack([len(sizes)]))
+  g.call('VESA_configure_noedid',(hr,),strict=False)
+  return g
+ table=lambda g:[(g.word(TAB+k*MS),g.word(TAB+k*MS+4)) for k in range(g.word(A(g,'vesa_modes_cnt')))]
+ valid=lambda g,w,h:g.call('VESA_validmode',(w,h,32),strict=False)
+ g=run(edid_late_edid(lists))
+ assert table(g)==sizes[:3],table(g)
+ assert valid(g,1024,768)==1 and g.ddc==0,'.769: a size offered asks nothing'
+ assert valid(g,1280,1024)==1 and g.ddc==1 and g.probes==1,('.769: the hidden size asked for: the EDID read again (the driver\'s buses, then the BIOS) and the size given back',g.ddc,g.probes)
+ t=table(g);assert t[:3]==sizes[:3] and sorted(t[3:])==sorted(lists),t
+ assert valid(g,1600,1200)==0 and g.ddc==1,'.769: a size the EDID does not list stays hidden; the EDID is not read again once read'
+ ls=[g.word(g.addr('vx_edid_late_stat')+4*k) for k in range(3)];assert ls==[1,1,2],ls
+ cases.append('.769 late EDID: no EDID at boot hides 1280x1024 and up; asking for 1280x1024 reads it again (the BIOS answers): 1280x1024 and 1440x900 come back, 1600x1200 stays hidden')
+ g=run(None)
+ assert valid(g,1280,1024)==0 and g.ddc==1 and valid(g,1600,1200)==0 and g.ddc==1,('.769: no second read within 3 seconds',g.ddc)
+ g.t+=5000;assert valid(g,1280,1024)==0 and g.ddc==2 and table(g)==sizes[:3],('.769: read again after 3 seconds; with no EDID nothing comes back',g.ddc)
+ cases.append('.769 late EDID: with no EDID anywhere nothing comes back, and the EDID is read at most once every 3 seconds')
+ g=run(edid_late_edid(lists),hr=1)
+ assert table(g)==sizes and valid(g,1600,1200)==1 and g.ddc==0,'.769: NOEDIDHIGHRES=1: nothing hidden, nothing read'
+ cases.append('.769 late EDID: with NOEDIDHIGHRES=1 every size is offered and no EDID is read')
+ return cases
+
 if __name__=='__main__':
  c=checks();(ROOT/'verification'/'ENGINE.json').write_text(json.dumps({'passed':len(c),'cases':c,'scope':__doc__},indent=2)+'\n');print(f'{len(c)} compiled-VxD checks passed')

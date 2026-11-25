@@ -64,15 +64,15 @@ void vx3dn_forget(void);
  * at the plane: the engine kept its Coarse Z records in whatever lay after the block (VXGL's first texture, at the same 256 bytes past
  * the plane), so a stencil draw tested against another surface's bytes (VXSTEN case 2 after VXTEX: 8x8 tiles wrong) and wrote over it.
  * The storage is in the block now; stencil draws point 01/2A at it as XP does. Coarse Z itself is not used (v10.299: right but slower). */
-/* v10.295: Z16 keeps the storage too (XP T50: Z at 300500, 256x192, 2A = 003186: 256 past the Z words); ZEND = the depth surface's end
+/* v10.295: Z16 kept the storage too (XP T50: Z at 300500, 256x192, 2A = 003186: 256 past the Z words; .767: no longer, see VX3DN_CZ_FORMAT); ZEND = the depth surface's end
  * (D24S8: its stencil plane's) */
 #define VX3DN_ZEND(s) ((s)->format==VX3DN_D24S8?VX3DN_SPLANE_END(s):(s)->offset+(s)->pitch*(s)->height)
 #define VX3DN_CZ_OFF(s) ((VX3DN_ZEND(s)+256UL)&~255UL)
-#define VX3DN_CZ_FORMAT(f) ((f)==VX3DN_D16||(f)==VX3DN_D24S8)
+#define VX3DN_CZ_FORMAT(f) ((f)==VX3DN_D24S8) /* .767 (outside audit): Z16 no longer: its draws write 01/2A 0 and leave Coarse Z off (only a stencil draw points 01/2A at the storage, and the engine uses it then: v10.294), so the 200 KB a 1024x768 Z16 surface kept for it were never touched */
 #define VX3DN_CZ_SIZE(w,h) (2UL*VX3DN_SPLANE_PITCH(w)*(VX3DN_SPLANE_ROWS(h)>>3))
 #define VX3DN_CZ_END(s) (VX3DN_CZ_OFF(s)+VX3DN_CZ_SIZE((s)->width,(s)->height))
 #define VX3DN_SPLANE_BLOCK(pitch,w,h) ((((((uint32_t)(pitch))*((uint32_t)(h))+255UL)&~255UL)+256UL+VX3DN_SPLANE_SIZE(w,h)+256UL+VX3DN_CZ_SIZE(w,h)+255UL)&~255UL) /* v10.288: a multiple of 256 (the plane's size is only one of 128: the surfaces DirectDraw put after it were 128 off the sampler's alignment); v10.294: the Coarse Z storage too */
-#define VX3DN_Z16_BLOCK(pitch,w,h) ((((((uint32_t)(pitch))*((uint32_t)(h))+256UL)&~255UL)+VX3DN_CZ_SIZE(w,h)+255UL)&~255UL) /* v10.295: Z16 + its Coarse Z storage */
+#define VX3DN_Z16_BLOCK(pitch,w,h) ((((uint32_t)(pitch))*((uint32_t)(h))+255UL)&~255UL) /* v10.295: Z16 + its Coarse Z storage; .767: the Z words alone (a multiple of 256, as before) */
 #define VX3DN_DRAW 1UL
 #define VX3DN_DRAW_CLEAR 0x80000000UL /* clear_flags on a DRAW: internal clear, excluded from occlusion counts */
 #define VX3DN_CLEAR 2UL
@@ -223,6 +223,11 @@ typedef struct vx3dn_stages {uint32_t units,set[3];vx3dn_unit unit[2];uint32_t u
  * where the guard band is off, and by VxDs before .703 (their ext.dither > 3 test), so a packet can only fail closed. Five reviews of
  * the choice (T701): a flag outside the burst words, whose high bits are the topology every reader decodes. */
 #define VX3DN_EXT_GUARD 0x100UL
+/* .730: D3DRS_WRAPn for the vertex's coordinate slots, ext.dither bits 12-17: two bits a slot (A 12-13, B 14-15, C 16-17), Direct3D's own
+ * (bit 0 D3DWRAP_U, bit 1 D3DWRAP_V) of the set that slot carries; the emitter writes FE/0B (VIA's PDB: TexCrdAWrapCorrecS/T ..., the slot
+ * i pair at bits 2 + 4i (V) and 3 + 4i (U); the answers in docs/PIXEL_SHADER_ANSWERS.md, section 6). 0 for points and lines */
+#define VX3DN_EXT_WRAP_SHIFT 12
+#define VX3DN_EXT_WRAP_MASK 0x3F000UL
 #define VX3DN_IX_BITS (VX3DN_IX_V8|VX3DN_IX_GUARD)
 #define VX3DN_V8_FORM(p) ((p)->cb==sizeof(*(p))&&(p)->op==VX3DN_DRAW&&(p)->shader.count&&(p)->tex.enable&&(p)->stages.units<=1&&!(p)->stages.layout&&!(p)->stages.s3)
 #define VX3DN_PRE_STRIDE(p) ((p)->pre.on==2&&(p)->bursts.n&&((p)->bursts.b[0]&VX3DN_IX_V8)?8UL:10UL)
@@ -251,6 +256,10 @@ typedef struct vx3dn_prepack {uint32_t on,w[VX3DN_IX_VERTICES*10];} vx3dn_prepac
 typedef struct vx3dn_texrun {uint32_t at;vx3dn_surface surface;uint32_t filter,address_u,address_v;vx3dn_mip mip;} vx3dn_texrun;
 typedef struct vx3dn_texruns {uint32_t n;vx3dn_texrun r[VX3DN_TEXRUNS_MAX];} vx3dn_texruns;
 #define VX3DN_TEXRUN_FORM(p) ((p)->op==VX3DN_DRAW&&(p)->pre.on==2&&(p)->tex.enable&&(p)->stages.units<=1&&!(p)->stages.layout&&!(p)->stages.s3)
+/* .731: a third coordinate set of its own (slot C, unit 2 with three units, plain 2D sets): stages.set[2] = 2, its S in stages.q[] and T
+ * in stages.r1[] (both unused by such a packet: no projected, cube, volume or mixed 3D layout). T730 on every chip: unit 2 reads slot C
+ * once FE/08 counts three sets (NumTexinVB) and FE/09 gives set C's dimension. */
+#define VX3DN_C3(p) ((p)->tex.enable&&(p)->stages.units==3&&(p)->stages.set[2]==2&&!(p)->stages.layout&&!(p)->stages.s3&&!(p)->stages.ps)
 #define VX3DN_PRE_FORM(p) ((p)->op==VX3DN_DRAW&&(p)->shader.count&&!(p)->stages.layout&&!(p)->stages.s3&&(!(p)->tex.enable||(p)->stages.units<=2)&&!(p)->ext.prim)
 typedef struct vx3dn_packet {
  uint32_t cb,abi,arm,op,generation;

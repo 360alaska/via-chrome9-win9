@@ -39,6 +39,14 @@ def main():
         # No execute/TL video memory or HWTL claim.
         assert h.word(h.context + 19168) == 0x423000  # Win16 bridge: 3DDEVICE|ZBUFFER|TEXTURE (v10.169) | MIPMAP (v10.199)
         assert h.word(h.context + 19172) == 0x500    # v10.177: DDBD_16|DDBD_32, not the surface format enum.
+        # .752: the buffer callbacks (DDHAL_DDEXEBUFCALLBACKS after the six flag words: dwSize, dwFlags, five functions). As booted (the
+        # VxD's value 0) none is filled in and D3DDEVCAPS_HWVERTEXBUFFER is not claimed; with the value 1 all five are, with the
+        # surface cap DDSCAPS_EXECUTEBUFFER and the device cap.
+        assert [h.word(h.context + 19200 + 4*i) for i in range(5)] == [0]*5 and not caps & 0x02000000
+        class HV(HAL): vbuf = 1
+        v = HV(); vg = v.word(v.context + 19160)
+        assert v.word(v.context + 19168) == 0xC23000 and v.word(vg + 16) & 0x02000000
+        assert all(v.word(v.context + 19200 + 4*i) for i in range(5))
     else:
         assert (global_data, callbacks, get_info) == (0, 0, 0)
         assert bytes(h.u.mem_read(h.context + 19168, 24)) == bytes(24)

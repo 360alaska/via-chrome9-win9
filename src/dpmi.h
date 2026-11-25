@@ -14,9 +14,13 @@ extern DWORD DPMI_GetSegBase( WORD Selector );
 #pragma aux DPMI_GetSegBase =   \
     "mov    ax, 6"              \
     "int    31h"                \
+    "jnc    ok6"                \
+    "xor    cx, cx"             \
+    "xor    dx, dx"             \
+    "ok6:"                      \
     "mov    ax, cx"             \
     "xchg   ax, dx"             \
-    parm [bx] modify [cx];
+    parm [bx] modify [cx]; /* .728 (Gemini review #14): an invalid selector (carry set) answers base 0, not whatever CX:DX held */
 
 extern void DPMI_SetSegBase( WORD Selector, DWORD Base );
 #pragma aux DPMI_SetSegBase =   \

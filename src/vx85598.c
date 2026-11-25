@@ -44,21 +44,25 @@ unsigned long VX_log_copy(void *out, unsigned long bytes)
 {
  unsigned long flags, n;
  if(!out || !bytes) return 0;
+ /* .728 (Gemini review #15): only the length is read with interrupts off; the copy into the caller's buffer (pageable) runs with them on.
+  * The log only grows past that length (it is cleared only when logging is switched off). */
  flags = VX_irq_save();
  n = vx_log_used;
+ VX_irq_restore(flags);
  if(n >= bytes) n = bytes-1;
  memcpy(out, vx_log, n);
  ((char*)out)[n] = 0;
- VX_irq_restore(flags);
  return n+1;
 }
 
 void VX_snapshot(vx_status_t *out)
 {
+ static vx_status_t snap; /* .728 (Gemini review #15): copied here with interrupts off, then out to the caller's (pageable) buffer with them on; callers hold the VxD's IOCTL path one at a time */
  unsigned long flags = VX_irq_save();
  vx_status.log_bytes = vx_log_used;
- memcpy(out, &vx_status, sizeof(vx_status));
+ memcpy(&snap, &vx_status, sizeof(vx_status));
  VX_irq_restore(flags);
+ memcpy(out, &snap, sizeof(snap));
 }
 
 unsigned long vx_vbe_total_bytes, vx_chip_fb_bytes, vx_map_bytes;

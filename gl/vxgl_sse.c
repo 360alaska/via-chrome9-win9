@@ -26,13 +26,13 @@ int vxgl_sse_active=0; /* 1 once the kernels are in Mesa's tables */
 unsigned long vxgl_sse_calls[3]; /* transforms, clip tests (with divide), clip tests without */
 
 static unsigned mx_enter(void);
-#pragma aux mx_enter = "sub esp,8" "stmxcsr [esp]" "mov dword ptr [esp+4],1F80h" "ldmxcsr [esp+4]" "mov eax,[esp]" "add esp,8" value [eax] modify exact [eax];
+#pragma aux mx_enter = ".686" ".xmm2" "sub esp,8" "stmxcsr [esp]" "mov dword ptr [esp+4],1F80h" "ldmxcsr [esp+4]" "mov eax,[esp]" "add esp,8" value [eax] modify exact [eax];
 static void mx_leave(unsigned old);
-#pragma aux mx_leave = "push eax" "ldmxcsr [esp]" "add esp,4" parm [eax] modify exact [];
+#pragma aux mx_leave = ".686" ".xmm2" "push eax" "ldmxcsr [esp]" "add esp,4" parm [eax] modify exact [];
 
 /* esi from, edi to (16-byte elements), ecx count, edx stride, eax matrix */
 static void xf4_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,const GLfloat *m);
-#pragma aux xf4_loop = "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm6,[eax+32]" "movups xmm7,[eax+48]" \
+#pragma aux xf4_loop = ".686" ".xmm2" "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm6,[eax+32]" "movups xmm7,[eax+48]" \
  "test ecx,ecx" "jz L2" \
  "L1: movss xmm0,[esi]" "shufps xmm0,xmm0,0" "mulps xmm0,xmm4" \
  "movss xmm1,[esi+4]" "shufps xmm1,xmm1,0" "mulps xmm1,xmm5" "addps xmm0,xmm1" \
@@ -41,7 +41,7 @@ static void xf4_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,cons
  "movups [edi],xmm0" "add esi,edx" "add edi,16" "dec ecx" "jnz L1" "L2:" \
  parm [esi] [edi] [ecx] [edx] [eax] modify exact [esi edi ecx];
 static void xf3_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,const GLfloat *m);
-#pragma aux xf3_loop = "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm6,[eax+32]" "movups xmm7,[eax+48]" \
+#pragma aux xf3_loop = ".686" ".xmm2" "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm6,[eax+32]" "movups xmm7,[eax+48]" \
  "test ecx,ecx" "jz L2" \
  "L1: movss xmm0,[esi]" "shufps xmm0,xmm0,0" "mulps xmm0,xmm4" \
  "movss xmm1,[esi+4]" "shufps xmm1,xmm1,0" "mulps xmm1,xmm5" "addps xmm0,xmm1" \
@@ -51,7 +51,7 @@ static void xf3_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,cons
  parm [esi] [edi] [ecx] [edx] [eax] modify exact [esi edi ecx];
 /* points 3 by a 3D matrix: x, y, z only (Mesa's transform_points3_3d leaves the fourth float as it was) */
 static void xf3d_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,const GLfloat *m);
-#pragma aux xf3d_loop = "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm6,[eax+32]" "movups xmm7,[eax+48]" \
+#pragma aux xf3d_loop = ".686" ".xmm2" "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm6,[eax+32]" "movups xmm7,[eax+48]" \
  "test ecx,ecx" "jz L2" \
  "L1: movss xmm0,[esi]" "shufps xmm0,xmm0,0" "mulps xmm0,xmm4" \
  "movss xmm1,[esi+4]" "shufps xmm1,xmm1,0" "mulps xmm1,xmm5" "addps xmm0,xmm1" \
@@ -60,7 +60,7 @@ static void xf3d_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,con
  "movlps [edi],xmm0" "movhlps xmm1,xmm0" "movss [edi+8],xmm1" "add esi,edx" "add edi,16" "dec ecx" "jnz L1" "L2:" \
  parm [esi] [edi] [ecx] [edx] [eax] modify exact [esi edi ecx];
 static void xf2_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,const GLfloat *m);
-#pragma aux xf2_loop = "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm7,[eax+48]" \
+#pragma aux xf2_loop = ".686" ".xmm2" "movups xmm4,[eax]" "movups xmm5,[eax+16]" "movups xmm7,[eax+48]" \
  "test ecx,ecx" "jz L2" \
  "L1: movss xmm0,[esi]" "shufps xmm0,xmm0,0" "mulps xmm0,xmm4" \
  "movss xmm1,[esi+4]" "shufps xmm1,xmm1,0" "mulps xmm1,xmm5" "addps xmm0,xmm1" \
@@ -71,15 +71,18 @@ static void xf2_loop(const GLfloat *from,GLfloat *to,GLuint n,GLuint stride,cons
 /* One clip vertex: esi the clip coordinates, edi the projected output, edx the constants (sign bits x4, then 1.0). Returns the compare bits:
  * 0-2 w < x, y, z (right, top, far); 4-6 w < -x, -y, -z (left, bottom, near). With none set the projected vertex is written. */
 static unsigned clip1(const GLfloat *c,GLfloat *proj,const GLfloat *k);
-#pragma aux clip1 = "movups xmm0,[esi]" "movaps xmm1,xmm0" "shufps xmm1,xmm1,0FFh" \
+#pragma aux clip1 = ".686" ".xmm2" "movups xmm0,[esi]" "movaps xmm1,xmm0" "shufps xmm1,xmm1,0FFh" \
  "movaps xmm2,xmm1" "cmpltps xmm2,xmm0" "movmskps eax,xmm2" \
  "movups xmm3,[edx]" "xorps xmm3,xmm0" "movaps xmm2,xmm1" "cmpltps xmm2,xmm3" "movmskps ecx,xmm2" \
  "shl ecx,4" "or eax,ecx" "and eax,77h" "jnz L1" \
- "movss xmm2,[edx+16]" "divss xmm2,xmm1" "shufps xmm2,xmm2,0" "mulps xmm0,xmm2" "movups [edi],xmm0" "movss [edi+12],xmm2" \
+ "xorps xmm3,xmm3" "ucomiss xmm1,xmm3" "jp L2" "jne L2" "movups [edi],xmm3" "movss xmm2,[edx+16]" "movss [edi+12],xmm2" "jmp L1" \
+ "L2:" "movss xmm2,[edx+16]" "divss xmm2,xmm1" "shufps xmm2,xmm2,0" "mulps xmm0,xmm2" "movups [edi],xmm0" "movss [edi+12],xmm2" \
  "L1:" parm [esi] [edi] [edx] value [eax] modify exact [eax ecx];
+/* .729 (review of .723, #9): w exactly 0 with no clip bit (only (0, 0, 0, 0): the compares are strict, as Mesa's) is written (0, 0, 0, 1),
+ * as .728's vk_project does, instead of dividing by 0 */
 /* the same compares without the divide */
 static unsigned clip1np(const GLfloat *c,const GLfloat *k);
-#pragma aux clip1np = "movups xmm0,[esi]" "movaps xmm1,xmm0" "shufps xmm1,xmm1,0FFh" \
+#pragma aux clip1np = ".686" ".xmm2" "movups xmm0,[esi]" "movaps xmm1,xmm0" "shufps xmm1,xmm1,0FFh" \
  "movaps xmm2,xmm1" "cmpltps xmm2,xmm0" "movmskps eax,xmm2" \
  "movups xmm3,[edx]" "xorps xmm3,xmm0" "movaps xmm2,xmm1" "cmpltps xmm2,xmm3" "movmskps ecx,xmm2" \
  "shl ecx,4" "or eax,ecx" "and eax,77h" parm [esi] [edx] value [eax] modify exact [eax ecx];

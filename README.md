@@ -1,5 +1,7 @@
 # VIA Chrome9 display driver for Windows 98 (VX800 / VX855 / VX900)
 
+> **Branch `pre-rebase-794`:** the source of build .794, the last build of the line that ran from .723 to .769B, before the project moved to the .793 line. For the current driver, see the `main` branch and the latest release.
+
 A from-scratch Windows 98 display driver for the VIA VX800, VX855 and VX900 integrated graphics: accelerated 2D, DirectDraw, Direct3D and OpenGL from one set of files. VIA never shipped a Windows 9x driver for these chips.
 
 Current build: **.723**: tested on the VX800, VX855 and VX900 up to build .715 (full test runs on each board); builds .716-.723, including the 3DMark 2001 Dragothic water fix and the Hellbender fog fix, on the VX855 (see [Checking an install](#checking-an-install)).

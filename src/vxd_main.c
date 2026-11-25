@@ -100,6 +100,7 @@ DDB VXD_DDB = {
 };
 
 #include "vxd_strings.h"
+static int vx_user(DWORD a,DWORD n); /* .737: a caller's buffer in user memory (Device_IO_Control_body) */
 
 DWORD *DispatchTable = 0;
 DWORD DispatchTableLength = 0;
@@ -409,15 +410,16 @@ WORD __stdcall VXD_API_Proc(PCRS_32 state)
 			rc = 1;
 			break;
 		case OP_FBHDA_GAMMA_GET:
-			state->Client_ECX = FBHDA_gamma_get((void *)state->Client_EDI, state->Client_ECX);
+			state->Client_ECX = (state->Client_EDI && vx_user(state->Client_EDI, state->Client_ECX)) ? FBHDA_gamma_get((void *)state->Client_EDI, state->Client_ECX) : FALSE; /* .765 (audit VXD-C3): no null or kernel address written in ring 0 */
 			rc = 1;
 			break;
 		case OP_FBHDA_GAMMA_SET:
-			state->Client_ECX = FBHDA_gamma_set((void *)state->Client_ESI, state->Client_ECX);
+			state->Client_ECX = (state->Client_ESI && vx_user(state->Client_ESI, state->Client_ECX)) ? FBHDA_gamma_set((void *)state->Client_ESI, state->Client_ECX) : FALSE; /* .765 (audit VXD-C3) */
 			rc = 1;
 			break;
 		case OP_FBHDA_REFRESH:
 			FBHDA_refresh(state->Client_ECX);
+			rc = 1; /* .737 (review audit #54): it reported failure (rc never set) */
 			break;
 		/* mouse */
 		case OP_MOUSE_LOAD:
@@ -484,19 +486,19 @@ WORD __stdcall VXD_API_Proc(PCRS_32 state)
    rc=1;
    break;
   case OP_VX_STRETCH:
-  if(state->Client_ECX==sizeof(vx2d_stretch) && state->Client_ESI)
+  if(state->Client_ECX==sizeof(vx2d_stretch) && state->Client_ESI && vx_user(state->Client_ESI,sizeof(vx2d_stretch)))
    state->Client_ECX=VX2D_stretch((const vx2d_stretch*)state->Client_ESI);
   else state->Client_ECX=VX2D_SKIP;
   rc=1;
   break;
   case OP_VX_XFER: /* v10.116 */
-  if(state->Client_ECX==sizeof(vx2d_xfer) && state->Client_ESI)
+  if(state->Client_ECX==sizeof(vx2d_xfer) && state->Client_ESI && vx_user(state->Client_ESI,sizeof(vx2d_xfer)))
    state->Client_ECX=VX2D_xfer((vx2d_xfer*)state->Client_ESI);
   else state->Client_ECX=VX2D_SKIP;
   rc=1;
   break;
   case OP_VX_SUBMIT:
-  if(state->Client_ECX==sizeof(vx2d_request) && state->Client_ESI)
+  if(state->Client_ECX==sizeof(vx2d_request) && state->Client_ESI && vx_user(state->Client_ESI,sizeof(vx2d_request)))
    state->Client_ECX=VX2D_submit((const vx2d_request*)state->Client_ESI);
   else state->Client_ECX=VX2D_SKIP;
   rc=1;
@@ -691,8 +693,7 @@ static void configure_FBHDA()
 			dbg_printf("Vertex area at %lx\n", vx3dn_va_off);
 		}
 		
-		{extern uint32_t vx_stretch3d; DWORD st = 1; /* .632: 1 the default (board, .631, VX900: 0 of 307200 pixels differ from the CPU's, 0.73 ms a Blt against 35.45; VX855 1.14 against 62) */ RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_STRETCH3D", &st); vx_stretch3d = st > 2UL ? 2UL : st;}
-		{extern uint32_t vx3dn_seam; DWORD sm = 0; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_SEAM", &sm); vx3dn_seam = sm & 0xFFFFUL;} /* .628: the seam cover, a tuning value under test (vx_native3d_hw.c): 0 off, x + 256 * y sixteenths of a pixel */
+		{extern uint32_t vx_stretch3d; vx_stretch3d = 1UL;} /* .739: no registry value (ACCEL_STRETCH3D settled on .632: VX900 0 of 307200 pixels differ from the CPU's, 0.73 ms a Blt against 35.45; VXNOSYNC still sets it live, BC 44A0000+) */
 		/* .530: FORCE_SOFTWARE, FORCE_QEMU3DFX (the virtual machines' ICDs) and ACCEL_DCI removed: our ICD and the DCI correction always */
 
 		{
@@ -730,19 +731,19 @@ static void configure_FBHDA()
 					acc = 2304UL; /* v10.138: VX2TUNE (48x48: the engine wins for every brush at 8, 16 and 32bpp) */ vx2d_fill_min = acc;
 					{extern volatile unsigned long vx2d_fill_tall, vx2d_fill_tall_cfg; acc = 256UL; /* v10.143: VX2FAST: the engine wins every narrow fill from 256 rows at 8, 16 and 32bpp */ vx2d_fill_tall = vx2d_fill_tall_cfg = acc & 0xFFFFUL;}
 					{extern volatile unsigned long vx2d_prefilter, vx2d_prefilter_cfg; acc = 1; vx2d_prefilter = vx2d_prefilter_cfg = acc ? 1UL : 0UL;}
-					{extern volatile uint32_t vx3dn_mipon, vx3dn_aniso; acc = 1UL; vx3dn_mipon = acc ? 1UL : 0UL; acc = 1UL; vx3dn_aniso = acc ? 1UL : 0UL;} /* v10.199: mipmaps, anisotropic filtering */
+					{extern volatile uint32_t vx3dn_aniso; acc = 1UL; vx3dn_aniso = acc ? 1UL : 0UL;} /* v10.199: mipmaps, anisotropic filtering */
 					{extern volatile uint32_t vx3dn_frontz; acc = 1UL; vx3dn_frontz = acc ? 1UL : 0UL;} /* v10.416 */
 					{extern volatile uint32_t vx3dn_flip_ring; acc = 1UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_3D_RINGFLIP", &acc); vx3dn_flip_ring = acc ? 1UL : 0UL;}
-					{extern uint32_t vx3dn_gband; extern unsigned long vx_chip_id; vx3dn_gband = vx_chip_id == 0x5122UL ? 1UL : 0UL;} /* .698: the VxD takes guard-band packets (VX3DN_IX_GUARD) on the VX855 / VX875, where VXCLIP proved the engine's own screen-space clipping (board A, .693); whether the driver's T&L makes them is ACCEL_D3D_GUARDBAND, read by each program as it starts (TEXDBG BC 44B word 3) */
-					{extern volatile uint32_t vx_flip_tear; acc = 1UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_FLIP_TEAR", &acc); vx_flip_tear = acc > 2UL ? 1UL : acc; {extern unsigned long vx_chip_id; if(vx_chip_id != 0x5122UL) vx_flip_tear = 0;}} /* .702: the VX855 / VX875 only until VXNOSYNC pass 9 passes on the VX800 and VX900 (REGRESS.TXT) */ /* .696: a no-vsync flip shown from the next scan line (CR32 bit 0, real-time flipping): 0 = the one-frame flip (.555), 1 = by the line when IGA1 alone shows the frame buffer (default), 2 = also with IGA2 mirroring it (IGA2 has no documented line flip). Under test: kept as a switch until the board confirms it */ /* .692: XP's flip in the ring (v10.417) with the swap's own blank wait skipped (12 = 0C, vx_native3d_vxd.c VX3DN_ring_flip), on by default; the switch stays until board B and GTA3 confirm it (.685-.691: 0 off, 1-6 the forms tried on board A) */
+					{extern uint32_t vx3dn_gband; vx3dn_gband = 1UL;} /* .725 (the owner: every feature on every chip): the VX800 and VX900 take guard-band packets too, proven there by ALL.BAT (VXCLIP on the VX800; VXTLP, GRID VP, HarborBench and 3DMark on all three; GB0.REG turns it off). .698: the VxD takes guard-band packets (VX3DN_IX_GUARD) on the VX855 / VX875, where VXCLIP proved the engine's own screen-space clipping (board A, .693); whether the driver's T&L makes them is ACCEL_D3D_GUARDBAND, read by each program as it starts (TEXDBG BC 44B word 3) */
+					{extern volatile uint32_t vx_flip_tear; acc = 1UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_FLIP_TEAR", &acc); vx_flip_tear = acc > 2UL ? 1UL : acc;} /* .725: on every chip (VXNOSYNC pass 9 and TEAR ASK judge it on each; TEAR0.REG turns it off) */ /* .702: the VX855 / VX875 only until VXNOSYNC pass 9 passes on the VX800 and VX900 (REGRESS.TXT) */ /* .696: a no-vsync flip shown from the next scan line (CR32 bit 0, real-time flipping): 0 = the one-frame flip (.555), 1 = by the line when IGA1 alone shows the frame buffer (default), 2 = also with IGA2 mirroring it (IGA2 has no documented line flip). Under test: kept as a switch until the board confirms it */ /* .692: XP's flip in the ring (v10.417) with the swap's own blank wait skipped (12 = 0C, vx_native3d_vxd.c VX3DN_ring_flip), on by default; the switch stays until board B and GTA3 confirm it (.685-.691: 0 off, 1-6 the forms tried on board A) */
 					{extern volatile uint32_t vx3dn_ringclear; acc = 1UL; vx3dn_ringclear = acc ? 1UL : 0UL;} /* v10.418 */
-					{extern volatile uint32_t vx3dn_unit2c; acc = 1UL; vx3dn_unit2c = acc ? 1UL : 0UL;} /* v10.310: unit 2 on its own coordinate set (TextureC) */
+					/* .738: vx3dn_unit2c removed */ /* v10.310: unit 2 on its own coordinate set (TextureC) */
 					{extern volatile uint32_t vx3dn_ckey; acc = 1UL; vx3dn_ckey = acc ? 1UL : 0UL;} /* v10.197: Direct3D texture colour key (XP's T45 program) */
 					{extern uint32_t vx3dn_guard; vx3dn_guard = 1UL;} /* .530: the feature word fixed (vx855_2d.c: 0x0787FFFF, the registry switches removed); ACCEL_3D_GUARD (bit 23) on */
 					{extern uint32_t vx3dn_idle_stable; acc = 8UL; vx3dn_idle_stable = acc<1?1UL:acc>1000?1000UL:acc;} /* v10.221 */
-					{extern volatile uint32_t vx3dn_posted; acc = 1UL; vx3dn_posted = acc ? 1UL : 0UL;} /* v10.220: posted engine writes */
+					/* .738: vx3dn_posted removed */ /* v10.220: posted engine writes */
 					{extern volatile uint32_t vx3dn_fetch; acc = 1UL; vx3dn_fetch = acc ? 1UL : 0UL;} /* v10.228: draws through the command fetcher */
-					{extern volatile uint32_t vx3dn_gap_wipe; acc = 1UL; vx3dn_gap_wipe = acc ? 1UL : 0UL;}
+					/* .738: vx3dn_gap_wipe removed */
 					{extern volatile uint32_t vx3dn_onecopy; vx3dn_onecopy = 1UL; /* .524: always on (ACCEL_D3D_ONECOPY retired) */}
 					{extern volatile uint32_t vx3dn_ringblt; vx3dn_ringblt = 1UL; /* .524: always on (ACCEL_D3D_RINGBLT retired) */}
 					{extern volatile uint32_t vx3dn_ringprog; acc = 1UL; vx3dn_ringprog = acc ? 1UL : 0UL;}
@@ -759,7 +760,7 @@ static void configure_FBHDA()
 					{extern volatile uint32_t vx3dn_shadow; vx3dn_shadow = 1UL; /* .526: always on (ACCEL_D3D_SHADOW retired) */} /* .525: the state set-up's type-01 register shadow */
 					{extern volatile uint32_t vx3dn_delta; vx3dn_delta = 1UL; /* .525: always on (ACCEL_D3D_DELTA retired) */} /* .524: state deltas in a batch (vx_native3d.h; the HAL marks, the VxD keeps) */
 					{extern volatile unsigned long vx_d3d_v8; vx_d3d_v8 = 1UL; /* .524: always on (ACCEL_D3D_V8 retired) */} /* .523: indexed packets of 8-word vertices */ /* .522: the HAL's readiness check kept between calls; the pass-through's vertex prefetch */
-					{extern volatile unsigned long vx_privlock; acc = 1UL; vx_privlock = acc ? 1UL : 0UL; vx_lock_init(0);} /* .515: the engine's own lock (0: the system critical section) */ /* v10.463: the HAL's surface lookup hint; v10.468: the not-yet-checked vertices prefetched */
+					{vx_lock_init(0);} /* .515: the engine's own lock (0: the system critical section) */ /* v10.463: the HAL's surface lookup hint; v10.468: the not-yet-checked vertices prefetched */
 					{extern volatile uint32_t vx3dn_texonly; vx3dn_texonly = 1UL; /* .524: always on (ACCEL_D3D_TEXONLY retired) */} /* v10.450: a packet that differs from the last only in its textures sends the texture units only */ /* v10.449: a batch's prepacked vertices copied once, into the command block, and checked there */
 					{extern volatile uint32_t vx3dn_fastclock; vx3dn_fastclock = 1UL; /* .524: always on (ACCEL_D3D_FASTCLOCK retired) */} /* v10.448: the kick's time stamp from the VMM's time word */
 					{extern volatile uint32_t vx3dn_xr; acc = 1UL; vx3dn_xr = acc ? 1UL : 0UL;} /* v10.402 */
@@ -768,13 +769,13 @@ static void configure_FBHDA()
 					
 					{extern volatile uint32_t vx3dn_fastblk; acc = 1UL; vx3dn_fastblk = acc ? 1UL : 0UL;} /* v10.412 */
 					{extern volatile uint32_t vx3dn_prefetch; acc = 1UL; vx3dn_prefetch = acc ? 1UL : 0UL;} /* v10.412 */
-					{extern volatile uint32_t vx3dn_wc_flush; acc = 1UL; vx3dn_wc_flush = acc ? 1UL : 0UL;} /* v10.390 */
-					{extern volatile uint32_t vx3dn_ring_fence; acc = 1UL; vx3dn_ring_fence = acc ? 1UL : 0UL;} /* v10.383: the ring's fence; the ring off after its first hang */ /* v10.382: ring default 1 again, with the gap before each start written over (ACCEL_D3D_GAPWIPE, default 1) */ /* v10.374: the fetcher kept running as a ring (vx_native3d_vxd.c fx_start); v10.375: default 0 (GTA3 and Quake 2 drew broken with it); v10.378: 1 with XP's kick; v10.379: 0 again (GTA3: engine hangs) */
+					/* .737: vx3dn_wc_flush removed (always 1) */
+					/* .738: vx3dn_ring_fence removed */ /* v10.383: the ring's fence; the ring off after its first hang */ /* v10.382: ring default 1 again, with the gap before each start written over (ACCEL_D3D_GAPWIPE, default 1) */ /* v10.374: the fetcher kept running as a ring (vx_native3d_vxd.c fx_start); v10.375: default 0 (GTA3 and Quake 2 drew broken with it); v10.378: 1 with XP's kick; v10.379: 0 again (GTA3: engine hangs) */
 					{extern uint32_t vx3dn_stencil_zw; acc = 2UL; vx3dn_stencil_zw = acc>2 ? 2UL : acc;} /* v10.242-v10.245: the stencil plane as XP programs it (1); 2 with its read and write bits always on (v10.247: the default); 0 as v10.241 */
 					{extern uint32_t vx3dn_strip_hw; acc = 1UL; vx3dn_strip_hw = acc ? 1UL : 0UL;} /* v10.236: strips drawn as strips (0: as their triangles) */
-					{extern uint32_t vx3dn_vfast; acc = 1UL; vx3dn_vfast = acc ? 1UL : 0UL;} /* v10.317: the vertex words built by the plain loops (0: a vertex at a time) */
+					/* .737: vx3dn_vfast removed (always 1) */
 					{extern volatile uint32_t vx3dn_state_cache; acc = 1UL; vx3dn_state_cache = acc ? 1UL : 0UL;} /* v10.232 */
-					{extern volatile uint32_t vx_mouse_fast; acc = 1UL; vx_mouse_fast = acc ? 1UL : 0UL;} /* v10.253 */
+					/* .738: vx_mouse_fast removed */ /* v10.253 */
 					{extern volatile uint32_t vx3dn_clear_async; acc = 1UL; vx3dn_clear_async = acc?1UL:0UL;} /* v10.282 */
 					{extern volatile uint32_t vx3dn_fetch_kb; acc = 32UL; vx3dn_fetch_kb = acc;} /* v10.365: fetch group size (vx_native3d_vxd.c) */
 					
@@ -786,9 +787,9 @@ static void configure_FBHDA()
 					{extern volatile uint32_t vx3dn_async; acc = 1UL; vx3dn_async = acc ? 1UL : 0UL;} /* v10.231: fetched draws return without waiting */
 					{extern uint32_t vx3dn_burst; acc = 1UL; vx3dn_burst = acc ? 1UL : 0UL;} /* v10.214: one engine burst per triangle-list packet; v10.216: default 1 (board, VXDX7 v2.38) */
 					{extern volatile unsigned long vx3dn_recover; acc = 1UL; vx3dn_recover = acc ? 1UL : 0UL;} /* v10.210: reset a hung 3D engine and carry on (default 1) */
-					{extern volatile unsigned long vx_d3d_log; acc = 0UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_LOG", &acc); vx_d3d_log = acc ? 1UL : 0UL; acc = 0UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_SAMPLE", &acc); if(acc) vx_d3d_log |= 2UL;} /* .511: ACCEL_D3D_SAMPLE (diagnostic, 0): the HAL samples the flipping thread (C:\VXD3D.LOG) */ /* v10.202: C:\VXD3D.LOG off unless set */
+					{extern volatile unsigned long vx_d3d_log; acc = 0UL; RegReadConf(HKEY_LOCAL_MACHINE, reg_path, "ACCEL_D3D_LOG", &acc); vx_d3d_log = acc ? 1UL : 0UL;} /* .737: ACCEL_D3D_SAMPLE removed (the .511 thread sampler; VXD3DMON samples in the VxD) */ /* v10.202: C:\VXD3D.LOG off unless set */
 					{extern volatile unsigned long vx_lock_hal; acc = 1UL; vx_lock_hal = acc ? 1UL : 0UL;} /* v10.432 */
-					{extern volatile unsigned long vx_heap_align; acc = 1UL; vx_heap_align = acc ? 1UL : 0UL;} /* v10.179: DirectDraw blocks in multiples of 256 bytes (the HAL asks through query 0xFFFFFE50) */
+					/* .737: vx_heap_align removed (always 1) */
 					{extern volatile uint32_t vx3dn_clear2d, vx3dn_clear2d_masked; acc = 3UL; vx3dn_clear2d = acc & 1UL; vx3dn_clear2d_masked = (acc >> 1) & 1UL;} /* v10.179: bit 0 = 2D-engine clears, bit 1 = also D24S8 Z-only / stencil-only clears as two ROP fills (default 3) */ /* v10.177: Direct3D clears on the 2D engine */
 					{extern volatile unsigned long vx2d_keep, vx2d_keep_cfg; acc = 1; vx2d_keep = vx2d_keep_cfg = acc ? 1UL : 0UL;}
 					{extern unsigned long vx_chip_id; extern uint32_t vx3dn_chip900; if(vx_chip_id == 0x7122UL) vx3dn_chip900 = 1;} /* .617: the VX900's own words (vertex input, wrap, wait words, CPU flips); always, the switch ACCEL_VX900_3D is gone */
@@ -994,10 +995,13 @@ void vx_lock(void);void vx_unlock(void); /* vx855_2d.c */
  * _LinPageLock / _LinPageUnLock. No semaphore (its creation failed): the engine lock, as .706. */
 static ULONG lkt_sem;
 void VX_lock_table_init(void) {if(!lkt_sem)lkt_sem=Create_Semaphore(1);}
-static void lkt_take(void) {if(lkt_sem)Wait_Semaphore(lkt_sem,BLOCK_SVC_INTS|BLOCK_THREAD_IDLE);else vx_lock();}
-static void lkt_give(void) {if(lkt_sem)Signal_Semaphore(lkt_sem);else vx_unlock();}
+/* .725 (review of .723): without its semaphore the table is not used at all. The engine lock as a fallback brought back the AB-BA order
+ * .713 removed (a page lock may wait for the system critical section); a refused LOCKMEM only leaves the HAL's pages unlocked */
+static void lkt_take(void) {Wait_Semaphore(lkt_sem,BLOCK_SVC_INTS|BLOCK_THREAD_IDLE);}
+static void lkt_give(void) {Signal_Semaphore(lkt_sem);}
 void VX_lock_request(DWORD op,DWORD a,DWORD n,DWORD hdev,DWORD *out) {
  DWORD page=a>>12,np=n?((a+n-1)>>12)-page+1:0,k,held=0;
+ if(!lkt_sem){vx_lock_stat[3]++;out[0]=0;out[1]=0;out[2]=0;out[3]=vx_lock_hal;return;} /* .725 */
  lkt_take();
  if(op==1){vx_lock_stat[2]++;
   if(!vx_lock_hal||a<0x80000000UL||a+n<a||a+n>0xC0000000UL||!np||np>2048)vx_lock_stat[3]++; /* .560: 2,048 pages (1,024: .559's image, 1,438 pages with the template table and the larger packets, was refused and not kept in memory) */
@@ -1013,7 +1017,7 @@ void VX_lock_request(DWORD op,DWORD a,DWORD n,DWORD hdev,DWORD *out) {
  out[0]=lk_n;out[1]=lk_page<<12;out[2]=lk_holders;out[3]=vx_lock_hal;
  lkt_give();
 }
-void VX_lock_close(DWORD hdev) {lkt_take();if(lk_holders)lk_drop(hdev);lkt_give();}
+void VX_lock_close(DWORD hdev) {if(!lkt_sem)return;lkt_take();if(lk_holders)lk_drop(hdev);lkt_give();} /* .725: nothing held without it */
 /* v10.434: the sampler sees whether the render thread is inside this call, while it is on. v10.439 (board, v10.438: "in the VxD" 87 ms of
  * a 132 ms gameplay frame, more than DrawPrimitives2 and Blt together): each thread inside has its own entry in the sampler's table
  * (VX_smp_enter / VX_smp_leave: depth and waits), nothing tied to which thread is the render thread; the render thread's time inside is
@@ -1027,11 +1031,18 @@ DWORD __stdcall Device_IO_Control_proc(DWORD vmhandle, struct DIOCParams *params
 	 vx_smp_ph=c==VX_IOCTL_3DN_SUBMITN?VX_SMP_PH_SUBMIT:c==VX_IOCTL_3DN_SUBMIT?VX_SMP_PH_SINGLE:VX_SMP_PH_CALL;
 	 VX_smp_enter(&s,&t0);rc=Device_IO_Control_body(vmhandle,params);VX_smp_leave(s,t0,c);vx_smp_ph=o;return rc;}
 }
+/* .737 (review audit #6): a caller's buffer must lie in user memory (below the system arena at 0xC0000000, not in the first page, not
+ * wrapping): one test for every call's buffers (DeviceIoControl's in and out, and the DRV's requests through the PM entry).
+ * A NULL with no length passes (each call tests its own) */
+static int vx_user(DWORD a,DWORD n) {if(!a)return 1;return a>=0x1000UL&&a<0xC0000000UL&&n<=0xC0000000UL-a;}
 static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams *params)
 {
 	DWORD *inBuf  = (DWORD*)params->lpInBuffer;
 	DWORD *outBuf = (DWORD*)params->lpOutBuffer;
 	DWORD rc = 1;
+ if(params->dwIoControlCode!=DIOC_OPEN&&params->dwIoControlCode!=DIOC_CLOSEHANDLE&&
+    (!vx_user((DWORD)inBuf,params->cbInBuffer)||!vx_user((DWORD)outBuf,params->cbOutBuffer)))return 87; /* lpcbBytesReturned not tested: VWIN32 may give its own */
+ {extern void VX3DN_note_ioctl(uint32_t);VX3DN_note_ioctl(params->hDevice);} /* .740: the handle in the VxD now (a give-up's owner, AD); .769 (VXD-H1): noted against the calling thread */
  /* Diagnostics and an explicitly armed, fixed offscreen GPU test only. */
  if(params->dwIoControlCode!=VX_IOCTL_STATUS &&
     params->dwIoControlCode!=VX_IOCTL_LOG &&
@@ -1095,10 +1106,12 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
    VX_lock_request(inBuf[0],inBuf[1],inBuf[2],params->hDevice,outBuf);*(DWORD*)params->lpcbBytesReturned=16;return 0;
   case VX_IOCTL_3DN_QUERY: /* v10.315: occlusion count */
    if(!inBuf||params->cbInBuffer<4||!outBuf||params->cbOutBuffer<8||!params->lpcbBytesReturned)return 87;
-   {uint32_t n=0;outBuf[0]=VX3DN_query(inBuf[0],params->cbInBuffer>=8?inBuf[1]:1,&n);outBuf[1]=n;} /* v10.322: the owner */
+   {extern uint32_t vx3dn_q_hdev;uint32_t n=0;vx3dn_q_hdev=params->hDevice;outBuf[0]=VX3DN_query(inBuf[0],params->cbInBuffer>=8?inBuf[1]:1,&n);outBuf[1]=n;} /* v10.322: the owner; .737: and its handle */
    *(DWORD*)params->lpcbBytesReturned=8;return 0;
   case VX_IOCTL_3DN_TEXDBG: /* v10.174 */
    if(!inBuf||params->cbInBuffer<4||!outBuf||params->cbOutBuffer<32||!params->lpcbBytesReturned)return 87;
+   {DWORD tin[16],k,nb=params->cbInBuffer/4;if(nb>16)nb=16;for(k=0;k<nb;k++)tin[k]=inBuf[k];for(;k<16;k++)tin[k]=0;inBuf=tin; /* .728 (Gemini review #16): the request
+    * read once from the caller's memory (it was read again for every test below, 22 places; a caller changing it during the call saw mixed answers) */
    {const uint32_t q=inBuf[0]; /* v10.232: a debug switch can change what the emitter sends: the state cache starts over; v10.389: not for 0xBD (read every frame);
     * v10.476: nor for the other codes that only read or clear counters or turn the profile's clock on or off (BC's reads, BA/BB, B8/B9,
     * C8/C9, 6C-6E, 75): each tool's reading made the next packet send its whole state again, in the middle of what it measured */
@@ -1140,7 +1153,7 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i>=0x20&&i<0x30){extern uint32_t vx3dn_ss_worst[8][8];for(k=0;k<4;k++)outBuf[2+k]=vx3dn_ss_worst[(i-0x20)&7][(i>=0x28?4:0)+k];} /* v10.393: slow single submits */
     else if(i==0x30){extern uint32_t vx3dn_ss_count;outBuf[2]=vx3dn_ss_count;}
     else if(i==0x80){extern uint32_t vx3dn_ss_worst[8][8],vx3dn_ss_count;vx3dn_sv_count=0;for(k=0;k<80;k++)vx3dn_sv_worst[k/10][k%10]=0;vx3dn_ss_count=0;for(k=0;k<64;k++)vx3dn_ss_worst[k/8][k%8]=0;}}
-   if(inBuf[0]==0xBC){extern uint32_t vx3dn_rhang[2][6],vx3dn_rhang_trace[64][10],vx3dn_rhang_words[1024],vx3dn_rhang_wn[4],vx3dn_rhang_ok,vx3dn_rf_stat[6];extern volatile uint32_t vx3dn_ring_fence;
+   if(inBuf[0]==0xBC){extern uint32_t vx3dn_rhang[2][6],vx3dn_rhang_trace[64][10],vx3dn_rhang_words[1024],vx3dn_rhang_wn[4],vx3dn_rhang_ok,vx3dn_rf_stat[6];
     uint32_t i=params->cbInBuffer>=8?inBuf[1]:0,k; /* v10.383: the ring's first hang: 0-1 its header, 2-65 the groups kicked before it (oldest first), 66-73 the words of the group after the fence; 0x80 the fence counters */
     for(k=0;k<8;k++)outBuf[k]=0;outBuf[0]=0xBC|(vx3dn_rhang_ok<<8);outBuf[1]=i;
     if(i<2)for(k=0;k<6;k++)outBuf[2+k]=vx3dn_rhang[i][k];
@@ -1160,11 +1173,20 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i==0xC00){extern uint32_t VX3DN_probe_reset(void);outBuf[2]=VX3DN_probe_reset();} /* .619: VXREG RESET */
     else if(i>=0xA00&&i<0xC00){extern uint32_t vx3dn_rst_snap[2][198];uint32_t w=(i>>8)-0xA,n=(i&0xFFUL)*6;for(k=0;k<6;k++)outBuf[2+k]=n+k<198?vx3dn_rst_snap[w][n+k]:0;}
     else if(i>=0x400&&i<0x410){extern uint32_t VX3DN_peek(uint32_t);for(k=0;k<4;k++)outBuf[2+k]=VX3DN_peek(0x200UL+(i-0x400)*16UL+k*4UL);}
+    else if(i==0x450){extern uint32_t vx3dn_lift[4],vx3dn_gave_up;outBuf[2]=vx3dn_lift[0];outBuf[3]=vx3dn_lift[1];outBuf[4]=vx3dn_lift[2];outBuf[5]=vx3dn_lift[3];outBuf[6]=vx3dn_gave_up;} /* .740: AD's counts (VXCRASH, VXREG) */
+    else if(i==0x4500000UL){extern void VX3DN_test_giveup(void);extern uint32_t vx3dn_gave_up;VX3DN_test_giveup();outBuf[2]=vx3dn_gave_up;} /* .740: test only: a give-up owned by this handle (VXCRASH run e) */
     else if(i==0x44C||i==0x44D){extern void VX2D_proof(uint32_t,uint32_t *);uint32_t pr[8];VX2D_proof(i==0x44D?1UL:0UL,pr);outBuf[1]=i;outBuf[2]=pr[0]|(pr[1]<<8);for(k=0;k<5;k++)outBuf[3+k]=pr[2+k];} /* [2] result | 2D state << 8, [3-7] vx2d_verify[0-4] */ /* .683: the 2D engine's proof (VXREG GDITEST) */
-    else if(i==0x44B){DWORD fx=1,gb=1;extern uint32_t vx3dn_gband;RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_TNFASTIX",&fx);RegReadConf(HKEY_LOCAL_MACHINE,reg_path,"ACCEL_D3D_GUARDBAND",&gb);outBuf[1]=0x44B;outBuf[2]=fx?1:0;outBuf[3]=vx3dn_gband?(gb==2?2:gb?1:0):0;outBuf[4]=0;outBuf[5]=0;} /* .711: words 4-5 free (ACCEL_D3D_INPLACE .709 and ACCEL_D3D_TNWORD .710, both measured wins on the board and hard-coded on) */ /* .702: 2, the band without its viewport codes (the A/B: does their rejection pay?) */ /* .698: word 3 ACCEL_D3D_GUARDBAND (default 1; 0 where the VxD does not take the guard band) */ /* .682: ACCEL_D3D_TNFASTIX alone
+    else if(i==0x44B){extern uint32_t vx3dn_gband; /* .739: ACCEL_D3D_GUARDBAND no longer read (on: T698-T724; mode 2 a loss) */{extern uint32_t vx3dn_vbuf,vx3dn_vbox;outBuf[1]=0x44B;outBuf[2]=vx3dn_vbox;{extern volatile uint32_t vx3dn_osk;outBuf[7]=vx3dn_vbuf|(vx3dn_osk?2UL:0UL);}} /* .768B: word 7 bit 1 OSK */ /* .768: bits 1-2 free (.766 / .767's switches deleted, T767) */ /* .766: word 7 bit 1 the T&L's second kept set-up (VXREG SETUP) */ /* .758: word 7 bit 1 free again (the material-only set-up settled on, T757) */ /* .752: word 2 the T&L's cached boxes (0 off, 1 on, 2 counted and checked only), word 7 the HAL's vertex buffers */ /* .749: words 2 and 7 free again (the T&L A/B of .746-.748 settled: T748) */ /* .747: the value itself (2 the serial position kernel, 3 / 4 a triangle-cull kernel) *//* .733: word 2 free again (ACCEL_D3D_IXFUSE settled by T732: on, the VX900 excepted) */outBuf[3]=vx3dn_gband?1:0;{extern uint32_t vx3dn_ixfuse_n;outBuf[4]=vx3dn_ixfuse_n;}outBuf[5]=1;{extern volatile uint32_t vx3dn_clear2d_cpu;outBuf[6]=vx3dn_clear2d_cpu;} /* .736: word 6 the clears (or their parts) left to the CPU (VXD3DMON) */ /* .735: word 5 always 1 (ACCEL_D3D_TFOG settled on, T733: fogged GRID 0.4-2.9% faster on all three chips, pictures exact); word 6 free (ACCEL_D3D_TRIM settled on: no difference measured, no hang, 27 words fewer a set-up) */ /* .736: word 7 free (ACCEL_D3D_LCULL removed: T735 6k/6l still 0.9-1.7% slower with it) */} /* .729: word 2 free again (ACCEL_D3D_TNTRI removed: T728, no gain on any chip) */ /* .727: word 2 ACCEL_D3D_TNTRI (tn_draw's triangle loop through tnk_tri, under work; ACCEL_D3D_TNFASTIX removed: T724 showed no difference, the block path always on) */ /* .711: words 4-5 free (ACCEL_D3D_INPLACE .709 and ACCEL_D3D_TNWORD .710, both measured wins on the board and hard-coded on) */ /* .702: 2, the band without its viewport codes (the A/B: does their rejection pay?) */ /* .698: word 3 ACCEL_D3D_GUARDBAND (default 1; 0 where the VxD does not take the guard band) */ /* .682: ACCEL_D3D_TNFASTIX alone
      * (kept while the T681 3DMark fault is found; PRECULL, IXSKIP, PCLGATE, SPECSE and TNPF always on, .680's engine cull and BC 44C removed): read
      * from the registry at the call, VXDDRAW.DLL asks at each program's start */
     else if(i==0x446){extern uint32_t vx_stretch3d;outBuf[2]=vx_stretch3d;} /* .628: ACCEL_STRETCH3D, for the HAL (.669-.670 also gave the sample offset, removed in .671) */
+    else if(i>=0x4510000UL&&i<=0x4510003UL){extern uint32_t vx3dn_vbuf;if((i&3UL)!=3UL)vx3dn_vbuf=i&1UL;outBuf[2]=vx3dn_vbuf;} /* .752: the HAL's vertex buffers set live (VXREG VBUF ON / OFF; 3 reads): the HAL takes the value when it is next built (DirectDraw's start, a mode change) */
+    else if(i>=0x4590000UL&&i<=0x4590003UL){extern volatile uint32_t vx3dn_osk;if((i&3UL)<2UL)vx3dn_osk=i&1UL;outBuf[2]=vx3dn_osk;} /* .768B: OSK set (VXREG OSK ON / OFF; 3 reads): the T&L's triangle loops with the record stride as a constant; VXDDRAW.DLL takes it at each program's start (BC 44B word 7 bit 1) */
+    else if(i>=0x4580000UL&&i<=0x4580003UL){extern volatile uint32_t vx3dn_ixdirect;extern uint32_t vx3dn_ixdirect_stat[4];if((i&3UL)<2UL)vx3dn_ixdirect=i&1UL;outBuf[2]=vx3dn_ixdirect;for(k=0;k<4;k++)outBuf[3+k]=vx3dn_ixdirect_stat[k];} /* .768B: IXDIRECT set live (VXREG IXDIRECT ON / OFF; 3 reads): an indexed packet's vertices from the caller's packet straight into their slot, tested as stored */
+    else if(i==0x456){extern unsigned long vx_640_sync_n;extern unsigned char vx_misc_now(void);outBuf[2]=vx_640_sync_n;outBuf[3]=vx_misc_now();} /* .763B: 640x480 mode sets given negative sync, misc now */
+    else if(i>=0x4540000UL&&i<=0x4540008UL){extern volatile uint32_t vx3dn_setup_lvl;extern uint32_t vx3dn_tp_stat[3];(void)0; /* .768: no switch left: SETUP only reads (the set-up tiers settled on) */outBuf[2]=vx3dn_setup_lvl;outBuf[3]=vx3dn_tp_stat[0];outBuf[4]=vx3dn_tp_stat[1];outBuf[5]=vx3dn_tp_stat[2];} /* .762: VXREG SETUP (4540008 reads); .763: SETUP 0 / 1 the raster tier only (bit 3), the rest settled on */
+    else if(i>=0x4550000UL&&i<=0x4550008UL){extern uint32_t vx3dn_miss_field[54];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_miss_field[(i-0x4550000UL)*6+k];} /* .762: the sampled misses by field */
+    else if(i>=0x4520000UL&&i<=0x4520003UL){extern uint32_t vx3dn_vbox;if((i&3UL)!=3UL)vx3dn_vbox=i&3UL;outBuf[2]=vx3dn_vbox;} /* .752: the T&L's cached boxes set live (VXREG VBOX 0 / 1 / 2; 3 reads): VXDDRAW.DLL takes the value at each program's start */
     else if(i>=0x44C0000UL&&i<=0x44C0003UL){extern uint32_t vx3dn_gband;if((i&3UL)!=3UL)vx3dn_gband=(i&3UL)?1UL:0UL;outBuf[2]=vx3dn_gband;} /* .716: the VxD's guard-band
      * acceptance set live (VXREG GBAND ON / OFF: the VX800 / VX900 test; 3 reads it): programs started after it take it (TEXDBG BC 44B
      * word 3 at their start); the boot value stays the VX855 / VX875 only until the board shows the pictures right */
@@ -1172,19 +1194,18 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i>=0x44A0000UL&&i<=0x44A0002UL){extern uint32_t vx_stretch3d;vx_stretch3d=i&3UL;outBuf[2]=vx_stretch3d;} /* .670: VXNOSYNC STRETCH sets ACCEL_STRETCH3D live (0 the CPU, 1 nearest, 2 bilinear) while it measures, and puts it back */
     else if(i==0x448){outBuf[2]=vx_clr_stat[0];outBuf[3]=vx_clr_stat[1];} /* .668: how often the per-run counters were cleared (77 the packets', BF the frames') */
     else if(i==0x447){extern uint32_t vx3dn_fr_prog,vx3dn_fr_stat[8];extern int VX3DN_ring_flip_given_up(void);outBuf[2]=vx3dn_fr_prog;outBuf[3]=vx3dn_fr_stat[4];outBuf[4]=(uint32_t)VX3DN_ring_flip_given_up();} /* .667: ring-flip waits that went past 100 ms on progress, those that ran out, ring flips given up for the boot */
-    else if(i==0x445){extern uint32_t vx3dn_seam,vx3dn_seam_stat[2];outBuf[2]=vx3dn_seam;outBuf[3]=vx3dn_seam_stat[0];outBuf[4]=vx3dn_seam_stat[1];} /* .628: the seam cover */
     else if(i==0x443){extern uint32_t vx3dn_v900_ix[2];outBuf[2]=vx3dn_v900_ix[0];outBuf[3]=vx3dn_v900_ix[1];} /* .627: packets drawn by index on the VX900, their vertices */
     else if(i==0x442){extern uint32_t vx3dn_xr_pages;outBuf[2]=vx3dn_xr_pages*4UL;} /* .625: the ring's size in KB */
     else if(i==0x440){extern uint32_t VX3DN_peek(uint32_t);outBuf[2]=VX3DN_peek(0x120CUL);}
     else if(i==0x441){extern uint32_t vx3dn_v900_waits;outBuf[2]=1;outBuf[3]=vx3dn_v900_waits;{extern uint32_t vx3dn_v900_lapwait,vx3dn_vbw[4];outBuf[4]=vx3dn_v900_lapwait;outBuf[5]=vx3dn_vbw[0];outBuf[6]=vx3dn_vbw[1];outBuf[7]=vx3dn_vbw[2];}} /* .614 */
-    else if(i==0x80){for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rf_stat[k];outBuf[6]=vx3dn_ring_fence;}
+    else if(i==0x80){for(k=0;k<4;k++)outBuf[2+k]=vx3dn_rf_stat[k];outBuf[6]=1; /* .738: the fence always on */}
     else if(i==0x92||i==0x93){extern uint32_t vx3dn_xr_prof[12];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_xr_prof[(i-0x92)*6+k];} /* v10.407 */
     else if(i==0xD6){extern uint32_t vx3dn_xr_unit[3];for(k=0;k<3;k++)outBuf[2+k]=vx3dn_xr_unit[k];} /* .504: the ring's cache work by unit (vx_ring.h); .512: D6 (it took 9B, the state-cache misses' first read: VXD3DMON showed the cache counts as miss percentages) */
     else if(i==0x95){extern uint32_t vx3dn_xr_stat2[6];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_xr_stat2[k];} /* v10.410 */
     else if(i==0x96){extern uint32_t vx3dn_pf_stat[2];extern volatile uint32_t vx3dn_fastblk,vx3dn_prefetch;outBuf[2]=outBuf[3]=outBuf[4]=0;outBuf[5]=vx3dn_pf_stat[0];outBuf[6]=vx3dn_pf_stat[1];outBuf[7]=(vx3dn_fastblk<<1)|(vx3dn_prefetch<<2);} /* v10.412 */
     else if(i==0x97){extern uint32_t vx3dn_frontz_n;extern volatile uint32_t vx3dn_frontz;outBuf[2]=vx3dn_frontz;outBuf[3]=vx3dn_frontz_n;} /* v10.416 */
     else if(i==0x98||i==0x99){extern uint32_t vx3dn_fr_stat[8],vx_flip_ring_stat[4];extern volatile uint32_t vx3dn_flip_ring;if(i==0x98)for(k=0;k<6;k++)outBuf[2+k]=vx3dn_fr_stat[k];
-     else{outBuf[2]=vx3dn_fr_stat[6];outBuf[3]=vx3dn_fr_stat[7];for(k=0;k<3;k++)outBuf[4+k]=vx_flip_ring_stat[k];outBuf[7]=vx3dn_flip_ring;}} /* v10.417 */
+     else{outBuf[2]=vx3dn_fr_stat[6];outBuf[3]=vx3dn_fr_stat[7];for(k=0;k<3;k++)outBuf[4+k]=vx_flip_ring_stat[k];{extern uint32_t vx3dn_chip900;outBuf[7]=vx3dn_flip_ring&&!vx3dn_chip900;}}} /* v10.417; .733: 0 on the VX900, whose flips are the CPU's (VX3DN_ring_flip_ok): VXNOSYNC passes 6-7 judged it by ring flips (T724-T732 WRONG on the VX900 only) */
     else if(i==0x9A){extern uint32_t vx3dn_rc_stat[2],vx3dn_rt_stat[4];extern volatile uint32_t vx3dn_ringclear;outBuf[2]=vx3dn_rc_stat[0];outBuf[3]=vx3dn_rc_stat[1];for(k=0;k<4;k++)outBuf[4+k]=vx3dn_rt_stat[k];outBuf[1]|=vx3dn_ringclear<<8;} /* v10.418 */
     else if(i>=0x9B&&i<=0x9D){extern uint32_t vx3dn_miss_stat[18];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_miss_stat[(i-0x9B)*6+k];} /* v10.429 */
     else if(i>=0x9E&&i<=0xA1){extern uint32_t vx3dn_wstat[24];for(k=0;k<6;k++)outBuf[2+k]=vx3dn_wstat[(i-0x9E)*6+k];} /* v10.440: the command words by part */
@@ -1225,7 +1246,7 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
     else if(i==0xB2||i==0xB3||i==0xB4){extern volatile uint32_t vx3dn_texonly;extern uint32_t vx3dn_texonly_stat[2];outBuf[2]=vx3dn_texonly;outBuf[3]=vx3dn_texonly_stat[0];outBuf[4]=vx3dn_texonly_stat[1];} /* v10.450: ACCEL_D3D_TEXONLY off / on / read; packets sent textures-only, misses tested */
     else if(i==0x94){extern uint32_t vx3dn_xr_prof[12];for(k=0;k<12;k++)vx3dn_xr_prof[k]=0;}
     else if(i>=0x86&&i<0x92){extern uint32_t vx3dn_xr_stat[72];extern volatile uint32_t vx3dn_xr;for(k=0;k<6;k++)outBuf[2+k]=vx3dn_xr_stat[(i-0x86)*6+k];if(i==0x86)outBuf[1]=i|(vx3dn_xr<<8);} /* v10.402: XP's ring */
-    else if(i==0x82){outBuf[2]=vx3dn_rf_stat[4];outBuf[3]=vx3dn_rf_stat[5];{extern uint32_t vx3dn_wc_stat[2];outBuf[6]=vx3dn_wc_stat[0];outBuf[7]=vx3dn_wc_stat[1];}}} /* v10.388: + program changes, waits for them */ /* v10.387: kicks written again, and those the fence then came for */
+    } /* .737 (review audit #56): the v10.387/.388 branch for 0x82 removed: i >= 0x82 && i <= 0x84 above always answered it */ /* v10.388: + program changes, waits for them */ /* v10.387: kicks written again, and those the fence then came for */
    if(inBuf[0]==0xBA||inBuf[0]==0xBB){extern uint32_t vx3dn_ring_stat[3],vx3dn_gap_stat[3];extern volatile uint32_t vx3dn_xr;int k;outBuf[0]=0xBA;outBuf[1]=vx3dn_xr;for(k=0;k<3;k++){outBuf[2+k]=vx3dn_ring_stat[k];outBuf[5+k]=vx3dn_gap_stat[k];}if(inBuf[0]==0xBB)for(k=0;k<3;k++){vx3dn_ring_stat[k]=0;vx3dn_gap_stat[k]=0;}} /* v10.382: [5..7] the gap wipes */ /* v10.374: the ring: on, starts, kicks, wraps */
    if(inBuf[0]==0xB8||inBuf[0]==0xB9){extern uint32_t vx3dn_bat_prof[4];int k;outBuf[0]=0xB8;for(k=0;k<4;k++)outBuf[1+k]=vx3dn_bat_prof[k];if(inBuf[0]==0xB9)for(k=0;k<4;k++)vx3dn_bat_prof[k]=0;} /* v10.370 (v10.369 used CA/CB, the constant-group switch) */
    if(inBuf[0]==0xC8||inBuf[0]==0xC9){extern uint32_t vx3dn_bprof[4],vx3dn_eprof[4];int k;outBuf[0]=0xC8;for(k=0;k<3;k++)outBuf[1+k]=vx3dn_bprof[k];for(k=0;k<4;k++)outBuf[4+k]=vx3dn_eprof[k];if(inBuf[0]==0xC9){for(k=0;k<4;k++){vx3dn_bprof[k]=0;vx3dn_eprof[k]=0;}}} /* v10.286 */
@@ -1241,7 +1262,7 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
    if(inBuf[0]==0x70||inBuf[0]==0x71){extern uint32_t vx3dn_rec[5];int k;outBuf[0]=inBuf[0];for(k=0;k<5;k++)outBuf[1+k]=vx3dn_rec[k];outBuf[6]=0;} /* v10.210 (.530: the hang probe removed) */
    if(inBuf[0]>=0x50&&inBuf[0]<=0x54){int k;outBuf[0]=0x50;for(k=0;k<7;k++)outBuf[1+k]=vx3dn_set_last[k];}
    if(inBuf[0]>=0x30&&inBuf[0]<=0x34){outBuf[0]=0x30;outBuf[1]=vx3dn_dither_last[0];outBuf[2]=vx3dn_dither_last[1];outBuf[3]=vx3dn_dither_last[2];}
-   *(DWORD*)params->lpcbBytesReturned=32;return 0;
+   *(DWORD*)params->lpcbBytesReturned=32;return 0;}
   case VX_IOCTL_TAPE: /* v10.393: the ring tape (vx_ring.h) */
    {DWORD rc;if(!inBuf||params->cbInBuffer<4||!params->lpcbBytesReturned)return 87;
     rc=VX3DN_tape(inBuf[0],(const char*)inBuf+4,params->cbInBuffer-4,outBuf,params->cbOutBuffer);if(rc)return rc;
@@ -1355,6 +1376,8 @@ static DWORD __stdcall Device_IO_Control_body(DWORD vmhandle, struct DIOCParams 
 			if(io_open_cnt) io_open_cnt--;
 			VX_lock_close(params->hDevice); /* v10.432 */
 			{extern void VX_smp_close(DWORD);VX_smp_close(params->hDevice);} /* v10.434 */
+			{extern void VX3DN_query_close(uint32_t);VX3DN_query_close(params->hDevice);} /* .737: an occlusion query left open by its handle's owner */
+			{extern void VX3DN_owner_close(uint32_t);VX3DN_owner_close(params->hDevice);} /* .740: a 3D give-up's owner gone (AD) */
 			VX_cache_restore(); /* v10.69: a VX2READ cache-type test never outlives its handle */
 			rc = 0;
 			break;

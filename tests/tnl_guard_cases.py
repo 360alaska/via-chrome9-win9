@@ -20,7 +20,7 @@ ns={'__file__':os.path.join(HERE,'fuzz_tnl_diff.py'),'__name__':'fuzz_mod'};exec
 T=ns['T'];lib=ns['lib'];U=ns['U'];ON=ns['ON'];B=ns['B'];build=ns['build']
 SCENES=int(argv[2]) if len(argv)>2 else 200
 SEED=int(argv[3]) if len(argv)>3 else 698
-PJ=[0,0];M2=[0,0]
+PJ=[0,0]
 u2f=lambda u:struct.unpack('<f',struct.pack('<I',u&0xFFFFFFFF))[0]
 def canon(p):
  # .701: a packet's bytes with the parts past its counts zeroed (the per-vertex arrays past vertex_count, the bursts past n, the
@@ -121,10 +121,7 @@ def main():
    continue
   scenes+=1
   ia=raster(ra[1],ra[3]);ib=raster(rb[1],rb[3])
-  if s%4==0: # .702: ACCEL_D3D_GUARDBAND 2 (the band without its viewport codes): the same pixels as with them, at most more triangles sent
-   r2=packets(sc,2,s&1)
-   if r2[2] or r2[0]!=rb[0] or raster(r2[1],r2[3])!=ib or len(r2[1])<len(rb[1]):print('FAIL scene',s,'mode 2 (no codes) differs',r2[0],r2[2],len(r2[1]),len(rb[1]));fails+=1
-   M2[0]+=1;M2[1]+=len(r2[1])-len(rb[1])
+  # .739: mode 2 (the band without its viewport codes) deleted: T724 PURC 8% slower
   l,t_,r,b=ra[3];border=lambda k:k[0] in(l,r-1) or k[1] in(t_,b-1)
   only={k for k in set(ia)^set(ib) if not border(k)};bad=0 # .699: the viewport's own border left out: where the CPU's clipped edge lies
   # exactly on it, a tie decides the pixel (top-left rule) and this rasteriser's tie may not be the engine's; the guard band covers it
@@ -138,7 +135,6 @@ def main():
    fails+=1;print('FAIL scene',s,'pixels covered by one only',len(only),'of',len(ia),'differing',bad,sc[5])
    if fails>10:break
  print('scenes compared',scenes,'pixels compared',cmp_px,'pixels covered by one side only',edge_px,'failures',fails)
- print('.702: scenes drawn again without the viewport codes',M2[0],'triangles they sent that the codes drop',M2[1])
  print('.721: scenes with a projected set (plain packets clipped to the viewport, no VX3DN_EXT_GUARD), compared as the rest',PJ[0],'packets',sum(PJ[2:]))
  return 1 if fails else 0
 sys.exit(main())

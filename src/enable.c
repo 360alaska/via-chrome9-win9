@@ -155,7 +155,7 @@ VOID WINAPI __loadds BeginAccess_VXD( LPPDEVICE lpDevice, WORD wLeft, WORD wTop,
 		if(acc_depth < 16) {if(f) acc_fast |= (WORD)(1U << acc_depth); else acc_fast &= (WORD)~(1U << acc_depth);}
 		acc_depth++;
 		if(f) vxgt_cnt[5]++;
-		else {FBHDA_access_rect(wLeft, wTop, wRight+1, wBottom+1); vxgt_cnt[6]++;}
+		else {FBHDA_access_rect(wLeft, wTop, wRight<0xFFFFU?wRight+1:0xFFFFU, wBottom<0xFFFFU?wBottom+1:0xFFFFU); vxgt_cnt[6]++;} /* .729 (review of .723, #8): saturated, no wrap to 0 */
 //		FBHDA_access_begin(dflags);
 	}
 	if(!mouse_vxd)
@@ -319,7 +319,18 @@ UINT WINAPI __loadds Enable( LPVOID lpDevice, UINT style, LPSTR lpDeviceType,
         
         wEnabled = 1;
         /* Bind the DIB busy/enabled words for VxD-wide fault fencing. */
-        if(VX_accel_bind(&lpEng->deFlags, &wEnabled)==VX2D_LOST) return 0;
+        if(VX_accel_bind(&lpEng->deFlags, &wEnabled)==VX2D_LOST) {
+            /* .729 (review of .723, #2): rolled back as the HookInt2Fh failure above and Disable do: it returned 0 with INT 2Fh hooked,
+             * wEnabled 1 and the VDD still registered */
+            wEnabled = 0;
+            VX_accel_bind(NULL, NULL);
+            int_2Fh( START_IO_TRAP );
+            PhysicalDisable();
+            CallVDD(VDD_DRIVER_UNREGISTER);
+            if( !bReEnabling ) UnhookInt2Fh();
+            lpEng->deFlags |= BUSY;
+            return 0;
+        }
         /* .582 (VX800 board, VX2GDI at 640x480x32: none of the host paths ran): the bind makes the VxD forget where this copy of the
          * ACCEL_HOST mask is until the next request carries its address, and a copy left at 0 (a test tool's "all off") makes no
          * request, so it stayed 0 for good. Every bind starts the copy with all classes on: the first request of any class is
@@ -368,12 +379,12 @@ UINT WINAPI __loadds Enable( LPVOID lpDevice, UINT style, LPSTR lpDeviceType,
 
         lpInfo->dpEHiWin.xcoord = DISPLAY_SIZE_EN * 5; /* v10.302 (review): dpELoWin was set twice and dpEHiWin never */
         lpInfo->dpEHiWin.ycoord = DISPLAY_SIZE_EN * 5;
-        lpInfo->dpEHiVpt.xcoord = -((int)wScrX / 2); /* v10.302 (review): -wScrX / 2 was unsigned (32256 for 1024) */
+        lpInfo->dpEHiVpt.xcoord = (int)wScrX / 2; /* .754 (outside review): x positive, y negative, as every other mapping mode here (v10.302 made x negative and y positive: MM_HIENGLISH and MM_TWIPS drew mirrored and upside down) */
         lpInfo->dpEHiVpt.ycoord = -lpInfo->dpEHiVpt.xcoord;
 
         lpInfo->dpTwpWin.xcoord = DISPLAY_SIZE_TWP;
         lpInfo->dpTwpWin.ycoord = DISPLAY_SIZE_TWP;
-        lpInfo->dpTwpVpt.xcoord = -((int)wScrX / 2);
+        lpInfo->dpTwpVpt.xcoord = (int)wScrX / 2; /* .754: as dpEHiVpt */
         lpInfo->dpTwpVpt.ycoord = -lpInfo->dpTwpVpt.xcoord;
 
         /* Update more GDIINFO bits. */

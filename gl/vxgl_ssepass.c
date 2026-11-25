@@ -126,12 +126,12 @@ typedef struct {v4 x,y,z,w;} v4x4;
 
 #if defined(__WATCOMC__) && defined(__386__)
 static unsigned mx_enter(void);
-#pragma aux mx_enter = "sub esp,8" "stmxcsr [esp]" "mov dword ptr [esp+4],1F80h" "ldmxcsr [esp+4]" "mov eax,[esp]" "add esp,8" value [eax] modify exact [eax];
+#pragma aux mx_enter = ".686" ".xmm2" "sub esp,8" "stmxcsr [esp]" "mov dword ptr [esp+4],1F80h" "ldmxcsr [esp+4]" "mov eax,[esp]" "add esp,8" value [eax] modify exact [eax];
 static void mx_leave(unsigned old);
-#pragma aux mx_leave = "push eax" "ldmxcsr [esp]" "add esp,4" parm [eax] modify exact [];
+#pragma aux mx_leave = ".686" ".xmm2" "push eax" "ldmxcsr [esp]" "add esp,4" parm [eax] modify exact [];
 /* out[r] = ((m[r] x + m[4+r] y) + m[8+r] z) + m[12+r]: m 16 splats (the matrix's 16 elements, each in four lanes), rows 0-3 */
 static void vk_xf4(const v4 *m,const GLfloat *x,const GLfloat *y,const GLfloat *z,v4x4 *out);
-#pragma aux vk_xf4 = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_xf4 = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,[eax]" "mulps xmm0,xmm4" "movaps xmm1,[eax+64]" "mulps xmm1,xmm5" "addps xmm0,xmm1" "movaps xmm1,[eax+128]" "mulps xmm1,xmm6" "addps xmm0,xmm1" "addps xmm0,[eax+192]" "movaps [edi],xmm0" \
  "movaps xmm0,[eax+16]" "mulps xmm0,xmm4" "movaps xmm1,[eax+80]" "mulps xmm1,xmm5" "addps xmm0,xmm1" "movaps xmm1,[eax+144]" "mulps xmm1,xmm6" "addps xmm0,xmm1" "addps xmm0,[eax+208]" "movaps [edi+16],xmm0" \
  "movaps xmm0,[eax+32]" "mulps xmm0,xmm4" "movaps xmm1,[eax+96]" "mulps xmm1,xmm5" "addps xmm0,xmm1" "movaps xmm1,[eax+160]" "mulps xmm1,xmm6" "addps xmm0,xmm1" "addps xmm0,[eax+224]" "movaps [edi+32],xmm0" \
@@ -139,21 +139,21 @@ static void vk_xf4(const v4 *m,const GLfloat *x,const GLfloat *y,const GLfloat *
  parm [eax] [edx] [ebx] [ecx] [edi] modify exact [];
 /* rows 0-2 only (eye coordinates) */
 static void vk_xf3(const v4 *m,const GLfloat *x,const GLfloat *y,const GLfloat *z,v4x3 *out);
-#pragma aux vk_xf3 = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_xf3 = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,[eax]" "mulps xmm0,xmm4" "movaps xmm1,[eax+64]" "mulps xmm1,xmm5" "addps xmm0,xmm1" "movaps xmm1,[eax+128]" "mulps xmm1,xmm6" "addps xmm0,xmm1" "addps xmm0,[eax+192]" "movaps [edi],xmm0" \
  "movaps xmm0,[eax+16]" "mulps xmm0,xmm4" "movaps xmm1,[eax+80]" "mulps xmm1,xmm5" "addps xmm0,xmm1" "movaps xmm1,[eax+144]" "mulps xmm1,xmm6" "addps xmm0,xmm1" "addps xmm0,[eax+208]" "movaps [edi+16],xmm0" \
  "movaps xmm0,[eax+32]" "mulps xmm0,xmm4" "movaps xmm1,[eax+96]" "mulps xmm1,xmm5" "addps xmm0,xmm1" "movaps xmm1,[eax+160]" "mulps xmm1,xmm6" "addps xmm0,xmm1" "addps xmm0,[eax+224]" "movaps [edi+32],xmm0" \
  parm [eax] [edx] [ebx] [ecx] [edi] modify exact [];
 /* normals: out = ((x n0 + y n1) + z n2), ((x n3 + y n4) + z n5), ((x n6 + y n7) + z n8): n the 9 splats of the inverse's m0 m1 m2 m4 m5 m6 m8 m9 m10 */
 static void vk_xfn(const v4 *n,const GLfloat *x,const GLfloat *y,const GLfloat *z,v4x3 *out);
-#pragma aux vk_xfn = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_xfn = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,xmm4" "mulps xmm0,[eax]" "movaps xmm1,xmm5" "mulps xmm1,[eax+16]" "addps xmm0,xmm1" "movaps xmm1,xmm6" "mulps xmm1,[eax+32]" "addps xmm0,xmm1" "movaps [edi],xmm0" \
  "movaps xmm0,xmm4" "mulps xmm0,[eax+48]" "movaps xmm1,xmm5" "mulps xmm1,[eax+64]" "addps xmm0,xmm1" "movaps xmm1,xmm6" "mulps xmm1,[eax+80]" "addps xmm0,xmm1" "movaps [edi+16],xmm0" \
  "movaps xmm0,xmm4" "mulps xmm0,[eax+96]" "movaps xmm1,xmm5" "mulps xmm1,[eax+112]" "addps xmm0,xmm1" "movaps xmm1,xmm6" "mulps xmm1,[eax+128]" "addps xmm0,xmm1" "movaps [edi+32],xmm0" \
  parm [eax] [edx] [ebx] [ecx] [edi] modify exact [];
 /* len = (x x + y y) + z z (written to *len); r = rsqrtps, t = (r r) len, s = ((3 - t) r) 0.5 (vx855_rsq_sse's steps); v *= s where len != 0 */
 static void vk_norm3(v4x3 *v,const v4 *k,v4 *len);
-#pragma aux vk_norm3 = "movaps xmm0,[eax]" "movaps xmm1,[eax+16]" "movaps xmm2,[eax+32]" \
+#pragma aux vk_norm3 = ".686" ".xmm2" "movaps xmm0,[eax]" "movaps xmm1,[eax+16]" "movaps xmm2,[eax+32]" \
  "movaps xmm3,xmm0" "mulps xmm3,xmm3" "movaps xmm4,xmm1" "mulps xmm4,xmm1" "addps xmm3,xmm4" "movaps xmm4,xmm2" "mulps xmm4,xmm2" "addps xmm3,xmm4" "movaps [ebx],xmm3" \
  "rsqrtps xmm4,xmm3" "movaps xmm5,xmm4" "mulps xmm5,xmm4" "mulps xmm5,xmm3" "movaps xmm6,[edx+16]" "subps xmm6,xmm5" "mulps xmm6,xmm4" "mulps xmm6,[edx]" \
  "xorps xmm7,xmm7" "cmpneqps xmm7,xmm3" \
@@ -162,46 +162,46 @@ static void vk_norm3(v4x3 *v,const v4 *k,v4 *len);
  "movaps xmm5,xmm2" "mulps xmm5,xmm6" "andps xmm5,xmm7" "movaps xmm3,xmm7" "andnps xmm3,xmm2" "orps xmm5,xmm3" "movaps [eax+32],xmm5" \
  parm [eax] [edx] [ebx] modify exact [];
 static void vk_dot3(const v4x3 *a,const v4x3 *b,v4 *out);
-#pragma aux vk_dot3 = "movaps xmm0,[eax]" "mulps xmm0,[edx]" "movaps xmm1,[eax+16]" "mulps xmm1,[edx+16]" "addps xmm0,xmm1" "movaps xmm1,[eax+32]" "mulps xmm1,[edx+32]" "addps xmm0,xmm1" "movaps [ebx],xmm0" \
+#pragma aux vk_dot3 = ".686" ".xmm2" "movaps xmm0,[eax]" "mulps xmm0,[edx]" "movaps xmm1,[eax+16]" "mulps xmm1,[edx+16]" "addps xmm0,xmm1" "movaps xmm1,[eax+32]" "mulps xmm1,[edx+32]" "addps xmm0,xmm1" "movaps [ebx],xmm0" \
  parm [eax] [edx] [ebx] modify exact [];
 static void vk_sub3(v4x3 *out,const v4x3 *a,const v4x3 *b);
-#pragma aux vk_sub3 = "movaps xmm0,[edx]" "subps xmm0,[ebx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "subps xmm0,[ebx+16]" "movaps [eax+16],xmm0" "movaps xmm0,[edx+32]" "subps xmm0,[ebx+32]" "movaps [eax+32],xmm0" \
+#pragma aux vk_sub3 = ".686" ".xmm2" "movaps xmm0,[edx]" "subps xmm0,[ebx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "subps xmm0,[ebx+16]" "movaps [eax+16],xmm0" "movaps xmm0,[edx+32]" "subps xmm0,[ebx+32]" "movaps [eax+32],xmm0" \
  parm [eax] [edx] [ebx] modify exact [];
 static void vk_mul3(v4x3 *out,const v4x3 *a,const v4x3 *b);
-#pragma aux vk_mul3 = "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "mulps xmm0,[ebx+16]" "movaps [eax+16],xmm0" "movaps xmm0,[edx+32]" "mulps xmm0,[ebx+32]" "movaps [eax+32],xmm0" \
+#pragma aux vk_mul3 = ".686" ".xmm2" "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "mulps xmm0,[ebx+16]" "movaps [eax+16],xmm0" "movaps xmm0,[edx+32]" "mulps xmm0,[ebx+32]" "movaps [eax+32],xmm0" \
  parm [eax] [edx] [ebx] modify exact [];
 static void vk_add3(v4x3 *out,const v4x3 *a,const v4x3 *b);
-#pragma aux vk_add3 = "movaps xmm0,[edx]" "addps xmm0,[ebx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "addps xmm0,[ebx+16]" "movaps [eax+16],xmm0" "movaps xmm0,[edx+32]" "addps xmm0,[ebx+32]" "movaps [eax+32],xmm0" \
+#pragma aux vk_add3 = ".686" ".xmm2" "movaps xmm0,[edx]" "addps xmm0,[ebx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "addps xmm0,[ebx+16]" "movaps [eax+16],xmm0" "movaps xmm0,[edx+32]" "addps xmm0,[ebx+32]" "movaps [eax+32],xmm0" \
  parm [eax] [edx] [ebx] modify exact [];
 static void vk_scale3(v4x3 *v,const v4 *s);
-#pragma aux vk_scale3 = "movaps xmm1,[edx]" "movaps xmm0,[eax]" "mulps xmm0,xmm1" "movaps [eax],xmm0" "movaps xmm0,[eax+16]" "mulps xmm0,xmm1" "movaps [eax+16],xmm0" "movaps xmm0,[eax+32]" "mulps xmm0,xmm1" "movaps [eax+32],xmm0" \
+#pragma aux vk_scale3 = ".686" ".xmm2" "movaps xmm1,[edx]" "movaps xmm0,[eax]" "mulps xmm0,xmm1" "movaps [eax],xmm0" "movaps xmm0,[eax+16]" "mulps xmm0,xmm1" "movaps [eax+16],xmm0" "movaps xmm0,[eax+32]" "mulps xmm0,xmm1" "movaps [eax+32],xmm0" \
  parm [eax] [edx] modify exact [];
 /* out = a s + b, each component */
 static void vk_madd3(v4x3 *out,const v4x3 *a,const v4 *s,const v4x3 *b);
-#pragma aux vk_madd3 = "movaps xmm1,[ebx]" "movaps xmm0,[edx]" "mulps xmm0,xmm1" "addps xmm0,[ecx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "mulps xmm0,xmm1" "addps xmm0,[ecx+16]" "movaps [eax+16],xmm0" \
+#pragma aux vk_madd3 = ".686" ".xmm2" "movaps xmm1,[ebx]" "movaps xmm0,[edx]" "mulps xmm0,xmm1" "addps xmm0,[ecx]" "movaps [eax],xmm0" "movaps xmm0,[edx+16]" "mulps xmm0,xmm1" "addps xmm0,[ecx+16]" "movaps [eax+16],xmm0" \
  "movaps xmm0,[edx+32]" "mulps xmm0,xmm1" "addps xmm0,[ecx+32]" "movaps [eax+32],xmm0" parm [eax] [edx] [ebx] [ecx] modify exact [];
 /* out = mask ? a : b, each component (mask lanes all ones or all zeros) */
 static void vk_blend3(v4x3 *out,const v4 *mask,const v4x3 *a,const v4x3 *b);
-#pragma aux vk_blend3 = "movaps xmm1,[edx]" \
+#pragma aux vk_blend3 = ".686" ".xmm2" "movaps xmm1,[edx]" \
  "movaps xmm0,[ebx]" "andps xmm0,xmm1" "movaps xmm2,xmm1" "andnps xmm2,[ecx]" "orps xmm0,xmm2" "movaps [eax],xmm0" \
  "movaps xmm0,[ebx+16]" "andps xmm0,xmm1" "movaps xmm2,xmm1" "andnps xmm2,[ecx+16]" "orps xmm0,xmm2" "movaps [eax+16],xmm0" \
  "movaps xmm0,[ebx+32]" "andps xmm0,xmm1" "movaps xmm2,xmm1" "andnps xmm2,[ecx+32]" "orps xmm0,xmm2" "movaps [eax+32],xmm0" \
  parm [eax] [edx] [ebx] [ecx] modify exact [];
 /* r = rsqrtps(in); t = (r r) in; out = ((3 - t) r) 0.5 */
 static void vk_rsqrt_nr(v4 *out,const v4 *in,const v4 *k);
-#pragma aux vk_rsqrt_nr = "movaps xmm0,[edx]" "rsqrtps xmm1,xmm0" "movaps xmm2,xmm1" "mulps xmm2,xmm1" "mulps xmm2,xmm0" "movaps xmm3,[ebx+16]" "subps xmm3,xmm2" "mulps xmm3,xmm1" "mulps xmm3,[ebx]" "movaps [eax],xmm3" \
+#pragma aux vk_rsqrt_nr = ".686" ".xmm2" "movaps xmm0,[edx]" "rsqrtps xmm1,xmm0" "movaps xmm2,xmm1" "mulps xmm2,xmm1" "mulps xmm2,xmm0" "movaps xmm3,[ebx+16]" "subps xmm3,xmm2" "mulps xmm3,xmm1" "mulps xmm3,[ebx]" "movaps [eax],xmm3" \
  parm [eax] [edx] [ebx] modify exact [];
 /* r = rcpps(in); t = (r in) r; out = (r + r) - t */
 static void vk_rcp_nr(v4 *out,const v4 *in);
-#pragma aux vk_rcp_nr = "movaps xmm0,[edx]" "rcpps xmm1,xmm0" "movaps xmm2,xmm1" "mulps xmm2,xmm0" "mulps xmm2,xmm1" "addps xmm1,xmm1" "subps xmm1,xmm2" "movaps [eax],xmm1" parm [eax] [edx] modify exact [];
+#pragma aux vk_rcp_nr = ".686" ".xmm2" "movaps xmm0,[edx]" "rcpps xmm1,xmm0" "movaps xmm2,xmm1" "mulps xmm2,xmm0" "mulps xmm2,xmm1" "addps xmm1,xmm1" "subps xmm1,xmm2" "movaps [eax],xmm1" parm [eax] [edx] modify exact [];
 static void vk_mul(v4 *out,const v4 *a,const v4 *b);
-#pragma aux vk_mul = "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] modify exact [];
+#pragma aux vk_mul = ".686" ".xmm2" "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] modify exact [];
 /* out = (a b) + c */
 static void vk_mad(v4 *out,const v4 *a,const v4 *b,const v4 *c);
-#pragma aux vk_mad = "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "addps xmm0,[ecx]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] [ecx] modify exact [];
+#pragma aux vk_mad = ".686" ".xmm2" "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "addps xmm0,[ecx]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] [ecx] modify exact [];
 /* the six compares of clip1 (vxgl_sse.c) for four lanes: bits 0-3 w < x, 4-7 w < y, 8-11 w < z, 12-15 w < -x, 16-19 w < -y, 20-23 w < -z; sign the sign-bit splat */
 static unsigned vk_clipbits(const v4x4 *c,const v4 *sign);
-#pragma aux vk_clipbits = "movaps xmm0,[eax]" "movaps xmm1,[eax+16]" "movaps xmm2,[eax+32]" "movaps xmm3,[eax+48]" "movaps xmm5,[edx]" \
+#pragma aux vk_clipbits = ".686" ".xmm2" "movaps xmm0,[eax]" "movaps xmm1,[eax+16]" "movaps xmm2,[eax+32]" "movaps xmm3,[eax+48]" "movaps xmm5,[edx]" \
  "movaps xmm4,xmm3" "cmpltps xmm4,xmm0" "movmskps eax,xmm4" \
  "movaps xmm4,xmm3" "cmpltps xmm4,xmm1" "movmskps ecx,xmm4" "shl ecx,4" "or eax,ecx" \
  "movaps xmm4,xmm3" "cmpltps xmm4,xmm2" "movmskps ecx,xmm4" "shl ecx,8" "or eax,ecx" \
@@ -209,15 +209,16 @@ static unsigned vk_clipbits(const v4x4 *c,const v4 *sign);
  "xorps xmm1,xmm5" "movaps xmm4,xmm3" "cmpltps xmm4,xmm1" "movmskps ecx,xmm4" "shl ecx,16" "or eax,ecx" \
  "xorps xmm2,xmm5" "movaps xmm4,xmm3" "cmpltps xmm4,xmm2" "movmskps ecx,xmm4" "shl ecx,20" "or eax,ecx" \
  parm [eax] [edx] value [eax] modify exact [eax ecx];
-/* oow = 1 / w (one / w, a true divide); out = (x oow, y oow, z oow, oow) where keep is set, (0, 0, 0, 1) elsewhere (the clipped vertices, as vxgl_sse_cliptest4) */
+/* oow = 1 / w (one / w, a true divide); out = (x oow, y oow, z oow, oow) where keep is set, (0, 0, 0, 1) elsewhere (the clipped vertices, as vxgl_sse_cliptest4).
+ * .728 (Gemini review #19): and (0, 0, 0, 1) where w is exactly 0: (0, 0, 0, 0) gets no clip bit (the tests are strict, as Mesa's) and its divide gave infinities */
 static void vk_project(const v4x4 *c,const v4 *keep,const v4 *one,v4x4 *out);
-#pragma aux vk_project = "movaps xmm3,[eax+48]" "movaps xmm4,[ebx]" "divps xmm4,xmm3" \
+#pragma aux vk_project = ".686" ".xmm2" "movaps xmm3,[eax+48]" "movaps xmm4,[ebx]" "divps xmm4,xmm3" \
  "movaps xmm0,[eax]" "mulps xmm0,xmm4" "movaps xmm1,[eax+16]" "mulps xmm1,xmm4" "movaps xmm2,[eax+32]" "mulps xmm2,xmm4" \
- "movaps xmm5,[edx]" "andps xmm0,xmm5" "andps xmm1,xmm5" "andps xmm2,xmm5" "andps xmm4,xmm5" "movaps xmm6,xmm5" "andnps xmm6,[ebx]" "orps xmm4,xmm6" \
+ "movaps xmm5,[edx]" "xorps xmm7,xmm7" "cmpneqps xmm7,xmm3" "andps xmm5,xmm7" "andps xmm0,xmm5" "andps xmm1,xmm5" "andps xmm2,xmm5" "andps xmm4,xmm5" "movaps xmm6,xmm5" "andnps xmm6,[ebx]" "orps xmm4,xmm6" \
  "movaps [edi],xmm0" "movaps [edi+16],xmm1" "movaps [edi+32],xmm2" "movaps [edi+48],xmm4" parm [eax] [edx] [ebx] [edi] modify exact [];
 /* window coordinates (vp[0] x + vp[12], ... ; vp the six splats sx sy sz tx ty tz) of four lanes, transposed and written as four vertices' x y z rhw at dst, dst + stride, ... */
 static void vk_viewport_store(const v4x4 *p,const v4 *vp,GLubyte *dst,unsigned stride);
-#pragma aux vk_viewport_store = "movaps xmm0,[eax]" "mulps xmm0,[edx]" "addps xmm0,[edx+48]" "movaps xmm1,[eax+16]" "mulps xmm1,[edx+16]" "addps xmm1,[edx+64]" \
+#pragma aux vk_viewport_store = ".686" ".xmm2" "movaps xmm0,[eax]" "mulps xmm0,[edx]" "addps xmm0,[edx+48]" "movaps xmm1,[eax+16]" "mulps xmm1,[edx+16]" "addps xmm1,[edx+64]" \
  "movaps xmm2,[eax+32]" "mulps xmm2,[edx+32]" "addps xmm2,[edx+80]" "movaps xmm3,[eax+48]" \
  "movaps xmm4,xmm0" "unpcklps xmm4,xmm1" "movaps xmm5,xmm2" "unpcklps xmm5,xmm3" "unpckhps xmm0,xmm1" "unpckhps xmm2,xmm3" \
  "movaps xmm6,xmm4" "movlhps xmm6,xmm5" "movups [edi],xmm6" "movhlps xmm5,xmm4" "movups [edi+ecx],xmm5" \
@@ -225,27 +226,27 @@ static void vk_viewport_store(const v4x4 *p,const v4 *vp,GLubyte *dst,unsigned s
  parm [eax] [edx] [edi] [ecx] modify exact [edi];
 /* four lanes transposed to four x y z w at dst (the clip coordinates for the clipper) */
 static void vk_tr_store(const v4x4 *c,GLfloat *dst);
-#pragma aux vk_tr_store = "movaps xmm0,[eax]" "movaps xmm1,[eax+16]" "movaps xmm2,[eax+32]" "movaps xmm3,[eax+48]" \
+#pragma aux vk_tr_store = ".686" ".xmm2" "movaps xmm0,[eax]" "movaps xmm1,[eax+16]" "movaps xmm2,[eax+32]" "movaps xmm3,[eax+48]" \
  "movaps xmm4,xmm0" "unpcklps xmm4,xmm1" "movaps xmm5,xmm2" "unpcklps xmm5,xmm3" "unpckhps xmm0,xmm1" "unpckhps xmm2,xmm3" \
  "movaps xmm6,xmm4" "movlhps xmm6,xmm5" "movaps [edi],xmm6" "movhlps xmm5,xmm4" "movaps [edi+16],xmm5" \
  "movaps xmm6,xmm0" "movlhps xmm6,xmm2" "movaps [edi+32],xmm6" "movhlps xmm2,xmm0" "movaps [edi+48],xmm2" parm [eax] [edi] modify exact [];
 /* out = in (255/256) + 32768 (k the two splats): the integer bits' low byte is UNCLAMPED_FLOAT_TO_UBYTE's byte for 0 <= in < 0.996 */
 static void vk_bias(v4 *out,const v4 *in,const v4 *k);
-#pragma aux vk_bias = "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "addps xmm0,[ebx+16]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] modify exact [];
+#pragma aux vk_bias = ".686" ".xmm2" "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "addps xmm0,[ebx+16]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] modify exact [];
 /* v10.489: GL_LINEAR fog for four lanes: f = (end - |z|) d, clamped to 0..1 (t_vb_fog.c's order: CLAMP keeps 0 for a NaN as maxps does) */
 static void vk_linfog(v4 *out,const v4 *z,const v4 *k);
-#pragma aux vk_linfog = "movaps xmm0,[edx]" "andps xmm0,[ebx]" "movaps xmm1,[ebx+16]" "subps xmm1,xmm0" "mulps xmm1,[ebx+32]" "maxps xmm1,[ebx+48]" "minps xmm1,[ebx+64]" "movaps [eax],xmm1" \
+#pragma aux vk_linfog = ".686" ".xmm2" "movaps xmm0,[edx]" "andps xmm0,[ebx]" "movaps xmm1,[ebx+16]" "subps xmm1,xmm0" "mulps xmm1,[ebx+32]" "maxps xmm1,[ebx+48]" "minps xmm1,[ebx+64]" "movaps [eax],xmm1" \
  parm [eax] [edx] [ebx] modify exact [];
 /* v10.490: UNCLAMPED_FLOAT_TO_UBYTE's byte for four lanes, no branch: x = max(in, 0) (a negative, -0: 0), x >= 0.99609375 (IEEE_0996): 1,
  * then x (255/256) + 32768, the bits' low byte (k: 255/256, 32768, 0, 0.99609375, 1). A NaN lane: vk_unord first, the scalar ub_from */
 static void vk_ub(v4 *out,const v4 *in,const v4 *k);
-#pragma aux vk_ub = "movaps xmm0,[edx]" "maxps xmm0,[ebx+32]" "movaps xmm1,[ebx+48]" "cmpleps xmm1,xmm0" "movaps xmm2,xmm1" "andnps xmm1,xmm0" "andps xmm2,[ebx+64]" "orps xmm1,xmm2" \
+#pragma aux vk_ub = ".686" ".xmm2" "movaps xmm0,[edx]" "maxps xmm0,[ebx+32]" "movaps xmm1,[ebx+48]" "cmpleps xmm1,xmm0" "movaps xmm2,xmm1" "andnps xmm1,xmm0" "andps xmm2,[ebx+64]" "orps xmm1,xmm2" \
  "mulps xmm1,[ebx]" "addps xmm1,[ebx+16]" "movaps [eax],xmm1" parm [eax] [edx] [ebx] modify exact [];
 /* .503 (ACCEL_OPENGL_SSE2): four vertices' colour words from vk_ub's biased lanes (rgb[0] red, rgb[1] green, rgb[2] blue, a alpha: each
  * lane's low byte the channel's byte), blue | green << 8 | red << 16 | alpha << 24, stored at d, d + vs, d + 2 vs, d + 3 vs: the same words
  * the C loop makes from the same lanes (pand, pslld, por; movd and psrldq for the stores) */
 static void vk_pack(GLubyte *d,const v4 *rgb,const v4 *a,unsigned vs);
-#pragma aux vk_pack = "pcmpeqd xmm7,xmm7" "psrld xmm7,24" \
+#pragma aux vk_pack = ".686" ".xmm2" "pcmpeqd xmm7,xmm7" "psrld xmm7,24" \
  "movdqa xmm0,[edx+32]" "pand xmm0,xmm7" \
  "movdqa xmm1,[edx+16]" "pand xmm1,xmm7" "pslld xmm1,8" "por xmm0,xmm1" \
  "movdqa xmm1,[edx]" "pand xmm1,xmm7" "pslld xmm1,16" "por xmm0,xmm1" \
@@ -254,39 +255,39 @@ static void vk_pack(GLubyte *d,const v4 *rgb,const v4 *a,unsigned vs);
  parm [eax] [edx] [ebx] [ecx] modify exact [eax];
 /* .505: the lanes with k[0] < v < k[1] (a NaN: not), their bits (range_bad by SSE: RB below) */
 static unsigned vk_range(const v4 *v,const v4 *k);
-#pragma aux vk_range = "movaps xmm0,[edx]" "cmpltps xmm0,[eax]" "movaps xmm1,[eax]" "cmpltps xmm1,[edx+16]" "andps xmm0,xmm1" "movmskps eax,xmm0" parm [eax] [edx] value [eax] modify exact [eax];
+#pragma aux vk_range = ".686" ".xmm2" "movaps xmm0,[edx]" "cmpltps xmm0,[eax]" "movaps xmm1,[eax]" "cmpltps xmm1,[edx+16]" "andps xmm0,xmm1" "movmskps eax,xmm0" parm [eax] [edx] value [eax] modify exact [eax];
 /* v10.492: mask = a >= b a lane (all ones or zeros; a NaN: zeros), its lanes' bits returned */
 static unsigned vk_gemask(v4 *mask,const v4 *a,const v4 *b);
-#pragma aux vk_gemask = "movaps xmm0,[ebx]" "cmpleps xmm0,[edx]" "movaps [eax],xmm0" "movmskps eax,xmm0" parm [eax] [edx] [ebx] value [eax] modify exact [eax];
+#pragma aux vk_gemask = ".686" ".xmm2" "movaps xmm0,[ebx]" "cmpleps xmm0,[edx]" "movaps [eax],xmm0" "movmskps eax,xmm0" parm [eax] [edx] [ebx] value [eax] modify exact [eax];
 /* the lanes holding a NaN (bit v) */
 static unsigned vk_unord(const v4 *in);
-#pragma aux vk_unord = "movaps xmm0,[eax]" "cmpunordps xmm0,xmm0" "movmskps eax,xmm0" parm [eax] value [eax] modify exact [eax];
+#pragma aux vk_unord = ".686" ".xmm2" "movaps xmm0,[eax]" "cmpunordps xmm0,xmm0" "movmskps eax,xmm0" parm [eax] value [eax] modify exact [eax];
 /* v10.490: the shine table's index for four lanes (GET_SHINE_TAB_ENTRY): sh[0] f = n.h 255, sh[1] floor(f) (f + 1.5 2^23 - 1.5 2^23, less
  * 1 where that went past f), sh[2] floor(f) + 1.5 2^23 (its bits less 0x4B400000: the integer) (k: 255, 1.5 2^23, 1); 0 <= f < 255 */
 static void vk_shine_a(v4 *sh,const v4 *ndh,const v4 *k);
-#pragma aux vk_shine_a = "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps xmm1,xmm0" "addps xmm1,[ebx+16]" "subps xmm1,[ebx+16]" "movaps xmm2,xmm0" "cmpltps xmm2,xmm1" \
+#pragma aux vk_shine_a = ".686" ".xmm2" "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps xmm1,xmm0" "addps xmm1,[ebx+16]" "subps xmm1,[ebx+16]" "movaps xmm2,xmm0" "cmpltps xmm2,xmm1" \
  "andps xmm2,[ebx+32]" "subps xmm1,xmm2" "movaps xmm3,xmm1" "addps xmm3,[ebx+16]" "movaps [eax],xmm0" "movaps [eax+16],xmm1" "movaps [eax+32],xmm3" parm [eax] [edx] [ebx] modify exact [];
 /* out = t0 + (f - floor(f)) (t1 - t0): sh[0] f, sh[1] floor(f), sh[3] t0, sh[4] t1 (the table's entries k and k + 1) */
 static void vk_shine_b(v4 *out,const v4 *sh);
-#pragma aux vk_shine_b = "movaps xmm0,[edx]" "subps xmm0,[edx+16]" "movaps xmm1,[edx+64]" "subps xmm1,[edx+48]" "mulps xmm0,xmm1" "addps xmm0,[edx+48]" "movaps [eax],xmm0" parm [eax] [edx] modify exact [];
+#pragma aux vk_shine_b = ".686" ".xmm2" "movaps xmm0,[edx]" "subps xmm0,[edx+16]" "movaps xmm1,[edx+64]" "subps xmm1,[edx+48]" "mulps xmm0,xmm1" "addps xmm0,[edx+48]" "movaps [eax],xmm0" parm [eax] [edx] modify exact [];
 /* v10.490: snapw (vx_d3d_core.c) for four lanes of |x| < 2040: n = x 2048 rounded half away from zero (floor(|x| 2048), plus 1 where the
  * fraction is 1/2 or more, the sign put back), n / 128 to an integer down (up: vk_snapu), times 1/16. k: the abs mask, 2048, 1.5 2^23, 1, 0.5,
  * 1/128, 1/16, the sign mask. Every step exact: the same float as snapw's */
 static void vk_snapd(v4 *out,const v4 *in,const v4 *k);
-#pragma aux vk_snapd = "movaps xmm0,[edx]" "movaps xmm7,xmm0" "andps xmm7,[ebx+112]" "andps xmm0,[ebx]" "mulps xmm0,[ebx+16]" \
+#pragma aux vk_snapd = ".686" ".xmm2" "movaps xmm0,[edx]" "movaps xmm7,xmm0" "andps xmm7,[ebx+112]" "andps xmm0,[ebx]" "mulps xmm0,[ebx+16]" \
  "movaps xmm1,xmm0" "addps xmm1,[ebx+32]" "subps xmm1,[ebx+32]" "movaps xmm2,xmm0" "cmpltps xmm2,xmm1" "andps xmm2,[ebx+48]" "subps xmm1,xmm2" \
  "subps xmm0,xmm1" "movaps xmm2,[ebx+64]" "cmpleps xmm2,xmm0" "andps xmm2,[ebx+48]" "addps xmm1,xmm2" "orps xmm1,xmm7" "mulps xmm1,[ebx+80]" \
  "movaps xmm0,xmm1" "addps xmm0,[ebx+32]" "subps xmm0,[ebx+32]" "movaps xmm2,xmm1" "cmpltps xmm2,xmm0" "andps xmm2,[ebx+48]" "subps xmm0,xmm2" \
  "mulps xmm0,[ebx+96]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] modify exact [];
 static void vk_snapu(v4 *out,const v4 *in,const v4 *k);
-#pragma aux vk_snapu = "movaps xmm0,[edx]" "movaps xmm7,xmm0" "andps xmm7,[ebx+112]" "andps xmm0,[ebx]" "mulps xmm0,[ebx+16]" \
+#pragma aux vk_snapu = ".686" ".xmm2" "movaps xmm0,[edx]" "movaps xmm7,xmm0" "andps xmm7,[ebx+112]" "andps xmm0,[ebx]" "mulps xmm0,[ebx+16]" \
  "movaps xmm1,xmm0" "addps xmm1,[ebx+32]" "subps xmm1,[ebx+32]" "movaps xmm2,xmm0" "cmpltps xmm2,xmm1" "andps xmm2,[ebx+48]" "subps xmm1,xmm2" \
  "subps xmm0,xmm1" "movaps xmm2,[ebx+64]" "cmpleps xmm2,xmm0" "andps xmm2,[ebx+48]" "addps xmm1,xmm2" "orps xmm1,xmm7" "mulps xmm1,[ebx+80]" \
  "movaps xmm0,xmm1" "addps xmm0,[ebx+32]" "subps xmm0,[ebx+32]" "movaps xmm2,xmm0" "cmpltps xmm2,xmm1" "andps xmm2,[ebx+48]" "addps xmm0,xmm2" \
  "mulps xmm0,[ebx+96]" "movaps [eax],xmm0" parm [eax] [edx] [ebx] modify exact [];
 /* the lanes with |x| < 2040 (bit v; a NaN: not) (k[0] the abs mask, k[8] 2040) */
 static unsigned vk_snapok(const v4 *in,const v4 *k);
-#pragma aux vk_snapok = "movaps xmm0,[eax]" "andps xmm0,[edx]" "movaps xmm1,[edx+128]" "cmpltps xmm0,xmm1" "movmskps eax,xmm0" parm [eax] [edx] value [eax] modify exact [eax];
+#pragma aux vk_snapok = ".686" ".xmm2" "movaps xmm0,[eax]" "andps xmm0,[edx]" "movaps xmm1,[edx+128]" "cmpltps xmm0,xmm1" "movmskps eax,xmm0" parm [eax] [edx] value [eax] modify exact [eax];
 /* ---- v10.495 (ACCEL_OPENGL_SSEFUSE; board, Lattice v10.493: sse_group 35% of the samples, its kernels each loading their inputs from the
  * store and writing their result back): a phase's kernels in one, the values kept in the registers between them. The same instructions on
  * the same values in the same order as the kernels they replace (each named below), so every result is the same float; vxgl_ssepass_ktest 4
@@ -294,7 +295,7 @@ static unsigned vk_snapok(const v4 *in,const v4 *k);
 /* vk_xf4, vk_clipbits, the kept lanes (no compare set), vk_project, vk_viewport_store and vk_tr_store: k the store's mvp (sign +256, one +272,
  * vp +288, the stride +384); the compare bits returned (vk_clipbits'), the window vertices at dst, the clip coordinates at clip */
 static unsigned vk_front(const v4 *k,const GLfloat *x,const GLfloat *y,const GLfloat *z,GLubyte *dst,GLfloat *clip);
-#pragma aux vk_front = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_front = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,[eax]" "mulps xmm0,xmm4" "movaps xmm7,[eax+64]" "mulps xmm7,xmm5" "addps xmm0,xmm7" "movaps xmm7,[eax+128]" "mulps xmm7,xmm6" "addps xmm0,xmm7" "addps xmm0,[eax+192]" \
  "movaps xmm1,[eax+16]" "mulps xmm1,xmm4" "movaps xmm7,[eax+80]" "mulps xmm7,xmm5" "addps xmm1,xmm7" "movaps xmm7,[eax+144]" "mulps xmm7,xmm6" "addps xmm1,xmm7" "addps xmm1,[eax+208]" \
  "movaps xmm2,[eax+32]" "mulps xmm2,xmm4" "movaps xmm7,[eax+96]" "mulps xmm7,xmm5" "addps xmm2,xmm7" "movaps xmm7,[eax+160]" "mulps xmm7,xmm6" "addps xmm2,xmm7" "addps xmm2,[eax+224]" \
@@ -318,7 +319,7 @@ static unsigned vk_front(const v4 *k,const GLfloat *x,const GLfloat *y,const GLf
  parm [eax] [edx] [ebx] [ecx] [edi] [esi] value [eax] modify exact [eax ebx ecx edx edi];
 /* v10.495 (ACCEL_OPENGL_SSEACCEPT): vk_front for a group the box has inside every plane (no compare can be set: every lane kept): no compares */
 static void vk_front_in(const v4 *k,const GLfloat *x,const GLfloat *y,const GLfloat *z,GLubyte *dst,GLfloat *clip);
-#pragma aux vk_front_in = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_front_in = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,[eax]" "mulps xmm0,xmm4" "movaps xmm7,[eax+64]" "mulps xmm7,xmm5" "addps xmm0,xmm7" "movaps xmm7,[eax+128]" "mulps xmm7,xmm6" "addps xmm0,xmm7" "addps xmm0,[eax+192]" \
  "movaps xmm1,[eax+16]" "mulps xmm1,xmm4" "movaps xmm7,[eax+80]" "mulps xmm7,xmm5" "addps xmm1,xmm7" "movaps xmm7,[eax+144]" "mulps xmm7,xmm6" "addps xmm1,xmm7" "addps xmm1,[eax+208]" \
  "movaps xmm2,[eax+32]" "mulps xmm2,xmm4" "movaps xmm7,[eax+96]" "mulps xmm7,xmm5" "addps xmm2,xmm7" "movaps xmm7,[eax+160]" "mulps xmm7,xmm6" "addps xmm2,xmm7" "addps xmm2,[eax+224]" \
@@ -333,7 +334,7 @@ static void vk_front_in(const v4 *k,const GLfloat *x,const GLfloat *y,const GLfl
  parm [eax] [edx] [ebx] [ecx] [edi] [esi] modify exact [ecx edi]; /* (v10.497: the window x y at +400, +416 as vk_front) */
 /* vk_xfn then vk_norm3: k 0.5, 3, the lengths written at k + 32 */
 static void vk_xfn_norm(const v4 *n,const GLfloat *x,const GLfloat *y,const GLfloat *z,v4x3 *out,v4 *k);
-#pragma aux vk_xfn_norm = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_xfn_norm = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,xmm4" "mulps xmm0,[eax]" "movaps xmm7,xmm5" "mulps xmm7,[eax+16]" "addps xmm0,xmm7" "movaps xmm7,xmm6" "mulps xmm7,[eax+32]" "addps xmm0,xmm7" \
  "movaps xmm1,xmm4" "mulps xmm1,[eax+48]" "movaps xmm7,xmm5" "mulps xmm7,[eax+64]" "addps xmm1,xmm7" "movaps xmm7,xmm6" "mulps xmm7,[eax+80]" "addps xmm1,xmm7" \
  "movaps xmm2,xmm4" "mulps xmm2,[eax+96]" "movaps xmm7,xmm5" "mulps xmm7,[eax+112]" "addps xmm2,xmm7" "movaps xmm7,xmm6" "mulps xmm7,[eax+128]" "addps xmm2,xmm7" \
@@ -346,7 +347,7 @@ static void vk_xfn_norm(const v4 *n,const GLfloat *x,const GLfloat *y,const GLfl
  parm [eax] [edx] [ebx] [ecx] [edi] [esi] modify exact [];
 /* a positional light: vk_sub3 (vp = p - e), vk_dot3 (d2), vk_rsqrt_nr (invd), vk_mul (d = d2 invd), vk_scale3 (vp invd); k 0.5, 3, d2 at +32, d at +48 */
 static void vk_lpos(v4x3 *vp,const v4x3 *p,const v4x3 *e,v4 *k);
-#pragma aux vk_lpos = "movaps xmm0,[edx]" "subps xmm0,[ebx]" "movaps xmm1,[edx+16]" "subps xmm1,[ebx+16]" "movaps xmm2,[edx+32]" "subps xmm2,[ebx+32]" \
+#pragma aux vk_lpos = ".686" ".xmm2" "movaps xmm0,[edx]" "subps xmm0,[ebx]" "movaps xmm1,[edx+16]" "subps xmm1,[ebx+16]" "movaps xmm2,[edx+32]" "subps xmm2,[ebx+32]" \
  "movaps xmm3,xmm0" "mulps xmm3,xmm0" "movaps xmm7,xmm1" "mulps xmm7,xmm1" "addps xmm3,xmm7" "movaps xmm7,xmm2" "mulps xmm7,xmm2" "addps xmm3,xmm7" "movaps [ecx+32],xmm3" \
  "rsqrtps xmm4,xmm3" "movaps xmm5,xmm4" "mulps xmm5,xmm4" "mulps xmm5,xmm3" "movaps xmm6,[ecx+16]" "subps xmm6,xmm5" "mulps xmm6,xmm4" "mulps xmm6,[ecx]" \
  "movaps xmm7,xmm3" "mulps xmm7,xmm6" "movaps [ecx+48],xmm7" \
@@ -354,7 +355,7 @@ static void vk_lpos(v4x3 *vp,const v4x3 *p,const v4x3 *e,v4 *k);
  parm [eax] [edx] [ebx] [ecx] modify exact [];
 /* vk_dot3 (n.VP), vk_gemask (n.VP >= 0), vk_unord (n.VP), vk_madd3 (c = dif n.VP + amb), vk_blend3 (back-facing: amb): returns the mask's lanes, the NaN lanes << 4 */
 static unsigned vk_ldiff(v4x3 *c,const v4x3 *n,const v4x3 *vp,const v4x3 *dif,const v4x3 *amb);
-#pragma aux vk_ldiff = "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps xmm1,[edx+16]" "mulps xmm1,[ebx+16]" "addps xmm0,xmm1" "movaps xmm1,[edx+32]" "mulps xmm1,[ebx+32]" "addps xmm0,xmm1" \
+#pragma aux vk_ldiff = ".686" ".xmm2" "movaps xmm0,[edx]" "mulps xmm0,[ebx]" "movaps xmm1,[edx+16]" "mulps xmm1,[ebx+16]" "addps xmm0,xmm1" "movaps xmm1,[edx+32]" "mulps xmm1,[ebx+32]" "addps xmm0,xmm1" \
  "xorps xmm7,xmm7" "cmpleps xmm7,xmm0" "movmskps edx,xmm7" "movaps xmm6,xmm0" "cmpunordps xmm6,xmm6" "movmskps ebx,xmm6" "shl ebx,4" "or edx,ebx" \
  "movaps xmm1,[ecx]" "mulps xmm1,xmm0" "addps xmm1,[esi]" "andps xmm1,xmm7" "movaps xmm2,xmm7" "andnps xmm2,[esi]" "orps xmm1,xmm2" "movaps [eax],xmm1" \
  "movaps xmm1,[ecx+16]" "mulps xmm1,xmm0" "addps xmm1,[esi+16]" "andps xmm1,xmm7" "movaps xmm2,xmm7" "andnps xmm2,[esi+16]" "orps xmm1,xmm2" "movaps [eax+16],xmm1" \
@@ -362,14 +363,14 @@ static unsigned vk_ldiff(v4x3 *c,const v4x3 *n,const v4x3 *vp,const v4x3 *dif,co
  parm [eax] [edx] [ebx] [ecx] [esi] value [eax] modify exact [eax ebx edx];
 /* vk_madd3 (t = c att + s), vk_blend3 (s = amask ? t : s) */
 static void vk_lacc(v4x3 *s,const v4x3 *c,const v4 *att,const v4 *amask);
-#pragma aux vk_lacc = "movaps xmm4,[ebx]" "movaps xmm5,[ecx]" \
+#pragma aux vk_lacc = ".686" ".xmm2" "movaps xmm4,[ebx]" "movaps xmm5,[ecx]" \
  "movaps xmm0,[edx]" "mulps xmm0,xmm4" "addps xmm0,[eax]" "andps xmm0,xmm5" "movaps xmm1,xmm5" "andnps xmm1,[eax]" "orps xmm0,xmm1" "movaps [eax],xmm0" \
  "movaps xmm0,[edx+16]" "mulps xmm0,xmm4" "addps xmm0,[eax+16]" "andps xmm0,xmm5" "movaps xmm1,xmm5" "andnps xmm1,[eax+16]" "orps xmm0,xmm1" "movaps [eax+16],xmm0" \
  "movaps xmm0,[edx+32]" "mulps xmm0,xmm4" "addps xmm0,[eax+32]" "andps xmm0,xmm5" "movaps xmm1,xmm5" "andnps xmm1,[eax+32]" "orps xmm0,xmm1" "movaps [eax+32],xmm0" \
  parm [eax] [edx] [ebx] [ecx] modify exact [];
 /* vk_madd3 (c = spc spec + c), then vk_lacc */
 static void vk_laccs(v4x3 *s,const v4x3 *c,const v4 *att,const v4 *amask,const v4x3 *spc,const v4 *spec);
-#pragma aux vk_laccs = "movaps xmm4,[ebx]" "movaps xmm5,[ecx]" "movaps xmm6,[edi]" \
+#pragma aux vk_laccs = ".686" ".xmm2" "movaps xmm4,[ebx]" "movaps xmm5,[ecx]" "movaps xmm6,[edi]" \
  "movaps xmm0,[esi]" "mulps xmm0,xmm6" "addps xmm0,[edx]" "mulps xmm0,xmm4" "addps xmm0,[eax]" "andps xmm0,xmm5" "movaps xmm1,xmm5" "andnps xmm1,[eax]" "orps xmm0,xmm1" "movaps [eax],xmm0" \
  "movaps xmm0,[esi+16]" "mulps xmm0,xmm6" "addps xmm0,[edx+16]" "mulps xmm0,xmm4" "addps xmm0,[eax+16]" "andps xmm0,xmm5" "movaps xmm1,xmm5" "andnps xmm1,[eax+16]" "orps xmm0,xmm1" "movaps [eax+16],xmm0" \
  "movaps xmm0,[esi+32]" "mulps xmm0,xmm6" "addps xmm0,[edx+32]" "mulps xmm0,xmm4" "addps xmm0,[eax+32]" "andps xmm0,xmm5" "movaps xmm1,xmm5" "andnps xmm1,[eax+32]" "orps xmm0,xmm1" "movaps [eax+32],xmm0" \
@@ -384,10 +385,10 @@ static void vk_laccs(v4x3 *s,const v4x3 *c,const v4 *att,const v4 *amask,const v
  "movaps xmm3,xmm7" "andnps xmm3,xmm2" "mulps xmm2,xmm6" "andps xmm2,xmm7" "orps xmm2,xmm3" \
  "movaps xmm3,[ecx]" "mulps xmm3,xmm0" "movaps xmm4,[ecx+16]" "mulps xmm4,xmm1" "addps xmm3,xmm4" "movaps xmm4,[ecx+32]" "mulps xmm4,xmm2" "addps xmm3,xmm4" "movaps [eax+16],xmm3"
 static void vk_lhalf_sub(v4 *out,const v4x3 *vp,const v4x3 *o,const v4x3 *n,const v4 *k);
-#pragma aux vk_lhalf_sub = "movaps xmm0,[edx]" "subps xmm0,[ebx]" "movaps xmm1,[edx+16]" "subps xmm1,[ebx+16]" "movaps xmm2,[edx+32]" "subps xmm2,[ebx+32]" VK_LHALF_TAIL \
+#pragma aux vk_lhalf_sub = ".686" ".xmm2" "movaps xmm0,[edx]" "subps xmm0,[ebx]" "movaps xmm1,[edx+16]" "subps xmm1,[ebx+16]" "movaps xmm2,[edx+32]" "subps xmm2,[ebx+32]" VK_LHALF_TAIL \
  parm [eax] [edx] [ebx] [ecx] [esi] modify exact [];
 static void vk_lhalf_add(v4 *out,const v4x3 *vp,const v4x3 *o,const v4x3 *n,const v4 *k);
-#pragma aux vk_lhalf_add = "movaps xmm0,[edx]" "addps xmm0,[ebx]" "movaps xmm1,[edx+16]" "addps xmm1,[ebx+16]" "movaps xmm2,[edx+32]" "addps xmm2,[ebx+32]" VK_LHALF_TAIL \
+#pragma aux vk_lhalf_add = ".686" ".xmm2" "movaps xmm0,[edx]" "addps xmm0,[ebx]" "movaps xmm1,[edx+16]" "addps xmm1,[ebx+16]" "movaps xmm2,[edx+32]" "addps xmm2,[ebx+32]" VK_LHALF_TAIL \
  parm [eax] [edx] [ebx] [ecx] [esi] modify exact [];
 /* v10.497 (ACCEL_OPENGL_SSESNAP2): the group's window x and y (vk_front's, at x and y) on snapw's grid: vk_snapd for x, vk_snapd (vk_snap2d) or
  * vk_snapu (vk_snap2u: y up, the window's flip) for y, the same steps; written as four x y pairs at o; returns vk_snapok's lanes for x, for y << 4
@@ -406,7 +407,7 @@ static void vk_lhalf_add(v4 *out,const v4x3 *vp,const v4x3 *o,const v4x3 *n,cons
  "movaps xmm3,[ebx]" "andps xmm3,[ecx]" "movaps xmm4,[ecx+128]" "cmpltps xmm3,xmm4" "movmskps esi,xmm3" "shl esi,4" "or eax,esi"
 /* v10.497: vk_xf4 then vk_clipbits, the clip coordinates kept in the registers (all_outside: no store) */
 static unsigned vk_xfbits(const v4 *k,const GLfloat *x,const GLfloat *y,const GLfloat *z);
-#pragma aux vk_xfbits = "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
+#pragma aux vk_xfbits = ".686" ".xmm2" "movaps xmm4,[edx]" "movaps xmm5,[ebx]" "movaps xmm6,[ecx]" \
  "movaps xmm0,[eax]" "mulps xmm0,xmm4" "movaps xmm7,[eax+64]" "mulps xmm7,xmm5" "addps xmm0,xmm7" "movaps xmm7,[eax+128]" "mulps xmm7,xmm6" "addps xmm0,xmm7" "addps xmm0,[eax+192]" \
  "movaps xmm1,[eax+16]" "mulps xmm1,xmm4" "movaps xmm7,[eax+80]" "mulps xmm7,xmm5" "addps xmm1,xmm7" "movaps xmm7,[eax+144]" "mulps xmm7,xmm6" "addps xmm1,xmm7" "addps xmm1,[eax+208]" \
  "movaps xmm2,[eax+32]" "mulps xmm2,xmm4" "movaps xmm7,[eax+96]" "mulps xmm7,xmm5" "addps xmm2,xmm7" "movaps xmm7,[eax+160]" "mulps xmm7,xmm6" "addps xmm2,xmm7" "addps xmm2,[eax+224]" \
@@ -422,17 +423,17 @@ static unsigned vk_xfbits(const v4 *k,const GLfloat *x,const GLfloat *y,const GL
 /* v10.497: a draw's box four lanes at a time: b[0..5] min x, max x, min y, max y, min z, max z (minps / maxps), b[6] ORs |p| >= 1e30 or a
  * NaN (cmpnltps against b[8], b[7] the abs mask) */
 static void vk_box3(v4 *b,const GLfloat *x,const GLfloat *y,const GLfloat *z);
-#pragma aux vk_box3 = "movaps xmm7,[eax+112]" "movaps xmm6,[eax+128]" "movaps xmm5,[eax+96]" \
+#pragma aux vk_box3 = ".686" ".xmm2" "movaps xmm7,[eax+112]" "movaps xmm6,[eax+128]" "movaps xmm5,[eax+96]" \
  "movaps xmm0,[edx]" "movaps xmm1,[eax]" "minps xmm1,xmm0" "movaps [eax],xmm1" "movaps xmm1,[eax+16]" "maxps xmm1,xmm0" "movaps [eax+16],xmm1" "andps xmm0,xmm7" "cmpnltps xmm0,xmm6" "orps xmm5,xmm0" \
  "movaps xmm0,[ebx]" "movaps xmm1,[eax+32]" "minps xmm1,xmm0" "movaps [eax+32],xmm1" "movaps xmm1,[eax+48]" "maxps xmm1,xmm0" "movaps [eax+48],xmm1" "andps xmm0,xmm7" "cmpnltps xmm0,xmm6" "orps xmm5,xmm0" \
  "movaps xmm0,[ecx]" "movaps xmm1,[eax+64]" "minps xmm1,xmm0" "movaps [eax+64],xmm1" "movaps xmm1,[eax+80]" "maxps xmm1,xmm0" "movaps [eax+80],xmm1" "andps xmm0,xmm7" "cmpnltps xmm0,xmm6" "orps xmm5,xmm0" \
  "movaps [eax+96],xmm5" parm [eax] [edx] [ebx] [ecx] modify exact [];
 static unsigned vk_snap2d(GLuint *o,const v4 *x,const v4 *y,const v4 *k);
-#pragma aux vk_snap2d = "movaps xmm0,[edx]" VK_SNAP_D "movaps xmm5,xmm0" "movaps xmm0,[ebx]" VK_SNAP_D \
+#pragma aux vk_snap2d = ".686" ".xmm2" "movaps xmm0,[edx]" VK_SNAP_D "movaps xmm5,xmm0" "movaps xmm0,[ebx]" VK_SNAP_D \
  "movaps xmm6,xmm5" "unpcklps xmm6,xmm0" "movups [eax],xmm6" "unpckhps xmm5,xmm0" "movups [eax+16],xmm5" VK_SNAP_OK \
  parm [eax] [edx] [ebx] [ecx] value [eax] modify exact [eax esi];
 static unsigned vk_snap2u(GLuint *o,const v4 *x,const v4 *y,const v4 *k);
-#pragma aux vk_snap2u = "movaps xmm0,[edx]" VK_SNAP_D "movaps xmm5,xmm0" "movaps xmm0,[ebx]" VK_SNAP_U \
+#pragma aux vk_snap2u = ".686" ".xmm2" "movaps xmm0,[edx]" VK_SNAP_D "movaps xmm5,xmm0" "movaps xmm0,[ebx]" VK_SNAP_U \
  "movaps xmm6,xmm5" "unpcklps xmm6,xmm0" "movups [eax],xmm6" "unpckhps xmm5,xmm0" "movups [eax+16],xmm5" VK_SNAP_OK \
  parm [eax] [edx] [ebx] [ecx] value [eax] modify exact [eax esi];
 #define VK_SSE 1
@@ -613,7 +614,7 @@ static void ref_light(GLcontext *ctx,const sp_store *st,const GLfloat *vertex,co
    if(light->LinearAttenuation==0.0F&&light->QuadraticAttenuation==0.0F)attenuation=light->ConstantAttenuation==1.0F?1.0F:1.0F/light->ConstantAttenuation;
    else attenuation=vx_recipf(light->ConstantAttenuation+d*(light->LinearAttenuation+d*light->QuadraticAttenuation));
    if(light->_Flags&LIGHT_SPOT){GLfloat PV_dot_dir=-DOT3(VP,light->_NormDirection); /* v10.488: as light_vx855 */
-    if(PV_dot_dir<light->_CosCutoff){n++;continue;}
+    if(!(PV_dot_dir>=light->_CosCutoff)){n++;continue;} /* .754 (outside review): a NaN is outside the cone (it indexed the table at -2^31) */
     else{GLdouble x=PV_dot_dir*(EXP_TABLE_SIZE-1);GLint k=vx_itruncd(x);GLfloat spot=(GLfloat)(light->_SpotExpTable[k][0]+(x-k)*light->_SpotExpTable[k][1]);attenuation*=spot;}}}
   n++;
   if(fbits(attenuation)<thr)continue;
@@ -634,7 +635,7 @@ static GLfloat ref_fog(const sp_store *st,GLfloat z) {
  GLfloat d=st->fogd;
  if(st->fogmode==GL_LINEAR){GLfloat f=(st->fogend-z)*d;return CLAMP(f,0.0F,1.0F);}
  {GLfloat narg=st->fogmode==GL_EXP?d*z:d*z*z,f=(GLfloat)(narg*(1.0/(10.0/256)));GLint k=vx_itrunc(f);
-  if(k>256-2)return (GLfloat).0006595;return st->exptab[k]+(f-k)*(st->exptab[k+1]-st->exptab[k]);}
+  if((GLuint)k>256-2)return (GLfloat).0006595; /* .754 (outside review): a NaN argument (k -2^31) too */return st->exptab[k]+(f-k)*(st->exptab[k+1]-st->exptab[k]);}
 }
 /* vertex i of the list: clip coordinates to clip[4], its clip mask, and the engine's vertex at dst */
 /* .639 (Flocks.scr: 2,016 one-triangle lit list draws a frame, one directional light, no local viewer: every one declined, reason 0x20):
@@ -1333,7 +1334,9 @@ static GLuint sp_prepare(GLcontext *ctx,sp_store *st) {
 static GLboolean sp_run(GLcontext *ctx,struct tnl_pipeline_stage *stage) {
  sp_store *st=(sp_store*)stage->privatePtr;TNLcontext *tnl=TNL_CONTEXT(ctx);struct vertex_buffer *VB=&tnl->vb;vxgl_ctx *c=VXGL_CTX(ctx);
  GLuint why,n,i,ormask=0,andmask=CLIP_FRUSTUM_BITS;GLubyte *verts;GLfloat (*clip)[4];unsigned mx=0;
- if(!st||!vxgl_ssepass_on||(!vbo_context(ctx)->save.vx855_node&&!(vxgl_ssepass_on&4)))return GL_TRUE;
+ /* .737 (review audit #24): a declined draw goes through Mesa's own lighting, which under colour material changes the derived colours
+  * the kept set-up's key (the material values) does not cover: the next draw the pass takes set up again (lk_valid cleared at each decline) */
+ if(!st||!vxgl_ssepass_on||(!vbo_context(ctx)->save.vx855_node&&!(vxgl_ssepass_on&4))){if(st)st->lk_valid=0;return GL_TRUE;}
  #ifdef VK_SSE
  if(vxgl_ssepass_outfast)mx=mx_enter(); /* v10.497: MXCSR for the draw's whole-outside test and its groups at once (all_outside set it a call) */
  #endif
@@ -1342,7 +1345,7 @@ static GLboolean sp_run(GLcontext *ctx,struct tnl_pipeline_stage *stage) {
  if(why&&vxgl_ssepass_outfast)mx_leave(mx);
  #endif
  if(why==SP_OUTSIDE){vxgl_ssepass_stat[0]++;vxgl_ssepass_stat[5]++;return GL_FALSE;} /* v10.489: nothing drawn (Mesa's vertex stage returns GL_FALSE here too) */
- if(why){vxgl_ssepass_stat[3]++;vxgl_ssepass_stat[6]=why;return GL_TRUE;}
+ if(why){vxgl_ssepass_stat[3]++;vxgl_ssepass_stat[6]=why;st->lk_valid=0;return GL_TRUE;}
  n=VB->Count;verts=c->verts;clip=(GLfloat(*)[4])st->clip.start;
  st->snap2=vxgl_ssepass_snap2&&vxgl_ssepass_fuse&&vxgl_ssepass_mask; /* v10.497 */
  st->snapmode=st->snap2&&vxgl_gl_snap?(vxgl_flip(c)?2:1):0; /* v10.490: as render_start's vx_d3d_gl_snap */

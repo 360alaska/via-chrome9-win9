@@ -34,8 +34,9 @@ static DWORD ft_run_ms(void) {DWORD in[2],o[8];in[0]=0xBD;in[1]=0x81;o[0]=0;o[2]
 /* v10.432: this DLL's image (code, data, the core's packets and queue) locked in memory through the VxD while a Direct3D process holds it
  * (VX_IOCTL_LOCKMEM; the VxD releases a process's hold when its handle closes). Asked at each Direct3D context create; the last answer is
  * kept for VXD3DMON: pages locked, base, handles holding it, ACCEL_LOCK_HAL. */
-DWORD vx_lock_result[4];static DWORD lock_pid[8]; /* the processes that asked (shared data; a reopened handle asks again only for them) */
+DWORD vx_lock_result[4];static DWORD lock_pid[8];static LONG lock_tok[8]; /* the processes that asked (shared data; a reopened handle asks again only for them) */
 static HANDLE dev_for_t(DWORD pid,int *temporary);
+extern LONG VX_D3D_proc_token(void);
 static int lock_wanted(DWORD pid) {int i;for(i=0;i<8;i++)if(lock_pid[i]==pid)return 1;return 0;}
 /* v10.435: the request goes on this process's kept handle only (the VxD ties the hold to the handle): never on ioctl()'s temporary one
  * (all 8 slots in use; closed at once, which released the hold), and again on a handle that takes the slot's place (lock_again) */
@@ -48,7 +49,7 @@ static void lock_on(HANDLE h) {
 void VX_DD_lock_image(void) {
  int temp;HANDLE h=dev_for_t(GetCurrentProcessId(),&temp);
  if(temp){CloseHandle(h);return;}
- {DWORD me=GetCurrentProcessId();int i,f=-1;if(!lock_wanted(me)){for(i=0;i<8&&f<0;i++)if(!lock_pid[i])f=i;if(f<0)f=(int)(me&7);lock_pid[f]=me;}}
+ {DWORD me=GetCurrentProcessId();int i,f=-1;if(!lock_wanted(me)){for(i=0;i<8&&f<0;i++)if(!lock_pid[i])f=i;if(f<0)f=(int)(me&7);lock_pid[f]=me;lock_tok[f]=VX_D3D_proc_token();}}
  lock_on(h);
 }
 DWORD VX_dd_cpms(void) {return ft_cpms;} /* v10.431: TSC cycles a millisecond (1000000 until calibrated) */
@@ -57,78 +58,11 @@ void VX_frame_add(DWORD cat,DWORD cycles) {if(cat<FT_CATS)ft_cur[cat]+=cycles>>8
  * other processes' (VXDDRAW.DLL's data is shared) go to ft_other, reported apart */
 static volatile DWORD ft_pid,ft_other[3];
 static void ft_count(DWORD k) {if(k<3){if(!ft_pid||GetCurrentProcessId()==ft_pid)ft_cnt[k]++;else ft_other[k]++;}}
-/* .511 (ACCEL_D3D_SAMPLE = 1, diagnostic, default 0): where a Direct3D game's frame goes, by sampling. A thread of the flipping process's own
- * suspends the thread that flips about a thousand times a second and keeps its EIP; every 600 flips C:\VXD3D.LOG gets the frames a second,
- * the share of each module (the game, D3DIM700.DLL, DDRAW.DLL, VXDDRAW.DLL, KERNEL32: the VxD calls; "(no module)": ring 0 or 16-bit code)
- * and VXDDRAW.DLL's busiest addresses (RVAs, 32 bytes a bucket, to be named from VXDDRAW.map). This DLL's data is shared by every process:
- * the sampler belongs to one process (dsm_pid); another takes it over only when the owner has stopped flipping for 10 seconds. */
-extern DWORD vx_d3d_sample_on;
-#define DSM_MAX 65536
-static volatile DWORD dsm_pid,dsm_flips,dsm_tick,dsm_t0,dsm_n,dsm_stop,dsm_reports;static DWORD *dsm_eip;static HANDLE dsm_thread,dsm_target;
-static void dsm_log(const char *fmt,...) {
- char line[300];DWORD w=0;int k;HANDLE f;va_list ap;
- va_start(ap,fmt);k=wvsprintfA(line,fmt,ap);va_end(ap);
- f=CreateFileA("C:\\VXD3D.LOG",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,0);
- if(f==INVALID_HANDLE_VALUE)return;SetFilePointer(f,0,0,FILE_END);if(k>0)WriteFile(f,line,(DWORD)k,&w,0);CloseHandle(f);
-}
-static DWORD WINAPI dsm_main(LPVOID u) {
- CONTEXT cx;(void)u;
- while(!dsm_stop){
-  Sleep(1);
-  if(SuspendThread(dsm_target)==(DWORD)-1)break;
-  memset(&cx,0,sizeof(cx));cx.ContextFlags=CONTEXT_CONTROL;
-  if(GetThreadContext(dsm_target,&cx)&&dsm_n<DSM_MAX)dsm_eip[dsm_n++]=cx.Eip;
-  ResumeThread(dsm_target);
- }
- return 0;
-}
-static void dsm_report(void) {
- static DWORD mb[24],mc[24];DWORD n=dsm_n,i,k,nm=0,other=0,base=(DWORD)instance,size=0,nb,*cnt,shown=0,inme=0,ms=GetTickCount()-dsm_t0;
- const BYTE *b=(const BYTE*)instance;
- if(!n)return;
- SuspendThread(dsm_thread);
- for(i=0;i<n;i++){MEMORY_BASIC_INFORMATION mi;DWORD a=0;
-  if(VirtualQuery((LPCVOID)dsm_eip[i],&mi,sizeof(mi)))a=(DWORD)mi.AllocationBase;
-  for(k=0;k<nm&&mb[k]!=a;k++);
-  if(k==nm){if(nm<24){mb[nm]=a;mc[nm]=0;nm++;}else{other++;continue;}}
-  mc[k]++;}
- dsm_reports++;
- dsm_log("D3D samples, report %lu (pid %08lX): %lu samples, %lu flips in %lu ms (%lu.%lu a second)\r\n",dsm_reports,GetCurrentProcessId(),n,dsm_flips,ms,ms?dsm_flips*1000/ms:0,ms?(dsm_flips*10000/ms)%10:0);
- for(k=0;k<nm;k++){char name[MAX_PATH];name[0]=0;if(mb[k]==base)lstrcpyA(name,"VXDDRAW.DLL (this driver: the HAL)");else if(!mb[k]||!GetModuleFileNameA((HMODULE)mb[k],name,sizeof(name)))lstrcpyA(name,"(no module)");
-  else if(!lstrcmpiA(name+lstrlenA(name)-12,"KERNEL32.DLL"))lstrcatA(name," (with ring 0: the VxD calls, file and memory services)"); /* .512 */
-  dsm_log("  %3lu.%lu%% %s (base %08lX)\r\n",mc[k]*100/n,(mc[k]*1000/n)%10,name,mb[k]);}
- if(other)dsm_log("  %3lu.%lu%% in more modules\r\n",other*100/n,(other*1000/n)%10);
- /* VXDDRAW.DLL's busiest 32-byte buckets (every one with 2 samples or more, up to 400) */
- if(*(const WORD*)b==0x5A4DU){DWORD pe=*(const DWORD*)(b+0x3C);if(pe<4096&&*(const DWORD*)(b+pe)==0x4550UL)size=*(const DWORD*)(b+pe+24+56);}
- nb=(size+31)/32;cnt=nb?(DWORD*)VirtualAlloc(0,nb*4,MEM_COMMIT,PAGE_READWRITE):0;
- if(cnt){
-  for(i=0;i<n;i++){DWORD r=dsm_eip[i]-base;if(dsm_eip[i]>=base&&r<size){cnt[r>>5]++;inme++;}}
-  for(k=0;k<400;k++){DWORD best=0,bi=0;for(i=0;i<nb;i++)if(cnt[i]>best){best=cnt[i];bi=i;}if(best<2)break;dsm_log("  VXDDRAW+%06lX %lu\r\n",bi<<5,best);shown+=best;cnt[bi]=0;}
-  dsm_log("  (VXDDRAW: %lu samples, %lu in the lines above)\r\n",inme,shown);
-  VirtualFree(cnt,0,MEM_RELEASE);}
- dsm_n=0;dsm_flips=0;dsm_t0=GetTickCount();ResumeThread(dsm_thread);
-}
-static void dsm_flip(void) {
- DWORD me=GetCurrentProcessId(),tick=GetTickCount(),id;
- if(!vx_d3d_sample_on)return;
- if(dsm_pid!=me){
-  if(dsm_pid&&tick-dsm_tick<10000UL)return; /* another process samples */
-  dsm_pid=me;dsm_thread=0;dsm_target=0;dsm_eip=0;dsm_n=0;dsm_flips=0;dsm_reports=0; /* (the old owner's buffer and handles were its own) */
- }
- dsm_tick=tick;
- if(!dsm_thread){
-  if(!dsm_eip)dsm_eip=(DWORD*)VirtualAlloc(0,DSM_MAX*4,MEM_COMMIT,PAGE_READWRITE);if(!dsm_eip)return;
-  if(!DuplicateHandle(GetCurrentProcess(),GetCurrentThread(),GetCurrentProcess(),&dsm_target,THREAD_SUSPEND_RESUME|THREAD_GET_CONTEXT|THREAD_QUERY_INFORMATION,FALSE,0)){dsm_log("D3D sampler: no thread handle\r\n");vx_d3d_sample_on=0;return;}
-  dsm_stop=0;dsm_n=0;dsm_flips=0;dsm_t0=tick;dsm_thread=CreateThread(0,0,dsm_main,0,0,&id);
-  if(dsm_thread)SetThreadPriority(dsm_thread,THREAD_PRIORITY_TIME_CRITICAL);else{CloseHandle(dsm_target);dsm_target=0;vx_d3d_sample_on=0;}
-  dsm_log("D3D sampler (pid %08lX): %s\r\n",me,dsm_thread?"on":"not started");return;
- }
- if(++dsm_flips>=600)dsm_report();
-}
+/* .737: the .511 thread sampler (ACCEL_D3D_SAMPLE, an off-by-default diagnostic with a cross-process race, review audit #18) removed:
+ * no test run used it; VXD3DMON's sampler in the VxD (VX_IOCTL_SAMPLE) does the profiling */
 static void ft_flip(void) {
  DWORD now=VX_dd_tsc(),tick=GetTickCount(),d,k,lo=0,d8,run=ft_run_ms(),rd;
  ft_pid=GetCurrentProcessId();
- dsm_flip(); /* .511 */
  {static DWORD ft_run_tid;DWORD tid=GetCurrentThreadId(); /* .687 (T686 VXD3DMON: "the flipping thread ran 4294950676 ms"): the last reading was another thread's (a new device or process): no difference taken */
   rd=(run!=0xFFFFFFFFUL&&ft_run_last!=0xFFFFFFFFUL&&ft_last&&tid==ft_run_tid&&run>=ft_run_last)?run-ft_run_last:0;ft_run_last=run;ft_run_tid=tid;}
  /* .533 (board, GTA3 on .532: VXD3DMON's HAL figures 24 times too big, "42 TSC cycles a microsecond"): a calibration outside 100 MHz to
@@ -194,8 +128,8 @@ static HANDLE dev_for(DWORD pid) {return dev_for_t(pid,0);}
  * handle ended with that process; the slot is forgotten (not closed: the value is not a handle of this process) */
 static void dev_attach(DWORD pid) {int i; for(i=0;i<DEV_SLOTS;i++) if(dev_pid[i]==pid) {dev_h[i]=NULL; dev_pid[i]=0;}}
 static void dev_close(DWORD pid) {int i; for(i=0;i<DEV_SLOTS;i++) if(dev_pid[i]==pid) {if(dev_h[i]&&dev_h[i]!=INVALID_HANDLE_VALUE) CloseHandle(dev_h[i]); dev_h[i]=NULL; dev_pid[i]=0;}}
-static DWORD pal_pid; /* v10.140: process that attached the active palette; only it puts the desktop palette back when it exits */
-static DWORD flip_pid; /* process that moved the display start away from the desktop; it resets it on exit */
+static DWORD pal_pid;static LONG pal_tok; /* v10.140: process that attached the active palette; only it puts the desktop palette back when it exits */
+static DWORD flip_pid;static LONG flip_tok; /* process that moved the display start away from the desktop; it resets it on exit */
 /* Also exported by the Win16 DRV; verification compares the binary constants. */
 const DWORD VXDDABI[]={sizeof(VMDAHAL_t),offsetof(VMDAHAL_t,cb32),offsetof(VMDAHAL_t,modes),
  sizeof(DDHALINFO),sizeof(DDHALMODEINFO2_t),sizeof(DDPIXELFORMAT),sizeof(vx2d_request)};
@@ -235,8 +169,11 @@ static int ioctl(DWORD code,const void *in,DWORD n,void *out,DWORD z) {
   * program. The old value is closed only when it answers the VxD's identity query (0xFFFFFE50: 'VXD3') as our device: then it is a
   * handle to this driver (v10.322's rule: no handle leaked a retry); anything else is dropped, never closed. */
  {int i;for(i=0;i<DEV_SLOTS;i++)if(dev_pid[i]==pid){HANDLE old=dev_h[i];dev_h[i]=h;
-   if(old&&old!=INVALID_HANDLE_VALUE&&old!=h){DWORD q=0xFFFFFE50UL,o[4],g=0;o[1]=0;
-    if(DeviceIoControl(old,0x85500012UL,&q,4,o,16,&g,NULL)&&g==16&&o[1]==0x56584433UL)CloseHandle(old);else stale_kept++;}
+   /* .725 (review of .723): the identity query went to whatever the old number is now; if this program opened another driver's device
+    * under it, that driver got our request. VXDDRAW.DLL's data is shared, so nothing tells this process's own handles apart: the old
+    * value is never closed. A retry in a live process leaves its old handle open until the process ends (closed then by Windows), the
+    * cheaper error than closing a handle that is not ours */
+   if(old&&old!=INVALID_HANDLE_VALUE&&old!=h)stale_kept++;
    reopened++;return 1;}}
  CloseHandle(h);return 1; /* the slot went meanwhile: not kept */
 }
@@ -310,10 +247,7 @@ static int describe(LPDDRAWI_DDRAWSURFACE_LCL s,vx2d_surface *out) {
  out->offset=offset; out->pitch=pitch; out->width=w; out->height=h;}
  return 1;
 }
-static int rect(const RECT *r,const vx2d_surface *s) {
- return r->left>=0&&r->top>=0&&r->right>r->left&&r->bottom>r->top&&
-  (DWORD)r->right<=s->width&&(DWORD)r->bottom<=s->height;
-}
+/* .737 (review audit #56): rect() removed (no caller) */
 static DWORD result(DWORD rc,HRESULT *hr) {
  if(rc==VX2D_SKIP) return DDHAL_DRIVER_NOTHANDLED;
  *hr=rc==VX2D_DONE?DD_OK:DDERR_SURFACELOST;
@@ -490,13 +424,17 @@ static int pa_find(LPDDRAWI_DDRAWSURFACE_LCL s,int add) {
  for(i=0;i<PA_N;i++){if(pa_n[i]&&pa_gbl[i]==g&&pa_pid[i]==pid&&pa_tok[i]==tok)return i;if(f<0&&!pa_n[i])f=i;}
  if(!add||f<0)return -1;pa_gbl[f]=g;pa_pid[f]=pid;pa_tok[f]=tok;pa_n[f]=0;return f;
 }
+/* .737 (review audit #2): a dead process's brackets are closed by whoever claims its count in one exchange (two reapers both counted pa_n
+ * down, which wrapped and looped). The slot's owner is cleared first (still busy: nobody takes it), then the count claimed; a second
+ * reaper claims 0 and closes nothing */
+static void pa_close(int i) {DWORD c;pa_gbl[i]=0;pa_pid[i]=0;c=(DWORD)InterlockedExchange((LONG*)&pa_n[i],0);pa_reaped+=c;while(c--)(void)access(2);}
 static void pa_reap(void) {
  int i;DWORD me=GetCurrentProcessId();LONG tok=VX_D3D_proc_token();
- for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]==me&&pa_tok[i]!=tok){while(pa_n[i]){(void)access(2);pa_n[i]--;pa_reaped++;}pa_gbl[i]=0;pa_pid[i]=0;} /* .659: an ended process's under this ID */
+ for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]==me&&pa_tok[i]!=tok)pa_close(i); /* .659: an ended process's under this ID */
  for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]!=me){HANDLE h=OpenProcess(PROCESS_QUERY_INFORMATION,FALSE,pa_pid[i]);DWORD code=0;
   if(h&&GetExitCodeProcess(h,&code)&&code==STILL_ACTIVE){CloseHandle(h);continue;}
   if(h)CloseHandle(h);
-  while(pa_n[i]){(void)access(2);pa_n[i]--;pa_reaped++;}pa_gbl[i]=0;pa_pid[i]=0;}
+  pa_close(i);}
 }
 /* Keep a late surface loss distinct from a skipped cursor bracket. */
 static DWORD pa_begin(void) {pa_reap();return access(1);}
@@ -547,7 +485,7 @@ static int rop_up(DWORD r) {int i; for(i=0;i<8;i++) if(((r>>i)&1)!=((r>>(i^4))&1
  * [5]/[6] its ddckCKSrcBlt, [7]/[8] bltFX.ddckDestColorkey, [9]/[10] bltFX.ddckSrcColorkey, [11] the key used, [12] destination LCL address, [13] source LCL address,
  * [14]/[15] the source LCL's ddckCKSrcBlt */
 DWORD VXDBGKEY[24];
-DWORD vx_heap_round=1; /* v10.179: registry ACCEL_HEAP_ALIGN through the VxD (vx_d3d_hal.c d3d_registry) */
+/* .737 (review audit #17): vx_heap_round (ACCEL_HEAP_ALIGN 0: blocks not rounded, a DXT spread copy overran) removed: always rounded */
 /* v10.333 (VXPROBE ovkey, review #157): the overlay colour keys applications hand the HAL, kept only while VXOVKEYON is nonzero (VXPROBE
  * sets it through GetProcAddress; off by default). VXOVKEY[0] the count; entry k (k = count - 1 mod 16) at 1 + 6k: kind (1 UpdateOverlay
  * DDOVER_KEYDESTOVERRIDE, 2 UpdateOverlay DDOVER_KEYDEST (the surface's key), 3 SetColorKey DDCKEY_DESTOVERLAY, 4 UpdateOverlay source key),
@@ -863,10 +801,10 @@ static void bs_note(LPDDHAL_BLTDATA p,DWORD cyc,DWORD rc,const DWORD *sp) {
  dsz=((DWORD)(p->rDest.right-p->rDest.left)<<16)|((DWORD)(p->rDest.bottom-p->rDest.top)&0xFFFFUL);
  ssz=p->lpDDSrcSurface?(((DWORD)(p->rSrc.right-p->rSrc.left)<<16)|((DWORD)(p->rSrc.bottom-p->rSrc.top)&0xFFFFUL)):0;
  same=p->lpDDSrcSurface&&p->lpDDSrcSurface->lpGbl==p->lpDDDestSurface->lpGbl;
- for(k=0;k<bs_n;k++)if(bs[k].flags==f&&bs[k].dcaps==dc&&bs[k].scaps==sc&&bs[k].dsz==dsz&&bs[k].ssz==ssz&&bs[k].same==same){b=&bs[k];break;}
+ for(k=0;k<bs_n&&k<8;k++)if(bs[k].flags==f&&bs[k].dcaps==dc&&bs[k].scaps==sc&&bs[k].dsz==dsz&&bs[k].ssz==ssz&&bs[k].same==same){b=&bs[k];break;}
  if(!b){DWORD m=0,j;
-  if(bs_n>=8){bs_over++;return;}
-  b=&bs[bs_n++];memset(b,0,sizeof(*b));b->flags=f;b->dcaps=dc;b->scaps=sc;b->dsz=dsz;b->ssz=ssz;b->same=same;
+  {LONG n=InterlockedIncrement((LONG*)&bs_n)-1;if(n>=8){InterlockedDecrement((LONG*)&bs_n);bs_over++;return;} /* .737 (review audit #38): the slot claimed atomically (two callers both passed the test) */
+  b=&bs[n];}memset(b,0,sizeof(*b));b->flags=f;b->dcaps=dc;b->scaps=sc;b->dsz=dsz;b->ssz=ssz;b->same=same;
   b->dst=p->lpDDDestSurface->lpGbl?(DWORD)p->lpDDDestSurface->lpGbl->fpVidMem:0;b->src=p->lpDDSrcSurface&&p->lpDDSrcSurface->lpGbl?(DWORD)p->lpDDSrcSurface->lpGbl->fpVidMem:0;
   {DWORD lo=(DWORD)instance,hi=lo; /* v10.475: this DLL's own image left out (its frames are known), 4 KB of stack scanned */
    if(lo&&!IsBadReadPtr((void*)lo,0x40)){const BYTE *pe=(const BYTE*)lo+*(const DWORD*)((const BYTE*)lo+0x3C);if(!IsBadReadPtr(pe,0x58))hi=lo+*(const DWORD*)(pe+0x50);}
@@ -876,7 +814,7 @@ static void bs_note(LPDDHAL_BLTDATA p,DWORD cyc,DWORD rc,const DWORD *sp) {
 DWORD WINAPI VX_DD_QueryBltSigs(DWORD *out,DWORD n) {
  DWORD k,j,m=n&0x7FFFFFFFUL;
  if(!out||m<2+8*28)return 0;
- out[0]=bs_n;out[1]=bs_over;
+ out[0]=bs_n>8?8:bs_n;out[1]=bs_over;
  for(k=0;k<8;k++){DWORD *o=out+2+k*28;const bsig *b=&bs[k];
   o[0]=b->flags;o[1]=b->dcaps;o[2]=b->scaps;o[3]=b->dsz;o[4]=b->ssz;o[5]=b->same;o[6]=b->n;o[7]=b->t;o[8]=b->cpu;o[9]=b->nh;for(j=0;j<16;j++)o[10+j]=b->ret[j];o[26]=b->dst;o[27]=b->src;}
  if(n&0x80000000UL){memset(bs,0,sizeof(bs));bs_n=0;bs_over=0;}
@@ -1211,7 +1149,7 @@ static DWORD VXCreate_impl(LPDDHAL_CREATESURFACEDATA p) {
    if(VX_D3D_format(pf,&f)&&f==VX3DN_D24S8){g->fpVidMem=DDHAL_PLEASEALLOC_BLOCKSIZE;g->dwBlockSizeX=VX3DN_SPLANE_BLOCK(g->lPitch,g->wWidth,g->wHeight);g->dwBlockSizeY=1;g->dwReserved1=0;continue;}
    if(VX_D3D_format(pf,&f)&&f==VX3DN_D16){g->fpVidMem=DDHAL_PLEASEALLOC_BLOCKSIZE;g->dwBlockSizeX=VX3DN_Z16_BLOCK(g->lPitch,g->wWidth,g->wHeight);g->dwBlockSizeY=1;g->dwReserved1=0;continue;} /* v10.295: and its Coarse Z storage */
   }
-  if(!vx_heap_round||(c&(DDSCAPS_PRIMARYSURFACE|DDSCAPS_SYSTEMMEMORY|DDSCAPS_OVERLAY|DDSCAPS_NONLOCALVIDMEM))||g->fpVidMem||g->lPitch<=0) continue;
+  if((c&(DDSCAPS_PRIMARYSURFACE|DDSCAPS_SYSTEMMEMORY|DDSCAPS_OVERLAY|DDSCAPS_NONLOCALVIDMEM))||g->fpVidMem||g->lPitch<=0) continue;
   if(c&(DDSCAPS_FLIP|DDSCAPS_BACKBUFFER)&&!(c&(DDSCAPS_3DDEVICE|DDSCAPS_ZBUFFER))) continue; /* a 2D flip chain is display-sized: pitch x height is already whole screens */
   {DWORD bytes=(DWORD)g->lPitch*(DWORD)g->wHeight;uint32_t f;const DDPIXELFORMAT *pf=(p->lplpSList[i]->dwFlags&DDRAWISURF_HASPIXELFORMAT)?&g->ddpfSurface:&hal->ddpf;
    if((c&DDSCAPS_TEXTURE)&&VX_D3D_format(pf,&f)&&VX_RAW_IS_DXT(f))bytes=VX_D3D_texture_pitch(f,g->wWidth)*VX_D3D_texture_rows(f,g->wHeight); /* v10.199: the linear size; v10.200: spread rows */
@@ -1249,7 +1187,12 @@ static int lks_lock(DDRAWI_DDRAWSURFACE_LCL *s) {int i;if(!lks_needs(s))return 1
 /* 1: this Unlock is the surface's last (convert back), 0: another Lock is still outstanding */
 static int lks_unlock(DDRAWI_DDRAWSURFACE_LCL *s) {int i;if(!s||!s->lpGbl)return 1;i=lks_find(s,0);if(i<0)return 1;if(--lks_n[i]){return 0;}lks_gbl[i]=0;lks_pid[i]=0;return 1;}
 static DWORD VXLock_impl(LPDDHAL_LOCKDATA p);
-DWORD WINAPI VXLock(LPDDHAL_LOCKDATA p) {DWORD rc,t=VX_dd_tsc();if((!p||!p->lpDDSurface||!(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER))&&HOLD_SYNC(0)){if(p)p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;} /* .575 */access_why=0xFFFFFFFFUL;rc=VXLock_impl(p);VX_frame_add(1,VX_dd_tsc()-t);if(p)VX_D3D_trace(93,(DWORD)p->ddRVal,rc,tr_off(p->lpDDSurface),p->dwFlags,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0);ft_count(0);if(p)note2d(22,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,p->dwFlags,access_why);return rc;}
+/* .752: should DirectDraw bring an execute buffer's lock, unlock or destruction to the surface callbacks and not to the buffer callbacks,
+ * the HAL's vertex buffers are handed on (VX_D3D_VB: 0 lock, 1 unlock, 2 destroy; DDHAL_DRIVER_NOTHANDLED when the buffer is not the
+ * HAL's). vx_lock_exebuf counts the execute buffers the surface Lock saw (QueryPhases 500; VXD3DMON): if the runtime's own
+ * system-memory vertex buffers show up here, their writes can be seen without allocating them. */
+DWORD WINAPI VX_D3D_VB(int what,void *p);DWORD vx_lock_exebuf;
+DWORD WINAPI VXLock(LPDDHAL_LOCKDATA p) {DWORD rc,t=VX_dd_tsc();if(p&&p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER)){vx_lock_exebuf++;if(VX_D3D_VB(0,p)==DDHAL_DRIVER_HANDLED)return DDHAL_DRIVER_HANDLED;}if((!p||!p->lpDDSurface||!(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER))&&HOLD_SYNC(0)){if(p)p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;} /* .575 */access_why=0xFFFFFFFFUL;rc=VXLock_impl(p);VX_frame_add(1,VX_dd_tsc()-t);if(p)VX_D3D_trace(93,(DWORD)p->ddRVal,rc,tr_off(p->lpDDSurface),p->dwFlags,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0);ft_count(0);if(p)note2d(22,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,p->dwFlags,access_why);return rc;}
 static DWORD VXLock_impl(LPDDHAL_LOCKDATA p) {
  vx2d_surface s; DWORD rc;
  if(p) p->ddRVal=DD_OK; /* v10.58t: DDraw pre-sets WASSTILLDRAWING; NOTHANDLED needs DD_OK */
@@ -1281,7 +1224,7 @@ static DWORD VXLock_impl(LPDDHAL_LOCKDATA p) {
  return DDHAL_DRIVER_NOTHANDLED; /* runtime computes pointer and rect offset */
 }
 static DWORD VXUnlock_impl(LPDDHAL_UNLOCKDATA p);
-DWORD WINAPI VXUnlock(LPDDHAL_UNLOCKDATA p) {DWORD rc,t=VX_dd_tsc();access_why=0xFFFFFFFFUL;rc=VXUnlock_impl(p);VX_frame_add(2,VX_dd_tsc()-t);if(p)VX_D3D_trace(94,(DWORD)p->ddRVal,rc,tr_off(p->lpDDSurface),0,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0);ft_count(1);if(p)note2d(23,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,0,access_why);return rc;}
+DWORD WINAPI VXUnlock(LPDDHAL_UNLOCKDATA p) {DWORD rc,t=VX_dd_tsc();if(p&&p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER)&&VX_D3D_VB(1,p)==DDHAL_DRIVER_HANDLED)return DDHAL_DRIVER_HANDLED; /* .752 */access_why=0xFFFFFFFFUL;rc=VXUnlock_impl(p);VX_frame_add(2,VX_dd_tsc()-t);if(p)VX_D3D_trace(94,(DWORD)p->ddRVal,rc,tr_off(p->lpDDSurface),0,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0);ft_count(1);if(p)note2d(23,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,0,access_why);return rc;}
 static DWORD VXUnlock_impl(LPDDHAL_UNLOCKDATA p) {
  if(p) p->ddRVal=DD_OK; /* v10.58t: DDraw pre-sets WASSTILLDRAWING; NOTHANDLED needs DD_OK */
  if(!p||!vx_bind_hal(p->lpDD)) return DDHAL_DRIVER_NOTHANDLED;
@@ -1338,7 +1281,8 @@ static int pal_upload(int slot,DWORD first,DWORD count) {
 }
 static void pal_desktop(void) { /* the GDI palette goes back into the DAC */
  vx_dac_req q; DWORD ok=0;
- if(!hal||!hal->pFBHDA32||hal->pFBHDA32->bpp!=8||!hal->activePalette) return;
+ if(hal&&hal->pFBHDA32&&hal->pFBHDA32->bpp!=8){pal_pid=0;return;} /* .737 (audit #13): no palette outside 8 bits a pixel: nothing to give back */
+ if(!hal||!hal->pFBHDA32||!hal->activePalette) return;
  memset(&q,0,sizeof(q)); q.cb=sizeof(q); q.abi=VX_DAC_ABI; q.first=0xFFFFFFFFUL;
  if(ioctl(VX_IOCTL_DAC,&q,sizeof(q),&ok,4)&&ok) {hal->activePalette=0; pal_pid=0;} /* v10.330 (review #158): the palette counts as given back only when the VxD put the GDI palette back; otherwise the next exit, detach or detach of the palette tries again */
 }
@@ -1385,7 +1329,7 @@ DWORD WINAPI VXSetPalette(LPDDHAL_SETPALETTEDATA p) {
  i=pal_slot((DWORD)p->lpDDPalette);
  if(i<0) return DDHAL_DRIVER_NOTHANDLED;
  if(!pal_upload(i,0,256)) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
- hal->activePalette=hal->paletteSlots[i].key; pal_pid=GetCurrentProcessId();
+ hal->activePalette=hal->paletteSlots[i].key; pal_pid=GetCurrentProcessId(); pal_tok=VX_D3D_proc_token();
  return DDHAL_DRIVER_HANDLED;
 }
 /* ---- v10.59: page flipping and vertical blank. The VxD calibrates the display start address against the BIOS the first time
@@ -1397,6 +1341,10 @@ static int flip_call(DWORD cmd,DWORD arg,DWORD flags,DWORD *r) {
  if(!ioctl(VX_IOCTL_FLIP,&q,sizeof(q),r,4*VXF_REPLY_DWORDS)) return 0;
  return 1;
 }
+/* .737 (fourth review #6): flip_call says only that the request reached the VxD. A reset of the display start (and an overlay hide) is
+ * counted done only when the reply says so; a refused one keeps its record for the next reclaim */
+static int flip_reset_ok(void) {DWORD r[VXF_REPLY_DWORDS];memset(r,0,sizeof(r));return flip_call(VXF_RESET,0,0,r)&&r[VXF_R_RESULT]==VXF_OK;}
+static int ov_hide_ok(void) {vx_ovl_req q;DWORD r[VXO_REPLY_DWORDS];memset(&q,0,sizeof(q));memset(r,0,sizeof(r));q.cmd=VXO_HIDE;return ov_call(&q,r)&&r[VXO_R_RESULT]!=1;}
 /* v10.384: the flip returns before the display takes it (FLIP_ASYNC): a Lock or Blt into the surface it flipped away from waits in the
  * VxD until the display has moved on (VXF_FRONT); only asked while a flip may still be pending */
 static DWORD hal_flip_pend;
@@ -1451,7 +1399,7 @@ static DWORD VXFlip_impl(LPDDHAL_FLIPDATA p) {
  if(!flip_call(VXF_FLIP,s.offset,p->dwFlags,r)) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
  if(r[VXF_R_RESULT]==VXF_LOST) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;} /* v10.105 */
  if(r[VXF_R_RESULT]==VXF_OK||r[VXF_R_RESULT]==VXF_TIMEOUT) {
-  flip_pid=s.offset?GetCurrentProcessId():0; p->ddRVal=DD_OK; hal_flip_pend=1; /* v10.384 */
+  flip_pid=s.offset?GetCurrentProcessId():0; flip_tok=VX_D3D_proc_token(); p->ddRVal=DD_OK; hal_flip_pend=1; /* v10.384 */
  } else p->ddRVal=r[VXF_R_RESULT]==VXF_UNSUPPORTED?DDERR_NOTFLIPPABLE:DDERR_GENERIC;
  return DDHAL_DRIVER_HANDLED;
 }
@@ -1470,7 +1418,7 @@ static DWORD VXGetFlipStatus_impl(LPDDHAL_GETFLIPSTATUSDATA p) {
   * flight (DirectDraw asks before Blt and Lock on a flip chain's surfaces). An engine still busy is not lost. */
  return DDHAL_DRIVER_HANDLED;
 }
-static DWORD ov_pid; /* process that showed the overlay: it hides it on exit */
+static DWORD ov_pid;static LONG ov_tok; /* process that showed the overlay: it hides it on exit */
 static DWORD ov_src,ov_off=0xFFFFFFFFUL; /* v10.466: the surface shown and its offset (DestroySurface hides only that one) */
 static int ov_surface(LPDDRAWI_DDRAWSURFACE_LCL s,vx_ovl_req *q) {
  LPDDRAWI_DDRAWSURFACE_GBL g; DWORD offset; int f;
@@ -1529,7 +1477,7 @@ static DWORD vx_update_overlay(LPDDHAL_UPDATEOVERLAYDATA p) {
  q.dl=p->rDest.left; q.dt=p->rDest.top; q.dr=p->rDest.right; q.db=p->rDest.bottom;
  if(!ov_call(&q,r)) {p->ddRVal=DDERR_SURFACELOST; return DDHAL_DRIVER_HANDLED;}
  if(r[VXO_R_RESULT]==1) {p->ddRVal=(r[VXO_R_REASON]==8||r[VXO_R_REASON]==9)?DDERR_INVALIDRECT:DDERR_UNSUPPORTED; return DDHAL_DRIVER_HANDLED;}
- ov_pid=GetCurrentProcessId(); ov_src=(DWORD)p->lpDDSrcSurface; ov_off=q.offset; p->ddRVal=DD_OK; return DDHAL_DRIVER_HANDLED;
+ ov_pid=GetCurrentProcessId(); ov_tok=VX_D3D_proc_token(); ov_src=(DWORD)p->lpDDSrcSurface; ov_off=q.offset; p->ddRVal=DD_OK; return DDHAL_DRIVER_HANDLED;
 }
 DWORD WINAPI VXSetOverlayPosition(LPDDHAL_SETOVERLAYPOSITIONDATA p) {
  vx_ovl_req q; DWORD r[VXO_REPLY_DWORDS];
@@ -1542,7 +1490,7 @@ DWORD WINAPI VXSetOverlayPosition(LPDDHAL_SETOVERLAYPOSITIONDATA p) {
 }
 /* an overlay surface that goes away must not stay on the screen */
 static DWORD VXDestroySurface_impl(LPDDHAL_DESTROYSURFACEDATA p);
-DWORD WINAPI VXDestroySurface(LPDDHAL_DESTROYSURFACEDATA p) {DWORD t=VX_dd_tsc(),rc;(void)HOLD_SYNC(3);rc=VXDestroySurface_impl(p);VX_frame_add(4,VX_dd_tsc()-t);if(p)note2d(30,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,0,(DWORD)p->lpDDSurface);return rc;}
+DWORD WINAPI VXDestroySurface(LPDDHAL_DESTROYSURFACEDATA p) {DWORD t=VX_dd_tsc(),rc;if(p&&p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER)&&VX_D3D_VB(2,p)==DDHAL_DRIVER_HANDLED)return DDHAL_DRIVER_HANDLED; /* .752 */(void)HOLD_SYNC(3);rc=VXDestroySurface_impl(p);VX_frame_add(4,VX_dd_tsc()-t);if(p)note2d(30,p->ddRVal,rc,p->lpDDSurface?p->lpDDSurface->ddsCaps.dwCaps:0,0,(DWORD)p->lpDDSurface);return rc;}
 static DWORD VXDestroySurface_impl(LPDDHAL_DESTROYSURFACEDATA p) {
  if(!p)return DDHAL_DRIVER_NOTHANDLED;
  p->ddRVal=DD_OK;
@@ -1553,7 +1501,7 @@ static DWORD VXDestroySurface_impl(LPDDHAL_DESTROYSURFACEDATA p) {
  if(p->lpDDSurface&&!(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_SYSTEMMEMORY)) (void)access_z(0,p->lpDDSurface); /* v10.295: a depth surface's Coarse Z records go with it */
  if(!VX_D3D_forget_surface(p->lpDDSurface)){p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
  if(p->lpDDSurface&&p->lpDDSurface->lpGbl){int i;for(i=0;i<LK_SURF;i++)if(lks_gbl[i]==(DWORD)p->lpDDSurface->lpGbl){lks_n[i]=0;lks_gbl[i]=0;lks_pid[i]=0;}} /* v10.466: its outstanding Locks go with it */
- {int k=pa_find(p->lpDDSurface,0);if(k>=0){while(pa_n[k]){pa_n[k]--;(void)access(2);}pa_gbl[k]=0;pa_pid[k]=0;}} /* .706 (a review of .703): a primary destroyed while locked closes
+ {int k=pa_find(p->lpDDSurface,0);if(k>=0)pa_close(k);} /* .706 (a review of .703): a primary destroyed while locked closes
   * its Lock's cursor bracket (it stayed open until the process ended: the cursor hidden, asynchronous blits off) */
  if(p->lpDDSurface&&(p->lpDDSurface->ddsCaps.dwCaps&DDSCAPS_OVERLAY)) { /* v10.466 (review): only the overlay being shown (it hid
   * whatever overlay was up when any overlay surface went, another program's or a back buffer's) */
@@ -1583,6 +1531,7 @@ DWORD WINAPI VXGetScanLine(LPDDHAL_GETSCANLINEDATA p) {
  for(i=0;i<3;i++) {
   if(!flip_call(VXF_SCAN,0,0,r)||r[VXF_R_RESULT]!=VXF_OK) return DDHAL_DRIVER_NOTHANDLED;
   if(r[VXF_S_STATUS]==1) {p->dwScanLine=r[VXF_S_LINE]; p->ddRVal=DD_OK; return DDHAL_DRIVER_HANDLED;}
+  if(r[VXF_S_STATUS]==4) return DDHAL_DRIVER_NOTHANDLED; /* .737: no line for IGA2: DirectDraw answers it */
   if(r[VXF_S_STATUS]==2||r[VXF_S_STATUS]==3) {p->dwScanLine=0; /* 3: the counter is past the last visible line, i.e. in the vertical blank interval (the status port bit covers only part of it) */ p->ddRVal=DDERR_VERTICALBLANKINPROGRESS; return DDHAL_DRIVER_HANDLED;}
  }
  return DDHAL_DRIVER_NOTHANDLED;
@@ -1590,10 +1539,29 @@ DWORD WINAPI VXGetScanLine(LPDDHAL_GETSCANLINEDATA p) {
 /* Leaving exclusive mode: show the desktop again whatever the application did. The runtime still carries on afterwards. */
 static DWORD VXSetExclusive_impl(LPDDHAL_SETEXCLUSIVEMODEDATA p);
 DWORD WINAPI VXSetExclusive(LPDDHAL_SETEXCLUSIVEMODEDATA p) {DWORD rc=VXSetExclusive_impl(p);if(p)note2d(29,p->ddRVal,rc,0,p->dwEnterExcl,0);return rc;}
+/* .736 (the crash write-up of .733, fix 6): what a program leaves behind at a normal exit (DLL_PROCESS_DETACH) or when DirectDraw leaves
+ * exclusive mode for it (SetExclusiveMode 0), which a crashed program may never reach: the display start (flip_pid), the palette (pal_pid),
+ * the overlay (ov_pid), its "primary locked" records (lock_pid) and the VxD's exclusive flag (excl_pid). Given back when the next program
+ * enters or leaves exclusive mode and the one that set them is no longer running (by its process, not its token: v10.470). Counts:
+ * vx_dd_excl [0] enters, [1] leaves, [2] leftovers given back; vx_dd_excl_pid [0] the last enter's process, [1] the last leave's. */
+static DWORD excl_pid;static LONG excl_tok;DWORD vx_dd_excl[3],vx_dd_excl_pid[2];
+/* .737 (review audit #13): each leftover's process token beside its ID (VX_D3D_proc_token: new at each attach). pid_dead said alive for
+ * the caller's own ID, so a program given a dead one's ID skipped the clean-up: the same ID under another token is an ended process's */
+DWORD VX_DD_flip_pid(void) {return flip_pid;}
+static int pid_dead(DWORD pid) {HANDLE h;DWORD code=0;if(!pid||pid==GetCurrentProcessId())return 0;h=OpenProcess(PROCESS_QUERY_INFORMATION,FALSE,pid);if(!h)return 1;if(!GetExitCodeProcess(h,&code))code=STILL_ACTIVE;CloseHandle(h);return code!=STILL_ACTIVE;}
+static int pid_dead_t(DWORD pid,LONG tok) {LONG t;if(pid&&pid==GetCurrentProcessId()){t=VX_D3D_proc_token();return tok!=t&&tok!=1&&t!=1;}return pid_dead(pid);} /* token 1 either side (v10.470): by the ID alone */
+static void excl_reclaim(void) {int i;
+ if(flip_pid&&pid_dead_t(flip_pid,flip_tok)&&flip_reset_ok()){flip_pid=0;vx_dd_excl[2]++;}
+ if(pal_pid&&pid_dead_t(pal_pid,pal_tok)){pal_desktop();vx_dd_excl[2]++;}
+ if(ov_pid&&pid_dead_t(ov_pid,ov_tok)&&ov_hide_ok()){ov_pid=0;vx_dd_excl[2]++;}
+ for(i=0;i<8;i++)if(lock_pid[i]&&pid_dead_t(lock_pid[i],lock_tok[i])){lock_pid[i]=0;vx_dd_excl[2]++;}
+ if(excl_pid&&pid_dead_t(excl_pid,excl_tok)){DWORD v=0xFD000000UL,o[4];(void)ioctl(VX_IOCTL_2D_CTRL,&v,4,o,16);excl_pid=0;vx_dd_excl[2]++;}
+}
 static DWORD VXSetExclusive_impl(LPDDHAL_SETEXCLUSIVEMODEDATA p) {
  if(p) p->ddRVal=DD_OK;
+ if(p){excl_reclaim();if(p->dwEnterExcl){vx_dd_excl[0]++;vx_dd_excl_pid[0]=GetCurrentProcessId();excl_pid=GetCurrentProcessId();excl_tok=VX_D3D_proc_token();}else{vx_dd_excl[1]++;vx_dd_excl_pid[1]=GetCurrentProcessId();excl_pid=0;}}
  if(p) {DWORD v=0xFD000000UL|(p->dwEnterExcl?1UL:0UL),o[4]; (void)ioctl(VX_IOCTL_2D_CTRL,&v,4,o,16);} /* v10.95: the VxD may run blits asynchronously while a DirectDraw exclusive mode lasts */
- if(p&&!p->dwEnterExcl&&flip_pid) {(void)flip_call(VXF_RESET,0,0,NULL); flip_pid=0;}
+ if(p&&!p->dwEnterExcl&&flip_pid&&flip_reset_ok()) flip_pid=0; /* .737: kept when the reset was refused */
  if(p&&!p->dwEnterExcl) pal_desktop(); /* v10.71 */
  return DDHAL_DRIVER_NOTHANDLED;
 }
@@ -1665,14 +1633,14 @@ DWORD WINAPI DriverInit(LPVOID ptr) {
 BOOL WINAPI DllMain(HINSTANCE h,DWORD why,LPVOID reserved) {
  (void)reserved;
  if(why==DLL_PROCESS_ATTACH) {instance=h; DisableThreadLibraryCalls(h); dev_attach(GetCurrentProcessId()); VX_D3D_attach(1);
-  {DWORD in[2],o[8];extern uint32_t vx_d3d_tn_fastix;in[0]=0xBC;in[1]=0x44B;memset(o,0,sizeof(o)); /* .676: ACCEL_D3D_PRECULL and ACCEL_D3D_IXSKIP as the registry holds them now (TEXDBG BC 44B), so each program run takes the values set before it: the A/B needs no restart */
-   if(ioctl(0x85500022UL,in,8,o,32)&&(o[0]&0xFF)==0xBC&&o[1]==0x44B){extern uint32_t vx_d3d_gband;vx_d3d_tn_fastix=o[2]?1:0;vx_d3d_gband=o[3]==2?2:o[3]?1:0; /* .702: 2, no viewport codes */} /* .698: o[3] ACCEL_D3D_GUARDBAND (each program as it starts: the A/B needs no restart) */ /* .682: o[2] ACCEL_D3D_TNFASTIX, the one switch left */}} /* v10.319: this process's callback-lock token (vx_d3d_hal.c) */
+  {DWORD in[2],o[8];in[0]=0xBC;in[1]=0x44B;memset(o,0,sizeof(o)); /* .676: ACCEL_D3D_PRECULL and ACCEL_D3D_IXSKIP as the registry holds them now (TEXDBG BC 44B), so each program run takes the values set before it: the A/B needs no restart */
+   if(ioctl(0x85500022UL,in,8,o,32)&&(o[0]&0xFF)==0xBC&&o[1]==0x44B){extern uint32_t vx_d3d_gband,vx_d3d_gband_vxd;/* .749: o[2] free (the T&L A/B settled) */{extern uint32_t vx_d3d_vbox;vx_d3d_vbox=o[2]<=2?o[2]:0;}/* .768: o[7] bits 1-2 free again (.766's second kept set-up and .767's guard band offered to the runtime deleted: T767) */ /* .766: the T&L's second kept set-up (VXREG SETUP 1 / 0) */ /* .752: word 2, the T&L's cached boxes (0 off, 1 on, 2 counted and checked only; VXREG VBOX) */{extern uint32_t vx_d3d_osk;vx_d3d_osk=(o[7]&2UL)?1UL:0UL;} /* .768B: OSK (VXREG OSK), word 7 bit 1 */vx_d3d_gband=o[3]?1:0; /* .739: 1 wherever the VxD takes the band (no registry value; mode 2 deleted) */vx_d3d_gband_vxd=vx_d3d_gband;{extern uint32_t vx_d3d_tfog;vx_d3d_tfog=1;} /* .735: depth vertex fog on the fog unit always (ACCEL_D3D_TFOG settled, T733; the host tests start with 0); .736: o[7] free (ACCEL_D3D_LCULL removed: T733/T735 a loss) */ /* .702: 2, no viewport codes; .724: what the VxD allows, kept for VX_D3D_TestSet 1 */} /* .698: o[3] ACCEL_D3D_GUARDBAND (each program as it starts: the A/B needs no restart) */ /* .682: o[2] ACCEL_D3D_TNFASTIX, the one switch left */}} /* v10.319: this process's callback-lock token (vx_d3d_hal.c) */
  if(why==DLL_PROCESS_DETACH) {int i;DWORD me=GetCurrentProcessId();LONG tok=VX_D3D_proc_token(); /* .659: this process's staging block and open primary brackets given up */
   for(i=0;i<STAGE_SLOTS;i++)if(stage_pid[i]==me&&stage_tok[i]==tok){if(stage_hs[i])GlobalFree(stage_hs[i]);stage_hs[i]=NULL;stage_ns[i]=0;stage_pid[i]=0;stage_tok[i]=0;}
-  for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]==me&&pa_tok[i]==tok){while(pa_n[i]){(void)access(2);pa_n[i]--;pa_reaped++;}pa_gbl[i]=0;pa_pid[i]=0;}}
+  for(i=0;i<PA_N;i++)if(pa_n[i]&&pa_pid[i]==me&&pa_tok[i]==tok)pa_close(i);}
  if(why==DLL_PROCESS_DETACH) {int i;VX_D3D_attach(0);for(i=0;i<8;i++)if(lock_pid[i]==GetCurrentProcessId())lock_pid[i]=0;} /* v10.435 */
- if(why==DLL_PROCESS_DETACH&&flip_pid==GetCurrentProcessId()) {(void)flip_call(VXF_RESET,0,0,NULL); flip_pid=0;}
- if(why==DLL_PROCESS_DETACH&&ov_pid&&ov_pid==GetCurrentProcessId()) {vx_ovl_req q; DWORD r[VXO_REPLY_DWORDS]; memset(&q,0,sizeof(q)); q.cmd=VXO_HIDE; (void)ov_call(&q,r); ov_pid=0;} /* v10.106 */
- if(why==DLL_PROCESS_DETACH) {DWORD me=GetCurrentProcessId(); int i,mine=0; for(i=0;i<DEV_SLOTS;i++) if(dev_pid[i]==me) mine=1; if(mine) {if(device_pid!=me) {device_pid=me; device=dev_for(me);} if(pal_pid==me) pal_desktop(); /* v10.140: not on every exit (DDHELP and other HAL callers have slots too) */ dev_close(me); device=INVALID_HANDLE_VALUE; device_pid=0;}} /* v10.139 (review F11) */
+ if(why==DLL_PROCESS_DETACH&&flip_pid==GetCurrentProcessId()&&flip_reset_ok()) flip_pid=0;
+ if(why==DLL_PROCESS_DETACH&&ov_pid&&ov_pid==GetCurrentProcessId()&&ov_hide_ok()) ov_pid=0; /* v10.106; .737: kept when the hide was refused */
+ if(why==DLL_PROCESS_DETACH) {DWORD me=GetCurrentProcessId(); int i,mine=0; for(i=0;i<DEV_SLOTS;i++) if(dev_pid[i]==me) mine=1; if(pal_pid==me&&!pid_dead_t(pal_pid,pal_tok)) mine=2; /* .737 (review audit #55): its palette given back even without a device slot of its own (one is opened for it) */ if(mine) {if(device_pid!=me) {device_pid=me; device=dev_for(me);} if(pal_pid==me) pal_desktop(); /* v10.140: not on every exit (DDHELP and other HAL callers have slots too) */ dev_close(me); device=INVALID_HANDLE_VALUE; device_pid=0;}} /* v10.139 (review F11) */
  return TRUE;
 }

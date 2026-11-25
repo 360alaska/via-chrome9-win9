@@ -384,12 +384,12 @@ extern const float _mesa_vx855_rk[2]; /* 0.5, 3.0 */
 #if defined(__WATCOMC__) && defined(__386__)
 void vx855_rsq_sse(float *x, const float *k);
 #pragma aux vx855_rsq_sse = \
-	"movss xmm0,[eax]" "rsqrtss xmm1,xmm0" "movss xmm2,xmm1" "mulss xmm2,xmm1" "mulss xmm2,xmm0" \
+	".686" ".xmm2" "movss xmm0,[eax]" "rsqrtss xmm1,xmm0" "movss xmm2,xmm1" "mulss xmm2,xmm1" "mulss xmm2,xmm0" \
 	"movss xmm3,[edx+4]" "subss xmm3,xmm2" "mulss xmm3,xmm1" "mulss xmm3,[edx]" "movss [eax],xmm3" \
 	parm [eax] [edx] modify exact [];
 void vx855_rcp_sse(float *x);
 #pragma aux vx855_rcp_sse = \
-	"movss xmm0,[eax]" "rcpss xmm1,xmm0" "movss xmm2,xmm1" "mulss xmm2,xmm0" "mulss xmm2,xmm1" \
+	".686" ".xmm2" "movss xmm0,[eax]" "rcpss xmm1,xmm0" "movss xmm2,xmm1" "mulss xmm2,xmm0" "mulss xmm2,xmm1" \
 	"addss xmm1,xmm1" "subss xmm1,xmm2" "movss [eax],xmm1" \
 	parm [eax] modify exact [];
 static INLINE float vx_inv_sqrtf(float x)

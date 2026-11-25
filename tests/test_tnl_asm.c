@@ -12,14 +12,21 @@ static void *memset(void *d,int c,size_t n){uint8_t *p=d;while(n--)*p++=(uint8_t
 void *memcpy(void *d,const void *s,size_t n){uint8_t *p=d;const uint8_t *q=s;while(n--)*p++=*q++;return d;}
 #include "tnl_kernels_c.inc"
 /* the board's */
-extern void tnk_pos_asm(tnk_frame *f) __asm__("_tnk_pos");
-extern void tnk_light_asm(tnk_frame *f) __asm__("_tnk_light");
+#ifndef POS_SYM
+#define POS_SYM "_tnk_pos" /* .743: built a second time with "_tnk_pos_o", the kernel of .544-.741 */
+#endif
+extern void tnk_pos_asm(tnk_frame *f) __asm__(POS_SYM);
+#ifndef LIGHT_SYM
+#define LIGHT_SYM "_tnk_light" /* .746: built again with "_tnk_light_h", the .742 kernel the Nano keeps for two lights or fog */
+#endif
+extern void tnk_light_asm(tnk_frame *f) __asm__(LIGHT_SYM);
 extern void tnk_light_k_asm(tnk_frame *f) __asm__("_tnk_light_k"); /* .707: clang's build of tnk_light */
 extern void tnk_spec_asm(tnk_frame *f) __asm__("_tnk_spec"); /* .651: compiled by clang from the C */
 extern void tnk_cv_asm(tnk_frame *f,float (*b)[4]) __asm__("_tnk_cv"); /* .652 */
 extern void tnk_splight_asm(tnk_frame *f) __asm__("_tnk_splight"); /* .653 */
 extern void tnk_plight_asm(tnk_frame *f) __asm__("_tnk_plight"); /* .647: hand-written (point lights alone) */
 extern void tnk_vcodes_asm(tnk_frame *f) __asm__("_tnk_vcodes"); /* .702 */
+extern void tnk_bounds_asm(tnk_frame *f,const uint8_t *const *sp,const uint16_t *list,uint32_t n) __asm__("_tnk_bounds"); /* .741F */
 
 static uint32_t seed=12345;
 static uint32_t rnd(void){seed=seed*1664525u+1013904223u;return seed;}
@@ -89,9 +96,13 @@ __attribute__((force_align_arg_pointer)) void _start(void){
   if(cmp(fa.od,fb.od,16)||cmp(fa.os,fb.os,16)){out("light: words differ, case ");outn(t);out(" (lit ");outn(fa.lit);out(" lights ");outn(fa.nl);out(" fog ");outn(fa.fogmode);out(")\n");bad++;}
   /* .707: clang's build of tnk_light (the groups lit by point lights): the whole frame, with the normals and position kept or not */
   fa.nready=(t>>1)&1;fa.eready=(t>>2)&1;fb=fa;fb.cc=cc[1];fb.rec=rec[1];
+  {const uint32_t nr0=fa.nready;
   tnk_light(&fa);tnk_light_k_asm(&fb);cases++;
   fb.cc=fa.cc;fb.rec=fa.rec;
-  if(cmp(&fa,&fb,sizeof(fa))){out("light_k: the frame differs, case ");outn(t);out(" (lit ");outn(fa.lit);out(" fog ");outn(fa.fogmode);out(")\n");bad++;}
+  /* .741: the hand-written tnk_light_k keeps its own spills in scratch and does not store nv when it was not made (never called so): the output words are compared, with nready set */
+  if(nr0){tnk_frame fc=fb;uint32_t zq;for(zq=0;zq<sizeof(fa.scratch);zq++)((uint8_t*)fc.scratch)[zq]=((uint8_t*)fa.scratch)[zq]; /* .742: called as the driver calls it (the normals made: nready set going in), nothing but scratch may differ in the frame */
+   if(cmp(&fa,&fc,sizeof(fa))){out("light_k: the frame differs outside scratch, case ");outn(t);out("\n");bad++;}}
+  if(cmp(fa.od,fb.od,16)||cmp(fa.os,fb.os,16)){out("light_k: words differ, case ");outn(t);out(" (lit ");outn(fa.lit);out(" fog ");outn(fa.fogmode);out(")\n");bad++;}}
   /* .647: the point lights on the same four lanes: 0-8 lights, near and past the range, attenuation above and at or below 0, a light on a vertex (d 0) */
   {uint32_t q;fa.npl=t%9;
    for(k=0;k<8;k++){for(i=0;i<3;i++){splat(fa.pp[k][i],frnd(-60,60));}
@@ -99,12 +110,23 @@ __attribute__((force_align_arg_pointer)) void _start(void){
     for(q=0;q<4;q++)for(i=0;i<3;i++){fa.pdc[k][i][q]=frnd(0,1.2f);fa.pac[k][i][q]=frnd(0,0.5f);}}
    if(t&64){fa.pp[0][0][1]=fa.gx[1];fa.pp[0][1][1]=fa.gy[1];fa.pp[0][2][1]=fa.gz[1];splat(fa.e[0],1);splat(fa.e[1],0);splat(fa.e[2],0);splat(fa.e[4],0);splat(fa.e[5],1);splat(fa.e[6],0);
     splat(fa.e[8],0);splat(fa.e[9],0);splat(fa.e[10],1);splat(fa.e[12],0);splat(fa.e[13],0);splat(fa.e[14],0);}
-   for(q=0;q<4;q++)for(i=0;i<4;i++)fa.base[i][q]=frnd(-0.2f,1.3f);
+   for(q=0;q<4;q++)for(i=0;i<4;i++){fa.base[i][q]=frnd(-0.2f,1.3f);fa.lbase[i][q]=frnd(-0.2f,1.3f);} /* .741F: tnk_plight starts from lbase */
+   fa.pamb=(t&128)?rnd()&255:255;fa.pskip=(t&256)?rnd()&255:0; /* .741F: zero-ambient lights and lights the tile test dropped */
    fb=fa;fb.cc=cc[1];fb.rec=rec[1];
    tnk_plight(&fa);tnk_plight_asm(&fb);cases++; /* .647; .707: kept for point lights alone */
    if(cmp(fa.base,fb.base,sizeof(fa.base))){out("plight: colours differ, case ");outn(t);out(" (point lights ");outn(fa.npl);out(" normals ");outn(fa.haveN);out(")\n");bad++;}
    fb.cc=fa.cc;fb.rec=fa.rec;memset(fa.scratch,0,sizeof(fa.scratch));memset(fb.scratch,0,sizeof(fb.scratch)); /* .647 (board): nothing else in the frame may change */
    if(cmp(&fa,&fb,sizeof(fa))){out("plight: the frame differs beyond the colours, case ");outn(t);out("\n");bad++;}
+   /* .741F: the tile's eye-space box: 1-32 vertices of 12 to 40 bytes at any 4-byte place, a NaN or an infinite coordinate now and then */
+   {static float vbuf[40*12];static const uint8_t *spp[40];static uint16_t bl[32];uint32_t nb=1+rnd()%32,st=12+4*(rnd()%8),e;
+    for(e=0;e<40;e++){uint32_t c;spp[e]=(const uint8_t*)vbuf+e*st;for(c=0;c<3;c++)((float*)(void*)spp[e])[c]=frnd(-80,80);}
+    if((t%11)==3)((float*)(void*)spp[rnd()%40])[rnd()%3]=fbits(0x7FC00000u);
+    if((t%13)==5)((float*)(void*)spp[rnd()%40])[rnd()%3]=fbits((rnd()&1)?0x7F800000u:0xFF800000u);
+    for(e=0;e<32;e++)bl[e]=(uint16_t)(rnd()%40);
+    fb=fa;fb.cc=cc[1];fb.rec=rec[1];
+    tnk_bounds(&fa,spp,bl,nb);tnk_bounds_asm(&fb,spp,bl,nb);cases++;
+    fb.cc=fa.cc;fb.rec=fa.rec;
+    if(cmp(&fa,&fb,sizeof(fa))){out("bounds: the frame differs, case ");outn(t);out("\n");bad++;}}
    /* .653: the same lights, some of them spot lights: directions, cos(phi/2) below or equal to cos(theta/2), falloff 1, 0, 0.5, 2.5 */
    {static const float fo[4]={1.0f,0.0f,0.5f,2.5f};fa.nspot=0;
     for(k=0;k<8;k++){float d[3],l;fa.pspot[k]=(rnd()&3)!=0;fa.nspot+=fa.pspot[k];
@@ -115,6 +137,7 @@ __attribute__((force_align_arg_pointer)) void _start(void){
     fa.nready=0;fa.eready=0;
     fa.spec=(t>>5)&1; /* .659: with specular lighting it keeps the lights for tnk_spec (.697: makes the specular sums) */
     fa.pamb=rnd()&0xFF; /* .697: point lights whose ambient adds (the rest skipped) */
+    fa.pskip=(t&256)?rnd()&255:0; /* .741F: lights the tile test dropped */
     splat(fa.spcut,(t&8)?frnd(0,0.8f):0.0f); /* .697: the specular cutoff */
     {uint32_t q2,c2;for(k=0;k<16;k++)for(c2=0;c2<3;c2++)for(q2=0;q2<4;q2++)fa.sdc[k][c2][q2]=frnd(0,1.1f);}fa.lview=(t>>3)&1;
     {static const float pw2[4]={1.0f,0.0f,0.5f,20.0f};float p2=pw2[(t>>1)&3];splat(fa.spow,p2);fa.spmode=p2==1.0f?1:!(p2>0.0f)?2:0;if(p2==20.0f&&(t&4)){fa.spmode=3;fa.spint=20;}}

@@ -73,12 +73,10 @@ unsigned long fx_cpuid1_edx(void);
 #pragma aux fx_cpuid1_edx = 0xB8 0x01 0x00 0x00 0x00 0x0F 0xA2 0x89 0xD0 value [eax] modify exact [eax ebx ecx edx];
 void fx_sfence(void);
 #pragma aux fx_sfence = 0x0F 0xAE 0xF8 modify exact [];
-volatile uint32_t vx3dn_wc_flush=1;static int fx_sse=-1;uint32_t vx3dn_wc_stat[2]; /* flushes, with SFENCE */
+static int fx_sse=-1; /* .737: vx3dn_wc_stat removed (its only reader was a shadowed TEXDBG branch) */
 static void fx_wc_flush(uint32_t last_off) {
- if(!vx3dn_wc_flush)return;
  if(fx_sse<0)fx_sse=fx_cpuid_ok()?(int)((fx_cpuid1_edx()>>25)&1):0;
- if(fx_sse){fx_sfence();vx3dn_wc_stat[1]++;}
- vx3dn_wc_stat[0]++;
+ if(fx_sse)fx_sfence();
  if(last_off>=4)(void)*(volatile uint32_t*)(vx_status.fb_linear+last_off-4);
 }
 int VESA_draw_needs_exclusion(unsigned long off,unsigned long bytes); /* vxd_vesa.c, v10.371 */
@@ -88,7 +86,7 @@ static vx3dn_packet request_copy;
  * DRM writes its PCI command stream. 0 = the read after every write, as before. TEXDBG 0x78 on, 0x79 off, 0x7A reads.
  * vx3dn_prof: draw packets, TSC cycles / 256 in VX3DN_submit for them, engine writes, status reads, other reads, clears, their cycles (TEXDBG 0x76 reads,
  * 0x77 reads and clears). */
-volatile uint32_t vx3dn_posted=1;
+/* .738: vx3dn_posted removed (always 1: posted engine writes) */
 uint32_t vx3dn_prof[8];
 unsigned long VX_tsc(void);
 #pragma aux VX_tsc = 0x0F 0x31 value [eax] modify exact [eax edx];
@@ -119,7 +117,7 @@ volatile uint32_t vx_cs_waiter;
 static void cs_enter(void) {uint32_t a=cs_tsc();vx_cs_waiter=(uint32_t)Get_Cur_Thread_Handle();vx_lock();vx_cs_waiter=0;cs_wt+=(cs_tsc()-a)>>8;if(!cs_depth++)cs_t0=PT();}
 static void cs_leave(void) {if(cs_depth&&!--cs_depth)LAT(&vx3dn_lat[0],PT()-cs_t0);vx_unlock();}
 static uint32_t read_mmio(void *ctx,uint32_t r) {(void)ctx;if(vx_prof){if(r==0x400)vx3dn_prof[3]++;else vx3dn_prof[4]++;}return *(volatile uint32_t*)(mapped+r);}
-static void write_mmio(void *ctx,uint32_t r,uint32_t v) {(void)ctx;*(volatile uint32_t*)(mapped+r)=v;if(vx_prof)vx3dn_prof[2]++;if(!vx3dn_posted)(void)read_mmio(0,0x400);}
+static void write_mmio(void *ctx,uint32_t r,uint32_t v) {(void)ctx;*(volatile uint32_t*)(mapped+r)=v;if(vx_prof)vx3dn_prof[2]++;}
 static uint32_t read_fb(void *ctx,uint32_t r) {(void)ctx;return *(volatile uint32_t*)(vx_status.fb_linear+r);}
 static void write_fb(void *ctx,uint32_t r,uint32_t v) {(void)ctx;*(volatile uint32_t*)(vx_status.fb_linear+r)=v;}
 static uint32_t ticks(void *ctx) {(void)ctx;return Get_System_Time();}
@@ -212,17 +210,63 @@ static int engine_reset(void) {
 }
 /* .689: a recovery refused by recover_once's limit: one last reset only to leave the engine idle, then 3D off for the session and GDI by
  * the CPU with the display running (VX2D_accel_off); a reset that fails (or a refusal for another reason) loses the device as before */
+/* .740 (speed list AD, the owner's suggestion after .735: GTA3 would not start until a restart once VXPSP had hung the engine): a give-up
+ * (rec_fail below: the engine reset once more to leave it idle, 3D off) is no longer for the rest of the boot. The handle that was in the
+ * VxD when the give-up came (vx3dn_ioctl_hdev, set by every IOCTL) is its owner; when that handle is closed (its program ended or died:
+ * VX3DN_owner_close at DIOC_CLOSEHANDLE) and nothing else of the engine moves (3D is off: no group can be sent), the next readiness
+ * question (VX3DN_info, a program starting) resets the engine again; idle after it, 3D is given back with its recovery counters cleared
+ * (the reset ration is per program, not per boot), and GDI proves the 2D engine before it uses it again (VX2D_3d_reset). Not idle: 3D stays
+ * off as before. At most vx3dn_lift_limit lifts a boot (16: T688's storm was 41 resets in seconds; a lift costs a program's lifetime).
+ * vx3dn_lift[4]: owners closed, lifts made, lifts whose reset failed, lifts refused by the limit. */
+uint32_t vx3dn_ioctl_hdev,vx3dn_lift[4],vx3dn_lift_limit=16;static uint32_t gave_hdev;static int gave_owner_gone;
+/* .769 (audit VXD-H1): vx3dn_ioctl_hdev is the last IOCTL's handle on any thread: another thread's IOCTL between this call's entry and its
+ * give-up named the wrong owner. Each IOCTL now notes its handle against its thread (VX3DN_note_ioctl, a table of 16 under CLI, a thread
+ * not found takes the oldest slot); a give-up takes the handle of the thread that gives up (ioctl_hdev_now), the last one only when its
+ * thread is not in the table (a give-up outside an IOCTL). */
+static struct {uint32_t th,hd;} ih_tab[16];static uint32_t ih_next;
+void VX3DN_note_ioctl(uint32_t hdev) {
+ const uint32_t th=(uint32_t)Get_Cur_Thread_Handle();unsigned long f=VX_irq_save();uint32_t k;
+ vx3dn_ioctl_hdev=hdev;
+ for(k=0;k<16&&ih_tab[k].th!=th;k++);
+ if(k==16){k=ih_next;ih_next=(ih_next+1)&15;ih_tab[k].th=th;}
+ ih_tab[k].hd=hdev;VX_irq_restore(f);
+}
+static uint32_t ioctl_hdev_now(void) {
+ const uint32_t th=(uint32_t)Get_Cur_Thread_Handle();unsigned long f=VX_irq_save();uint32_t k,h=vx3dn_ioctl_hdev;
+ for(k=0;k<16;k++)if(ih_tab[k].th==th){h=ih_tab[k].hd;break;}
+ VX_irq_restore(f);return h;
+}
+void VX3DN_owner_close(uint32_t h) {if(vx3dn_gave_up&&gave_hdev&&h==gave_hdev){gave_owner_gone=1;vx3dn_lift[0]++;}}
+static int engine_reset(void);
+static void lift_try(void) {
+ unsigned long f;unsigned char old,unlock;int idle;
+ if(!vx3dn_gave_up||!gave_owner_gone||running)return;
+ if(vx3dn_lift[1]+vx3dn_lift[2]>=vx3dn_lift_limit){vx3dn_lift[3]++;gave_owner_gone=0;return;}
+ f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));outp(0x3C4,old);VX_irq_restore(f);
+ idle=engine_reset();
+ f=VX_irq_save();old=inp(0x3C4);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);
+ gave_owner_gone=0;
+ if(!idle){vx3dn_lift[2]++;return;}
+ vx3dn_lift[1]++;vx3dn_gave_up=0;fault=0;gave_hdev=0;
+ rec_tries=0;rec_good_at=rec_good;rec_hung_resets=0;rec_ring_hung=0;rec_refused=0;vx3dn_rec_run=0;
+ {extern void VX2D_accel_retry(void);VX2D_accel_retry();} /* GDI on the engine again, after its proof */
+ vx3dn_forget();
+}
+/* .740: test only (TEXDBG BC 4500000): a give-up owned by the calling handle, as rec_fail makes one after a refused recovery, without a
+ * hang (VXCRASH run e: its child takes it and dies; the next programs must have 3D again) */
+void VX3DN_test_giveup(void) {extern void VX2D_accel_off(void);if(running)return;fault=1;vx3dn_gave_up=1;vx3dn_rec_off++;gave_hdev=ioctl_hdev_now();gave_owner_gone=0;VX2D_accel_off();}
 static void rec_fail(void) {
  extern void VX2D_accel_off(void);unsigned long f;unsigned char old,unlock;int idle=0;
  if(rec_refused){f=VX_irq_save();old=inp(0x3C4);unlock=sr(0x10);sw(0x10,(unsigned char)(unlock|1));outp(0x3C4,old);VX_irq_restore(f);
   idle=engine_reset();f=VX_irq_save();old=inp(0x3C4);sw(0x10,unlock);outp(0x3C4,old);VX_irq_restore(f);}
  rec_refused=0;fault=1;
- if(idle){vx3dn_rec_off++;vx3dn_gave_up=1;VX2D_accel_off();}else VX2D_device_lost();
+ if(idle){vx3dn_rec_off++;vx3dn_gave_up=1;gave_hdev=ioctl_hdev_now();gave_owner_gone=0;VX2D_accel_off();}else VX2D_device_lost(); /* .740: its owner */
 }
 uint32_t vx_stretch3d; /* .628: ACCEL_STRETCH3D (vxd_main.c reads it, the HAL asks for it) */
 
 void VX3DN_info(vx3dn_info *i) {
  uint32_t limit;
+ lift_try(); /* .740: a give-up whose owner has gone */
  memset(i,0,sizeof(*i));i->cb=sizeof(*i);i->abi=VX3DN_ABI;
  i->generation=vx_status.set_successes;i->fault=fault;
  i->submitted=submitted;i->triangles=triangles;i->clears=clears;i->last_status=last_status;i->last_result=last_result;
@@ -243,7 +287,7 @@ void VX3DN_info(vx3dn_info *i) {
  * desktop as pixel pairs (even left and right edges), a 32-bit one on the 16-bit desktop when both halves are equal. Anything else, and
  * whatever the 2D side declines (ACCEL_FILL_MIN, busy), is cleared by the CPU as before. Registry ACCEL_3D_CLEAR = 0: CPU clears only.
  * The 2D wait reads the same status word (0x400 & 1FF7) as the 3D emitter, so a draw still running finishes before the fill starts. */
-volatile unsigned long vx_heap_align=1;
+
 volatile unsigned long vx_d3d_log=0; /* v10.202: registry ACCEL_D3D_LOG (default 0): the HAL's C:\VXD3D.LOG */
 volatile uint32_t vx3dn_clear2d_masked=1; /* v10.179: registry ACCEL_3D_CLEAR bit 1 = 0 sends partial D24S8 clears to the CPU */
 volatile uint32_t vx3dn_clear2d=1,vx3dn_clear2d_done,vx3dn_clear2d_cpu;
@@ -339,6 +383,9 @@ static uint32_t fx_state_bytes;
  * to it). A word that fails refuses the packet before its group is started (fx_build puts the group back as it was), as the validation
  * would have. One copy of the vertices instead of two, and no separate pass over them. */
 volatile uint32_t vx3dn_onecopy=1;static int cp_defer;
+volatile uint32_t vx3dn_ixfuse=1; /* .732-.733: an indexed packet's words copied and tested in one pass. T732 (FXAB, A-B-A-B in one session): GRID
+ * 0.3-0.9% faster on the VX855, 0.5-1.5% on the VX800, pursuit flat; the VX900 0.3-0.5% slower in the tori (6j-6l), flat elsewhere: on,
+ * the VX900 excepted (ACCEL_D3D_IXFUSE removed; the host tests set this word) */
 extern const uint32_t *vx3dn_vsrc;extern const vx3dn_packet *vx3dn_vsrc_pkt;
 /* .524 (ACCEL_D3D_DELTA, vx_native3d.h): delta 1 = the caller's state-delta word is honoured (d holds the previous packet of the same
  * batch call, validated); cp_same = the ranges kept (bits 0-5 = ranges 1-6), cp_sbytes the state bytes read. vx3dn_delta_stat: [0]
@@ -373,8 +420,12 @@ static void copy_packet_d(vx3dn_packet *d,const vx3dn_packet *s,int delta) {
    * only leaves this copy's own words there) */
   if(ni>VX3DN_MAX_INDICES)ni=VX3DN_MAX_INDICES;
   d->pre.on=2;
-  copy_words(d->pre.w,s->pre.w,n*vb);copy_words(d->vertices,s->vertices,(ni*2+3)&~3UL);
-  vx3dn_pre_stat[3]+=(sb+n*vb+ni*2+15)>>4;goto runs;}
+  /* .732 (ACCEL_D3D_IXFUSE, default 1; 0 = as before): in a batch (cp_defer) the vertex words stay in the caller's packet; vx3dn_validate
+   * copies them here and tests the copy in one pass (vx3dn_vsrc, vx3dn_vsrc_pkt); the indices are copied as before (tested there too) */
+  if(cp_defer&&vx3dn_ixfuse&&!vx3dn_chip900&&n<=VX3DN_IX_VERTICES&&vb==VX3DN_PRE_STRIDE(d)*4UL){vx3dn_vsrc=s->pre.w;vx3dn_vsrc_pkt=d;}
+  else copy_words(d->pre.w,s->pre.w,n*vb);
+  copy_words(d->vertices,s->vertices,(ni*2+3)&~3UL);
+  vx3dn_pre_stat[3]+=(sb+(vx3dn_vsrc_pkt==d?0:n*vb)+ni*2+15)>>4;goto runs;}
  if(po){ /* v10.441: prepacked vertices: the 10-word form copied when this emitter sends it, else unpacked into the arrays */
   extern int vx3dn_pre_ok(const vx3dn_packet *);
   if(vx3dn_pre_ok(d)){d->pre.on=1;vx3dn_pre_stat[0]++;
@@ -390,8 +441,8 @@ static void copy_packet_d(vx3dn_packet *d,const vx3dn_packet *s,int delta) {
  if(d->tex.enable)copy_words(d->tex.uv,s->tex.uv,n*8);
  if(d->shader.count)copy_words(d->shader.spec,s->shader.spec,n*4);
  if(d->tex.enable&&d->stages.units>1)copy_words(d->stages.uv1,s->stages.uv1,n*8);
- if(d->stages.layout||(d->stages.s3&1))copy_words(d->stages.q,s->stages.q,n*4);
- if(d->stages.s3&2)copy_words(d->stages.r1,s->stages.r1,n*4); /* v10.321: TextureB's third coordinate */
+ if(d->stages.layout||(d->stages.s3&1)||VX3DN_C3(d))copy_words(d->stages.q,s->stages.q,n*4); /* .731: VX3DN_C3's S */
+ if((d->stages.s3&2)||VX3DN_C3(d))copy_words(d->stages.r1,s->stages.r1,n*4); /* .731: and its T */ /* v10.321: TextureB's third coordinate */
 runs: /* .532: the bursts were copied above */
  n=s->runs.n;d->runs.n=n;if(n>VX3DN_TEXRUNS_MAX)n=VX3DN_TEXRUNS_MAX; /* .528: the texture runs (the count read once; above the most, refused by the validation) */
  if(n)copy_words(d->runs.r,s->runs.r,n*sizeof(vx3dn_texrun));
@@ -408,8 +459,8 @@ static void fx_prefetch_packet(const vx3dn_packet *s) { /* v10.412: what copy_pa
  if(s->tex.enable)pf_range(s->tex.uv,n*8);
  if(s->shader.count)pf_range(s->shader.spec,n*4);
  if(s->tex.enable&&s->stages.units>1)pf_range(s->stages.uv1,n*8);
- if(s->stages.layout||(s->stages.s3&1))pf_range(s->stages.q,n*4);
- if(s->stages.s3&2)pf_range(s->stages.r1,n*4);
+ if(s->stages.layout||(s->stages.s3&1)||VX3DN_C3(s))pf_range(s->stages.q,n*4);
+ if((s->stages.s3&2)||VX3DN_C3(s))pf_range(s->stages.r1,n*4);
  k=s->bursts.n;if(k>VX3DN_MAX_BURSTS)k=VX3DN_MAX_BURSTS;pf_range(&s->bursts,4+k*4);
 }
 static int fx_same_state(const vx3dn_packet *p) {
@@ -433,6 +484,7 @@ static const uint16_t fx_cls_r[][2]={FXF(z_enable),FXF(z_write),FXF(z_func),FXF(
 static const uint16_t fx_cls_p[][2]={FXF(tex.enable),FXF(shader.count),FXF(shader.words),FXF(shader.konst),FXF(shader.kflags),FXF(shader.key),FXF(stages.units),FXF(stages.set),
  FXF(stages.c22),FXF(stages.ps),FXF(stages.h90),FXF(stages.h91),FXF(stages.h93),FXF(stages.h95),FXF(stages.ntau),FXF(stages.tau),FXF(stages.nkc),FXF(stages.kc_reg),FXF(stages.kc),
  FXF(stages.layout),FXF(stages.ulayout),FXF(stages.s3)};
+uint32_t vx3dn_miss_field[54]; /* .762 */
 static int fx_cls_diff(const vx3dn_packet *p,const uint16_t (*f)[2],uint32_t n) {
  uint32_t k;for(k=0;k<n;k++)if(vx_cmpsd((const char*)p+f[k][0],(const char*)&fx_prev+f[k][0],f[k][1]>>2))return 1;return 0;}
 static void fx_classify(const vx3dn_packet *p) {
@@ -440,6 +492,11 @@ static void fx_classify(const vx3dn_packet *p) {
  if(!fx_prev_ok||fx_prev_gen!=vx3dn_state_gen){vx3dn_miss_stat[16]++;return;}
  m=(fx_cls_diff(p,fx_cls_t,sizeof(fx_cls_t)/4)?1:0)|(fx_cls_diff(p,fx_cls_g,sizeof(fx_cls_g)/4)?2:0)|(fx_cls_diff(p,fx_cls_r,sizeof(fx_cls_r)/4)?4:0)|(fx_cls_diff(p,fx_cls_p,sizeof(fx_cls_p)/4)?8:0);
  vx3dn_miss_stat[m]++;
+ {uint32_t k,b=0; /* .762: which fields differed (the same sampled misses), in the tables' order: textures 0-12, target 13-17, raster 18-26, program 27-48 */
+  for(k=0;k<sizeof(fx_cls_t)/4;k++,b++)if((m&1)&&fx_cls_diff(p,fx_cls_t+k,1))vx3dn_miss_field[b]++;
+  for(k=0;k<sizeof(fx_cls_g)/4;k++,b++)if((m&2)&&fx_cls_diff(p,fx_cls_g+k,1))vx3dn_miss_field[b]++;
+  for(k=0;k<sizeof(fx_cls_r)/4;k++,b++)if((m&4)&&fx_cls_diff(p,fx_cls_r+k,1))vx3dn_miss_field[b]++;
+  for(k=0;k<sizeof(fx_cls_p)/4;k++,b++)if((m&8)&&fx_cls_diff(p,fx_cls_p+k,1))vx3dn_miss_field[b]++;}
 }
 /* v10.450 (ACCEL_D3D_TEXONLY, default 1; 0 = as before): a state-cache miss whose packet differs from the last packet only in its textures
  * (the fields of fx_cls_t: the units' surfaces, filters, addressing, mip chains, cube faces, borders; board, GTA3 v10.449: 60% of the
@@ -458,6 +515,46 @@ static void fx_rest_make(void) {
    if(best>cur&&fx_rest_n<48){fx_rest[fx_rest_n][0]=(uint16_t)cur;fx_rest[fx_rest_n][1]=(uint16_t)(best-cur);fx_rest_n++;}
    if(best>=end)break;
    cur=bend>end?end:bend;if(cur>=end)break;}}
+}
+/* .762: the texture + program tier (vx3dn_tp_only, vx_native3d_hw.c): every byte the whole-state cache compares but the texture fields'
+ * and the program fields' the same as the last packet's (fx_rest2, worked out once as fx_rest is) */
+extern uint32_t vx3dn_tp_only,vx3dn_tp_stat[3];extern volatile uint32_t vx3dn_setup_lvl;
+static uint16_t fx_rest2[64][2];static int fx_rest2_n=-1;
+static uint16_t fx_rest3[64][2];static int fx_rest3_n=-1; /* .763: and Z write, blend on, the blend factors / alpha test */
+static const uint16_t fx_cls_z[][2]={FXF(z_write),FXF(blend),FXF(raster)};
+static void fx_rest2_make(void) {
+ uint32_t r,k;const uint32_t nt=sizeof(fx_cls_t)/4,n=nt+sizeof(fx_cls_p)/4;fx_rest2_n=0;
+ for(r=0;r<7;r++){uint32_t cur=fx_ranges[r][0],end=fx_ranges[r][1];
+  for(;;){uint32_t best=end,bend=end;
+   for(k=0;k<n;k++){const uint16_t *f=k<nt?fx_cls_t[k]:fx_cls_p[k-nt];uint32_t a=f[0],b=a+f[1];if(b>cur&&a<best){best=a<cur?cur:a;bend=b;}}
+   if(best>end)best=end;
+   if(best>cur){if(fx_rest2_n>=64){fx_rest2_n=-2;return;}fx_rest2[fx_rest2_n][0]=(uint16_t)cur;fx_rest2[fx_rest2_n][1]=(uint16_t)(best-cur);fx_rest2_n++;} /* -2: the table too small: the tier off */
+   if(best>=end)break;
+   cur=bend>end?end:bend;if(cur>=end)break;}}
+}
+static void fx_rest3_make(void) {
+ uint32_t r,k;const uint32_t nt=sizeof(fx_cls_t)/4,np=nt+sizeof(fx_cls_p)/4,n=np+sizeof(fx_cls_z)/4;fx_rest3_n=0;
+ for(r=0;r<7;r++){uint32_t cur=fx_ranges[r][0],end=fx_ranges[r][1];
+  for(;;){uint32_t best=end,bend=end;
+   for(k=0;k<n;k++){const uint16_t *f=k<nt?fx_cls_t[k]:k<np?fx_cls_p[k-nt]:fx_cls_z[k-np];uint32_t a=f[0],b=a+f[1];if(b>cur&&a<best){best=a<cur?cur:a;bend=b;}}
+   if(best>end)best=end;
+   if(best>cur){if(fx_rest3_n>=64){fx_rest3_n=-2;return;}fx_rest3[fx_rest3_n][0]=(uint16_t)cur;fx_rest3[fx_rest3_n][1]=(uint16_t)(best-cur);fx_rest3_n++;} /* -2: the table too small: the tier off */
+   if(best>=end)break;
+   cur=bend>end?end:bend;if(cur>=end)break;}}
+}
+static int fx_tp_only(const vx3dn_packet *p) { /* .763: 1 textures and program only, 2 and Z write / blend (the raster tier), 0 */
+ int k,r=1;
+ if(!(vx3dn_setup_lvl&1)||!vx3dn_state_cache||!fx_prev_ok||fx_prev_gen!=vx3dn_state_gen)return 0;
+ if(p->cb!=sizeof(*p)||p->op!=VX3DN_DRAW||!p->tex.enable||!p->shader.count)return 0;
+ if(fx_rest2_n==-1)fx_rest2_make();
+ if(fx_rest3_n==-1)fx_rest3_make();
+ if(fx_rest2_n<0)return 0;
+ vx3dn_tp_stat[1]++;
+ for(k=0;k<fx_rest2_n;k++)if(vx_cmpsd((const char*)p+fx_rest2[k][0],(const char*)&fx_prev+fx_rest2[k][0],fx_rest2[k][1]>>2)){r=0;break;}
+ if(r)return 1;
+ if(!(vx3dn_setup_lvl&8)||fx_rest3_n<0)return 0;
+ for(k=0;k<fx_rest3_n;k++)if(vx_cmpsd((const char*)p+fx_rest3[k][0],(const char*)&fx_prev+fx_rest3[k][0],fx_rest3[k][1]>>2))return 0;
+ return 2;
 }
 static int fx_tex_only(const vx3dn_packet *p) {
  int k;
@@ -521,7 +618,7 @@ static int fetch_idle(uint32_t *last);
  * fetched one-shot from the command block in video memory. The ring kept in video memory (v10.374-v10.405) and its workarounds are
  * gone: it never ran GTA3 without hanging. vx3dn_gap_wipe (ACCEL_D3D_GAPWIPE, default 1): before a one-shot start the words between
  * the fetcher's last position and the start are written over with no-ops (a start runs from the old position first, VXRING 43). */
-volatile uint32_t vx3dn_gap_wipe=1;
+/* .738: vx3dn_gap_wipe's switch removed (always on) */
 static int fx_ring,fx_gring;uint32_t vx3dn_ring_stat[3]; /* XP's ring: starts, kicks, wraps */
 /* v10.383 (board, v10.382 ring on: 85 groups never idle in 98 s; advice: the first hang matters, the later ones may follow from it):
  * the ring's fence and its recorder. Each ring group ends with a 1-pixel 2D fill (VXRING: 2D fills in the ring draw, mixed with 3D) into
@@ -532,7 +629,7 @@ static int fx_ring,fx_gring;uint32_t vx3dn_ring_stat[3]; /* XP's ring: starts, k
  * hang in the ring the ring is off until restart: the one-shot path goes on. */
 #define FX_BLOCK_BYTES (VX3DN_CMD_BYTES-256UL)
 #define FX_FENCE_OFF (vx3dn_cmd_off+FX_BLOCK_BYTES)
-volatile uint32_t vx3dn_ring_fence=1;
+/* .738: vx3dn_ring_fence removed (always on) */
 uint32_t vx3dn_rf_stat[6]; /* v10.387: [4] kicks written again, [5] of them the fence then came */ /* fences put; retires with the engine idle before the fence came (then waited for); hangs in the ring; ring turned off after a hang */
 static int fx_ring_dead,fx_rfenced;uint32_t fx_seq; /* .532: public (the emulator's B1 test reads it) */static uint32_t fx_rkicks,fx_rreason,fx_2d[14],fx_trace[64][10],fx_tn,fx_gtgt,fx_gdep;
 static const uint32_t fx_2d_reg[14]={0x04,0x08,0x14,0x1C,0x30,0x48,0x58,0x5C,0x20,0x4C,0x0C,0x10,0x40,0x18}; /* v10.453: + 18, the source position of the ring's copies (ACCEL_D3D_RINGBLT) */
@@ -572,8 +669,9 @@ uint32_t VX3DN_tape(uint32_t op,const void *in,uint32_t in_bytes,void *out,uint3
  if(op==0){uint32_t n=out_bytes<sizeof(tape)?out_bytes:sizeof(tape);if(!out||n<(uint32_t)((char*)&tape.nev-(char*)&tape))return 87;cs_enter();memcpy(out,&tape,n);cs_leave();return 0;} /* v10.396: an older program's shorter tape too */
  if(op==1){const vx_tape *t=(const vx_tape*)in;uint32_t j;
   if(!t||in_bytes<(uint32_t)((const char*)&t->nev-(const char*)t)||t->magic!=VX_TAPE_MAGIC||t->cmd_off!=vx3dn_cmd_off||!vx3dn_cmd_off||t->words>VX_TAPE_WORDS||!t->ngroups||t->ngroups>VX_TAPE_GROUPS||
-     t->start<vx3dn_cmd_off+256UL||t->start+t->words*4>vx3dn_cmd_off+FX_BLOCK_BYTES)return 13;
-  for(j=0;j<t->ngroups;j++)if(t->group[j][0]<t->start||t->group[j][1]+0x10>t->start+t->words*4||t->group[j][1]<t->group[j][0])return 13;
+     t->start<vx3dn_cmd_off+256UL||t->start>vx3dn_cmd_off+FX_BLOCK_BYTES||t->words*4>vx3dn_cmd_off+FX_BLOCK_BYTES-t->start)return 13;
+  /* .729 (review of .723, #11): every bound tested without a sum that can wrap (start + words * 4 and group + 0x10 could pass past 4 GB) */
+  for(j=0;j<t->ngroups;j++)if(t->group[j][0]<t->start||t->group[j][1]<t->group[j][0]||t->group[j][1]>t->start+t->words*4-0x10UL)return 13;
   cs_enter();memset(&tape,0,sizeof(tape));memcpy(&tape,t,in_bytes<sizeof(tape)?in_bytes:sizeof(tape));tape.captured=2;cs_leave();return 0;}
  return 1;
 }
@@ -839,7 +937,7 @@ static int xr_start(void) { /* s3ginv 0xBB370 */
    if(!fetch_idle(&st)){vx3dn_xr_stat[4]++;write_mmio(0,0x41C,0x00100000UL);write_mmio(0,0x420,0x680A0000UL);xr_reset_engine();if(fault)return 0;}}}
  w[0]=0xFE020420UL;w[1]=0x41C;w[2]=0x00300000UL;w[3]=0xCC000000UL;for(k=4;k<64;k+=2){w[k]=0xCCC00002UL;w[k+1]=0xDDD00002UL;}
  xr_flush(0,256);pause=XR_GPU+256UL-0x10;
- fx_rfenced=vx3dn_ring_fence&&hda&&(hda->bpp==16||hda->bpp==32);fx_rkicks=0;fx_rreason=0;
+ fx_rfenced=hda&&(hda->bpp==16||hda->bpp==32);fx_rkicks=0;fx_rreason=0;
  if(fx_rfenced){uint32_t a=vx_status.fb_linear+FX_FENCE_OFF;for(k=0;k<14;k++)fx_2d[k]=read_mmio(0,fx_2d_reg[k]); /* the 2D registers the fences change */
   if(hda->bpp==16)*(volatile uint16_t*)a=(uint16_t)fx_seq;else *(volatile uint32_t*)a=fx_seq&0xFFFFUL;publish();(void)*(volatile uint32_t*)a;}
  f=VX_irq_save();
@@ -995,10 +1093,15 @@ extern void (*vx3dn_write_n)(const uint32_t *w,uint32_t n);
 #define VA_RING 0x80000000UL
 /* .529: an indexed packet of more than 192 vertices takes two slots side by side (384 x 40 bytes); both must be free, the run of slots
  * starts again at slot 0 when it would pass the last */
-static uint32_t va_busy(uint32_t t,uint32_t cur) { /* 1 refused for the group being built, 2 for a group in flight, else 0 */
+static uint32_t va_seq[VX3DN_VA_SLOTS]; /* .726 (outside review of .723): each slot's whole ring sequence beside its 16-bit tag */
+static uint32_t va_busy(uint32_t t,uint32_t cur,uint32_t k) { /* 1 refused for the group being built, 2 for a group in flight, else 0 */
  if(!t||!cur)return 0;
  if(t==cur)return 1;
  if(fx_inflight){
+  /* .726: the tag holds 16 bits of the sequence, so a slot left alone for 32,768 kicks (draws without indexed packets) compared as
+   * newer than the fence and was taken as in flight: a needless retire when indexed draws came back. A slot whose whole sequence is
+   * more than 16,384 kicks old is done (the ring holds far fewer groups than that) */
+  if((t&VA_RING)&&(int32_t)(fx_seq+1-va_seq[k])>0x4000)return 0;
   if(t&VA_RING){if(fx_gring==2&&!(fx_rfenced&&(int16_t)(uint16_t)(fx_fence_read()-(t&0xFFFFUL))>=0))return 2;}
   else if(fx_gring!=2&&t==va_started)return 2;}
  return 0;
@@ -1013,8 +1116,8 @@ static uint32_t va_alloc(uint32_t bytes) {
  /* the register path (no capture: vx3dn_write_n unset) draws synchronously after every group was retired: every slot is free and this one
   * is done when the draw returns */
  cur=!vx3dn_write_n?0:fx_gring==2?VA_RING|((fx_seq+1)&0xFFFFUL):(va_gid&0x7FFFFFFFUL);
- for(j=0;j<m;j++)if((b=va_busy(va_tag[k+j],cur))!=0){vx3dn_va_stat[b==1?2:1]++;return 0xFFFFFFFFUL;}
- for(j=0;j<m;j++)va_tag[k+j]=cur;
+ for(j=0;j<m;j++)if((b=va_busy(va_tag[k+j],cur,k+j))!=0){vx3dn_va_stat[b==1?2:1]++;return 0xFFFFFFFFUL;}
+ for(j=0;j<m;j++){va_tag[k+j]=cur;va_seq[k+j]=fx_seq+1;}
  va_next=k+m>=vx3dn_va_nslots?0:k+m;vx3dn_va_stat[0]++;
  return vx3dn_va_off+k*VX3DN_VA_SLOT;
 }
@@ -1022,7 +1125,10 @@ static void va_write(uint32_t off,const uint32_t *w,uint32_t n) {
  uint32_t bytes=n*4;if(!vx_status.fb_linear||off>vx_status.fb_bytes||bytes>vx_status.fb_bytes-off)return;
  vx_movsd((void*)(vx_status.fb_linear+off),w,n);
 }
-static void va_hooks(void) {if(!vx3dn_varena){vx3dn_varena=va_alloc;vx3dn_vwrite=va_write;}}
+/* .768B (IXDIRECT): a slot's address in video memory for the emitter's checked copy (0 outside it) */
+static uint32_t *va_map(uint32_t off,uint32_t bytes) {if(!vx_status.fb_linear||off>vx_status.fb_bytes||bytes>vx_status.fb_bytes-off)return 0;return (uint32_t*)(vx_status.fb_linear+off);}
+extern uint32_t *(*vx3dn_vmap)(uint32_t,uint32_t);
+static void va_hooks(void) {if(!vx3dn_varena){vx3dn_varena=va_alloc;vx3dn_vwrite=va_write;vx3dn_vmap=va_map;}}
 uint32_t VX3DN_submit(const vx3dn_packet *p) {
  uint32_t t=VX_tsc(),c0=cs_wt,w0,rc,d,k,lo=0;void *th=Get_Cur_Thread_Handle();uint32_t x0=vx3dn_fastclock?0xFFFFFFFFUL:Get_Thread_Exec_Time(th),m0=xr_now(); /* v10.449: no thread time with FASTCLOCK (another timer-chip read) */
  VX3DN_ev(7,p?p->op:0xFF);w0=sv_wait_pub;va_hooks(); /* v10.470 */
@@ -1511,11 +1617,11 @@ static uint32_t fx_build_b(const vx3dn_packet *p,uint32_t *last) {
   * first packet's command-regulator blocks go into the group's words as every later packet's do, not to 43C/440 directly while the ring
   * holds its paused fetcher (the group then ran only by the v10.382 quirk, and a lost kick only came back by the hang path). v10.231: no register writes under a draw in flight; v10.275: nor after another packet of the group (they would come before its words run) */
  io.context=0;io.read=cap_read;io.write=cap_write;io.read_fb=read_fb;io.write_fb=write_fb;io.milliseconds=ticks;
- tb=PT();same=fx_same_state(p);vx3dn_vertices_only=(uint32_t)same;if(!same&&vx3dn_state_cache&&!(++vx3dn_miss_n&7))fx_classify(p); /* v10.429 */vx3dn_tex_only=!same&&fx_tex_only(p)?1UL:0; /* v10.450 */vx3dn_write_n=cap_write_n;vx3dn_reserve=cap_reserve;vx3dn_copyw=movsd_fn;vx3dn_v900_wait=vx3dn_chip900?cap_v900_wait:0;
+ tb=PT();same=fx_same_state(p);vx3dn_vertices_only=(uint32_t)same;if(!same&&vx3dn_state_cache&&!(++vx3dn_miss_n&7))fx_classify(p); /* v10.429 */vx3dn_tex_only=!same&&fx_tex_only(p)?1UL:0; /* v10.450 */vx3dn_tp_only=!same&&!vx3dn_tex_only?(uint32_t)fx_tp_only(p):0UL; /* .762; .763: 2 the raster tier */vx3dn_write_n=cap_write_n;vx3dn_reserve=cap_reserve;vx3dn_copyw=movsd_fn;vx3dn_v900_wait=vx3dn_chip900?cap_v900_wait:0;
  {uint32_t t1=PT();vx3dn_bprof[0]+=(t1-tb+128)>>8;tb=t1;}
  vx3dn_tsc=vx_prof?tsc_fn:0;{uint32_t e0=vx3dn_eprof[0]+vx3dn_eprof[1]+vx3dn_eprof[2];const uint32_t i7=vx3dn_ixp[7];
  if(vx3dn_wprof){uint32_t k;for(k=0;k<4;k++){wp_mk[k]=0xFFFFFFFFUL;wp_g0[k]=vx3dn_geo[k];}vx3dn_mark=wp_mark;} /* v10.440 */
- rc=vx3dn_execute(p,&io,last);cap_close();vx3dn_mark=0;{extern uint32_t vx3dn_sh_ok;vx3dn_sh_ok=0;}if(same&&!vx3dn_vertices_only)same=0;vx3dn_vertices_only=0;if(vx3dn_tex_only&&!rc)vx3dn_texonly_stat[0]++;vx3dn_tex_only=0; /* v10.450 */ /* v10.296: the emitter sent the whole state (Coarse Z) */vx3dn_write_n=0;vx3dn_reserve=0;vx3dn_copyw=0;vx3dn_v900_wait=0;vx3dn_cgroups=0;vx3dn_tsc=0;
+ rc=vx3dn_execute(p,&io,last);cap_close();vx3dn_mark=0;{extern uint32_t vx3dn_sh_ok;vx3dn_sh_ok=0;}if(same&&!vx3dn_vertices_only)same=0;vx3dn_vertices_only=0;if(vx3dn_tex_only&&!rc)vx3dn_texonly_stat[0]++;vx3dn_tex_only=0; /* v10.450 */if(vx3dn_tp_only&&!rc)vx3dn_tp_stat[0]++;vx3dn_tp_only=0; /* .762 */ /* v10.296: the emitter sent the whole state (Coarse Z) */vx3dn_write_n=0;vx3dn_reserve=0;vx3dn_copyw=0;vx3dn_v900_wait=0;vx3dn_cgroups=0;vx3dn_tsc=0;
  {uint32_t t1=PT(),d=(t1-tb+128)>>8,e=vx3dn_eprof[0]+vx3dn_eprof[1]+vx3dn_eprof[2]-e0;vx3dn_bprof[1]+=d;vx3dn_eprof[3]+=d>e?d-e:0;tb=t1;if(p->pre.on==2&&vx3dn_ixp[7]!=i7)vx3dn_ixp[3]+=d;}} /* v10.473; v10.476: only the packets whose parts were timed ([7]: drawn from a slot with the profile on), so the set-up is their emitter less their parts (an expanded packet counted in [3] but not in [4..6] made it wrong) */
  if(rc||cap_err){ring_wordp=at;vx3dn_forget();vx3dn_ix_stat[1]=ix1;vx3dn_ix_stat[2]=ix2;vx3dn_ix_stat[3]=ix3;return rc?rc:FETCH_DECLINED;}
  /* v10.391 (review): an empty draw (clip of no area: vx3dn_execute returns before the state set-up) sends nothing: the state it
@@ -1537,7 +1643,6 @@ static uint32_t fx_build_b(const vx3dn_packet *p,uint32_t *last) {
 static uint32_t fx_wipe_gap(uint32_t s) { /* v10.383: 0 nothing to write over, 1 written over, 2 the old position not known, 3 off */
  uint32_t p=fx_pend,blk=vx3dn_cmd_off,end=vx3dn_cmd_off+FX_BLOCK_BYTES,to;volatile uint32_t *w;
  if(p==0xFFFFFFFFUL||p<blk||p>=end){vx3dn_gap_stat[2]++;return 2;}
- if(!vx3dn_gap_wipe)return 3;
  to=p<=s?s:end;if(to-p>8192UL)to=p+8192UL;
  p=(p+7)&~7UL;if(to<=p)return 0;w=(volatile uint32_t*)(vx_status.fb_linear+p);vx3dn_gap_stat[0]++;
  for(;p+8<=to;p+=8){*w++=0xCCCCCCC0UL;*w++=0xDDD00000UL;vx3dn_gap_stat[1]+=2;}
@@ -1649,12 +1754,15 @@ static uint32_t fx_ix_again(const vx3dn_packet *p,uint32_t *last) {
   * second build is the first again. There the packet gets a group of the largest size instead (80 KB, what the staging buffer and
   * the command block hold; 1920 indices expanded are about 20,000 words): in the ring no wait at all, in a one-shot group the wait
   * a one-shot start makes anyway. */
+ /* .726 (outside review of .723): since .627 the VX900 draws by index from the vertex area too, so the wait frees slots there as on the
+  * other chips: the same retire and second build first; only a packet that still does not fit (expanded, larger than a group) takes
+  * the 80 KB group as .611 did */
+ if(!fx_retire(0))return VX3DN_LOST;
  if(vx3dn_chip900){uint32_t kb=vx3dn_fetch_kb;
-  if(fx_gring!=2&&!fx_retire(0))return VX3DN_LOST;
+  fx_open_group();if(fault)return VX3DN_LOST;rc=fx_build(p,last);if(rc!=FETCH_DECLINED){vx3dn_ix_wait[0]++;return rc;}
   vx3dn_fetch_kb=80UL;fx_open_group();vx3dn_fetch_kb=kb;if(fault)return VX3DN_LOST; /* .694: the ring's start gave the engine up (rec_fail) */
   vx3dn_ix_wait[0]++;rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
   return rc;}
- if(!fx_retire(0))return VX3DN_LOST;
  vx3dn_ix_wait[0]++;fx_open_group();if(fault)return VX3DN_LOST;rc=fx_build(p,last);if(rc==FETCH_DECLINED)vx3dn_ix_wait[1]++;
  return rc;
 }
@@ -1749,14 +1857,16 @@ again:
     * copies and checks them into the fetch block) is checked by the emitter as it writes them; on the registers that is a vertex at a
     * time after the burst's head, so a failing vertex left a burst short of its words and the engine waiting for them. Here they are
     * copied into the packet first and checked whole, before any register is written. */
-   if(vx3dn_vsrc_pkt==&request_copy){uint32_t nv=request_copy.vertex_count<=VX3DN_MAX_VERTICES?request_copy.vertex_count:VX3DN_MAX_VERTICES;
-    copy_words(request_copy.pre.w,vx3dn_vsrc,nv*40);vx3dn_vsrc_pkt=0;vx3dn_vsrc=0;
+   if(vx3dn_vsrc_pkt==&request_copy){uint32_t nv=request_copy.vertex_count<=VX3DN_MAX_VERTICES?request_copy.vertex_count:VX3DN_MAX_VERTICES,nb=nv*40; /* .768B: an indexed packet's (IXDIRECT leaves them in the caller's packet too): its whole count at its stride */
+    if(request_copy.pre.on==2){nv=request_copy.vertex_count<=VX3DN_IX_VERTICES?request_copy.vertex_count:VX3DN_IX_VERTICES;nb=nv*VX3DN_PRE_STRIDE(&request_copy)*4UL;}
+    copy_words(request_copy.pre.w,vx3dn_vsrc,nb);vx3dn_vsrc_pkt=0;vx3dn_vsrc=0;
     if(vx3dn_validate(&request_copy,&i)){rc=VX3DN_BAD_PACKET;bad_vline=__LINE__;break;}}
    if(!fx_retire_stop(0))rc=VX3DN_LOST;else{vx3dn_reg_draws++;vx3dn_forget();rc=vx3dn_execute(&request_copy,&io,&last_status);}
   }
   if(rc)break;
   submitted++;triangles+=packet_triangles(&request_copy);(*done)++;vx3dn_batch_stat[1]++;
  }
+ vx3dn_vsrc_pkt=0;vx3dn_vsrc=0; /* .768B: no pointer into the caller's memory past its batch (every packet's words are in the group by now) */
  SMP_PH(VX_SMP_PH_B_CLOSE); /* .526 (the last group's start sets its own phase) */
  if(grp&&fx_gpackets){vx3dn_batch_stat[2]++;r2=fx_start(async&&!excluded,&last_status);
   if(r2==FX_REBUILD){grp=0;k=gfirst;*done=gdone;submitted=gsub;triangles=gtri;rc=VX3DN_OK;goto again;}
@@ -1883,7 +1993,7 @@ static uint32_t q_hw(uint32_t op,uint32_t *count) {
   uint32_t v=0xFFFFFFFFUL,t0;
   write_fb(0,s,0xFFFFFFFFUL);(void)read_fb(0,s); /* a marker no count reaches; the read drains the write-combining buffer */
   write_mmio(0,0x440,0x21000000UL|((s>>2)&0xFFFFFFUL));write_mmio(0,0x440,0x22000000UL|((s>>26)&0xFFUL));
-  if(!fetch_idle(&st)){rc=VX3DN_LOST;goto finish;}
+  if(!fetch_idle(&st)){write_mmio(0,0x440,0x21000000UL);write_mmio(0,0x440,0x22000000UL);rc=VX3DN_LOST;goto finish;} /* .754 (outside review): the count's address disarmed on this way out too */
   t0=Get_System_Time();
   do v=read_fb(0,s);while(v==0xFFFFFFFFUL&&(uint32_t)(Get_System_Time()-t0)<5UL);
   write_mmio(0,0x440,0x21000000UL);write_mmio(0,0x440,0x22000000UL);
@@ -1921,6 +2031,11 @@ static uint32_t q_before_draw(void) {
  cs_leave();
  return rc;
 }
+/* .737 (fourth review #10): the handle a query was begun on (vx3dn_q_hdev, set by the IOCTL before the call); closing that handle with the
+ * query still open (a program ended mid-query) frees it: other programs' queries got BUSY until a restart */
+uint32_t vx3dn_q_hdev;static uint32_t q_hdev;
+void VX3DN_query_close(uint32_t h) {cs_enter();if(q_owner&&q_hdev==h){uint32_t v=0;if(!q_aside&&!q_bad)(void)q_hw(1,&v); /* the engine's count stopped */
+ q_aside=0;q_away=0;q_owner=0;q_hdev=0;}cs_leave();}
 uint32_t VX3DN_query(uint32_t op,uint32_t owner,uint32_t *count) {
  uint32_t rc=VX3DN_OK,v=0;
  *count=0;
@@ -1932,7 +2047,7 @@ uint32_t VX3DN_query(uint32_t op,uint32_t owner,uint32_t *count) {
  cs_enter();
  if(op==0){
   if(q_owner&&q_owner!=owner){vx3dn_query_switch[1]++;rc=VX3DN_BUSY;}
-  else if(!(rc=q_hw(0,&v))){q_owner=owner;q_thread=Get_Cur_Thread_Handle();q_acc=0;q_aside=0;q_away=0;q_bad=0;}
+  else if(!(rc=q_hw(0,&v))){q_owner=owner;q_hdev=vx3dn_q_hdev;q_thread=Get_Cur_Thread_Handle();q_acc=0;q_aside=0;q_away=0;q_bad=0;}
  }
  else if(q_owner!=owner)rc=op==1?VX3DN_UNSUPPORTED:VX3DN_OK;
  else if(op==1){
@@ -2261,9 +2376,10 @@ int VX3DN_ring_copy(const vx2d_request *r) { /* 1: done in the ring; 0: not take
 static uint32_t ring_clear(const vx3dn_packet *p) { /* VX3DN_OK: done in the ring; 0xFFFFFFFF: not taken (the usual path follows) */
  vx3dn_info i;vx3dn_packet *q=&request_copy;uint32_t f,bpp=hda?hda->bpp:0,oz[5],oc[5],hz=0,hc=0,cv,cm,last;unsigned long fl;unsigned char old,unlock,a,b;
  if(!vx3dn_ringclear||!vx3dn_clear2d||fault||xr_state!=2||!fx_rfenced||fx_ring_dead||!vx3dn_xr||!vx3dn_fetch||!vx3dn_cmd_off||(bpp!=16&&bpp!=32))return 0xFFFFFFFFUL;
- f=VX3DN_CLEAR_WHAT(p->clear_flags);
+ copy_packet(q,p); /* .737 (review audit #8): copied first, the flags read from the copy (they were read from the caller's memory, then copied) */
+ f=VX3DN_CLEAR_WHAT(q->clear_flags);
  if(!f||(f&~(VX3DN_CLEAR_TARGET|VX3DN_CLEAR_Z)))return 0xFFFFFFFFUL;
- copy_packet(q,p);VX3DN_info(&i);
+ VX3DN_info(&i);
  if(vx3dn_validate(q,&i)||q->clip.left!=0||q->clip.top!=0||q->clip.right<=0||q->clip.bottom<=0)goto no;
  if(f&VX3DN_CLEAR_Z){vx3dn_depth_word(q,&cv,&cm);if(!(cm==0xFFFFFFFFUL||(q->depth.format==VX3DN_D16&&cm==0xFFFFUL))||!rc_prep(&q->depth,cv,(uint32_t)q->clip.right,(uint32_t)q->clip.bottom,bpp,oz))goto no;hz=1;}
  if(f&VX3DN_CLEAR_TARGET){cv=q->target.format==VX3DN_RGB565?rgb565(q->clear_color):q->clear_color;if(!rc_prep(&q->target,cv,(uint32_t)q->clip.right,(uint32_t)q->clip.bottom,bpp,oc))goto no;hc=1;}

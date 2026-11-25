@@ -9,12 +9,12 @@
       "KERNEL",
       "DIBENG"
     ],
-    "relocations": 116
+    "relocations": 117
   },
   "le": {
     "format": "LE",
     "objects": 2,
-    "internal_fixups": 8426,
+    "internal_fixups": 8533,
     "device_id": "4333",
     "device_name": "VX85598",
     "ddb_ordinal": 1,
@@ -38,6 +38,7 @@
       "VXDDABI",
       "VXOVKEY",
       "VXOVKEYON",
+      "VX_D3D_CrashStats",
       "VX_D3D_LastPid",
       "VX_D3D_QueryDraws",
       "VX_D3D_QueryEvents",
@@ -80,8 +81,7 @@
           "CharUpperA",
           "EnumDisplaySettingsA",
           "MessageBoxA",
-          "wsprintfA",
-          "wvsprintfA"
+          "wsprintfA"
         ],
         "KERNEL32.DLL": [
           "CloseHandle",
@@ -91,7 +91,6 @@
           "DeleteCriticalSection",
           "DeviceIoControl",
           "DisableThreadLibraryCalls",
-          "DuplicateHandle",
           "EnterCriticalSection",
           "ExitProcess",
           "ExitThread",
@@ -101,8 +100,6 @@
           "GetCommandLineA",
           "GetCommandLineW",
           "GetCurrentProcessId",
-          "GetCurrentProcess",
-          "GetCurrentThread",
           "GetCurrentThreadId",
           "GetExitCodeProcess",
           "GetFileType",
@@ -113,13 +110,17 @@
           "GetOEMCP",
           "GetProcAddress",
           "GetStdHandle",
-          "GetThreadContext",
           "GetTickCount",
           "GetVersion",
           "GlobalAlloc",
           "GlobalFree",
+          "HeapAlloc",
+          "HeapCreate",
+          "HeapFree",
           "InitializeCriticalSection",
+          "InterlockedDecrement",
           "InterlockedExchange",
+          "InterlockedIncrement",
           "IsBadReadPtr",
           "IsBadWritePtr",
           "LeaveCriticalSection",
@@ -132,10 +133,8 @@
           "SetFilePointer",
           "SetLastError",
           "SetStdHandle",
-          "SetThreadPriority",
           "SetUnhandledExceptionFilter",
           "Sleep",
-          "SuspendThread",
           "TlsAlloc",
           "TlsFree",
           "TlsGetValue",
@@ -144,11 +143,7 @@
           "VirtualAlloc",
           "VirtualFree",
           "VirtualQuery",
-          "WriteFile",
-          "lstrcatA",
-          "lstrcmpiA",
-          "lstrcpyA",
-          "lstrlenA"
+          "WriteFile"
         ]
       }
     },
@@ -537,7 +532,7 @@
     }
   },
   "engine": {
-    "passed": 1275,
+    "passed": 1278,
     "cases": [
       "16bpp fill 0 0",
       "16bpp fill 0 1f",
@@ -1813,7 +1808,10 @@
       "RLE streams the VxD must leave to DIBENG, each refused by the decoder (counted): delta codes, rows that end short or run over, missing or extra rows, a missing end of bitmap, an early end of line, absolute runs cut off or over the row, empty and one-byte streams; also top-down RLE, a stride that is not the width, no width, a bitmap above the 262144-pixel decode buffer, an empty stream, the RLE flag on a 16-bit source, no palette, 1-bit and 4-bit with a palette of the wrong size, 2-bit and 3-bit sources, the 565 flag on a 1-bit source",
       "the registry reset puts class mask 2 back to ACCEL_STRETCH2 (default 0)",
       ".592: with the ring-paused idle rule in use, a fill the command regulator holds for 1, 20 or 200 status reads (status 0x10, 444 bit 31) is finished when the request returns, GDI and DirectDraw, 16 and 32 bpp; the waits are counted and the engine was seen busy in each",
-      ".593: a fill whose first 1, 2 or 3 status reads are 00000000 before the engine shows busy is finished when the request returns (GDI and DirectDraw, 16 and 32 bpp, nothing pending, the ring-paused rule not in use)"
+      ".593: a fill whose first 1, 2 or 3 status reads are 00000000 before the engine shows busy is finished when the request returns (GDI and DirectDraw, 16 and 32 bpp, nothing pending, the ring-paused rule not in use)",
+      ".769 late EDID: no EDID at boot hides 1280x1024 and up; asking for 1280x1024 reads it again (the BIOS answers): 1280x1024 and 1440x900 come back, 1600x1200 stays hidden",
+      ".769 late EDID: with no EDID anywhere nothing comes back, and the EDID is read at most once every 3 seconds",
+      ".769 late EDID: with NOEDIDHIGHRES=1 every size is offered and no EDID is read"
     ]
   },
   "frontend": {
@@ -2909,10 +2907,6 @@
     "baseline_zip_sha256": "98d5a9fa6280beeb58c68051e20226aa1eb20aba440a7b7cbf6d5fb4dadc0313",
     "scope": "Exact v10.148 source/build preservation with explicit D3D integration modifications. No hardware acceptance claim.",
     "unchanged_files": {
-      "src/biosrd.c": "1bedb97f385ad6c7260f4559197b2c23cf9a3ae2096d447862800971c8d88587",
-      "src/boxvint.h": "0b371b47b3799796290c608982ec1d048ae3e93215bb356074fe26c2e4e418ae",
-      "src/cursor.h": "8ab3518891ad43d3185353bc9591879af2a1139dc5b04b9d897d644af6ff812b",
-      "src/dbgprint32.c": "4ae9a5f7f874fde32bb127b644e023f43a0e1e738e6641279a08554e84a778bb",
       "src/ddhal32/COPYING.LIB": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
       "src/ddhal32/dciddi.h": "5dbdd56367016fac462c1dea6879a7593e47524138ae36440a4a6a85edf2935c",
       "src/ddhal32/ddkernel.h": "22f9753666b571c7eb4f2052bc811b4e980a99486b12f4953cfe9b951eada90b",
@@ -2928,26 +2922,28 @@
       "src/ddk/minivdd.h": "1a94e0c3f0296d154c9ce97b20155ad7d13b566a9492cb86829909a192c6cf37",
       "src/ddk/tvout.h": "d6c925fcb53ba44518d72703d6bc4611ce47d5593e9cf94db07a04034f5f7c6e",
       "src/ddk/valmode.h": "3159facad62112e12ec95909e16a186e10a30417d739400d17246776806dd7a7",
-      "src/dpmi.h": "167ca67ba3448bcc5d7f4dea6764cc7e831cab561743efecd6c2feb0b6a84622",
       "src/fixlink/fixlink.c": "edd9a87d21b9e2cc2e5aea22cdc35acfebdaca4d58de6d4ef6c46e0bf22ad4c0",
       "src/fixlink/licence.txt": "c3c59220e038c7b3b816668577f3967ca6f48d4074a34ffbd8cc93ad760c7be1",
-      "src/io32.h": "24b0db16b58669b5b7ebc21e661855645e08d632ebc84c5c8efc1bf2e8491e37",
-      "src/makefile": "e53d8a4b2ae5390089aa07d05aa88f240270e8c199245567f536ecc7d70b0946",
-      "src/modes_vesa.c": "909c935e27737ca2d6649f7ca46d394455e0b072dedc78a2731636106db380b5",
-      "src/mtrr.h": "c9c5acd3d961392f9e0ec8a035c6013cf0750982823ca6d5c6fa5094d8570466",
-      "src/palette.c": "2e04c643695f2160dad55d718f5e7fa5d4e7212eb015caea9a32173046613dd2",
-      "src/pm16_calls_vesa.c": "1fd3dd938b9e4c821e3b372793fbea6801ef745932e1b55bca656c0a924d1d0e",
       "src/res/colortab.c": "8b5abae5544bc3607cd35f2bf2df9637e4f3022a4de5988979861d22ca57be4c",
       "src/res/config.c": "d91c839587a6bc91dbb2d7c802b11611b7bd571dc0ba9bcd3ed74fcb770294f7",
       "src/res/fonts.c": "9d5040424d58dcd6e16947325cd554e1c6985add8997cd53250a6ec44c7c976f",
       "src/res/fonts120.c": "d691fc4a4b580c4cf598dcb917e9e9bbc47b34faceec99b3b91a6bbbbb2fb7e1",
       "src/res/fonttmpl.c": "7cd04d0abe0dc463f85af8ad699b906422f3832e62ce183be29787bc663eefb4",
+      "src/vmware/pci.h": "52e4761775e67305cb06ac064be450a93f395979d5696e134161ea540fbd16b0",
+      "src/biosrd.c": "1bedb97f385ad6c7260f4559197b2c23cf9a3ae2096d447862800971c8d88587",
+      "src/boxv.h": "0c130a7f5e5a5c1f0237bf55770e7c3b60891b5959cf42a92391525a6e7d5eae",
+      "src/boxvint.h": "0b371b47b3799796290c608982ec1d048ae3e93215bb356074fe26c2e4e418ae",
+      "src/cursor.h": "8ab3518891ad43d3185353bc9591879af2a1139dc5b04b9d897d644af6ff812b",
+      "src/dbgprint32.c": "4ae9a5f7f874fde32bb127b644e023f43a0e1e738e6641279a08554e84a778bb",
+      "src/io32.h": "24b0db16b58669b5b7ebc21e661855645e08d632ebc84c5c8efc1bf2e8491e37",
+      "src/modes_vesa.c": "909c935e27737ca2d6649f7ca46d394455e0b072dedc78a2731636106db380b5",
+      "src/mtrr.h": "c9c5acd3d961392f9e0ec8a035c6013cf0750982823ca6d5c6fa5094d8570466",
+      "src/pm16_calls_vesa.c": "1fd3dd938b9e4c821e3b372793fbea6801ef745932e1b55bca656c0a924d1d0e",
       "src/scrsw_vesa.c": "87b1ef06ab2cdfbf503b8e04a62d7fbceb5bb43e6e5faa0f09a4eed0946691c4",
       "src/types16.h": "db8f9f6af4f5928350d4d34e78386b62939bcdab1bf25cbd486daccc20bafd67",
       "src/version.h": "b776d7881d096b82664af95aaa8aed9d4f251b791826c53f8ea880835145f8c3",
       "src/vesa.h": "b0c3237baf34b89c337f375b91c0ef9da22edb4ddad3e8a854e086374fc75703",
       "src/vmm.h": "b1e485ce063cde62a3ce063fbaaf4d97dbc50fe3d170c0288022a43092571f70",
-      "src/vmware/pci.h": "52e4761775e67305cb06ac064be450a93f395979d5696e134161ea540fbd16b0",
       "src/vpicd.h": "3ef92f8b3a5d4de359a86c4e60d17348fcefd74b0c230be664b5491777648eb6",
       "src/vx2auto.c": "d621aebf05dc03f74e3e8f6cb33f86e2c078124d22401b4a2005de4668ebcdca",
       "src/vx2bars.c": "23e524d11c571a44fba1804405910f27c62af896bc99fab339fddf448f1c3bc9",
@@ -2990,23 +2986,20 @@
       "src/vx3suite.c": "d3f400a7ec35fe0730086941fbac1c1be4bab62591c8f05fb960d0bd664262fe",
       "src/vx3suite_core.inc": "da2eeeb325afa02b94792cf82ada2f59f4668041403a197f0d2f07cd75ffc81f",
       "src/vx855_fill.h": "cec7a077905e52f37af7c7eb007fa26e64e297ab8b070941c4b91d452d36f0cd",
-      "src/vx855_vbe_init.inc": "b929e16bf5e0ecdb90d3e9308e5d2ac6e5cc9fcc02314ecba0ebd29a70fd6a3c",
       "src/vx98test.c": "9aca9664d8c07d83bf5a144d7c370e32f2bb92156e8dc6083e18e831ac52dc01",
       "src/vx_brush_diag.h": "4935580e54f12c023855709479c62da6ac7fdf63c8dc5276dc4268824e58ba2f",
       "src/vxd_gamma.h": "9c2999d0f6b1913034f37a6df39d7512831d66542e4bcdc6c688e649f473cb27",
-      "src/vxd_gtf.c": "f452d4f082b6feb617396b4f6f3e98855ff4df40a372e9a1da7308119e83ab90",
       "src/vxd_main_vesa.c": "7f385720d9a44fb6c2460b7b1f45c21d7e94d507632dc61542ce209578a674a8",
       "src/vxd_mtrr.c": "38c225460f5558ae22f1022f65218afa49ba2cef1e3448baf85baa7c564d2243",
       "src/vxd_vdd.h": "ee2c004763a6281c596c58eb4086122691f735563c9e632fa413cee4b96a7649",
       "src/vxd_vdd_vesa.c": "98fccb8f24b1c335505724f33c3d2586fef8ad3f0b9d78b4cbff00cc16afc753",
       "src/winhack.h": "27df0e0a223fb66d7fd4fbfa85d52d597d79b49fd0ef87c333f1bbc1f5b932e0",
-      "src/xpdump.c": "1c378b9e5c799d5b1b726dd3ad7ea677a4f629404794a639c429e4288caf57ee",
-      "src/boxv.h": "0c130a7f5e5a5c1f0237bf55770e7c3b60891b5959cf42a92391525a6e7d5eae"
+      "src/xpdump.c": "1c378b9e5c799d5b1b726dd3ad7ea677a4f629404794a639c429e4288caf57ee"
     },
     "modified_files": {
       "build.py": {
         "baseline_sha256": "f4fb90bde751305c785a88533cd712e3aba8686b1a4a5853d7046bfd4cec6b5a",
-        "current_sha256": "939a8879d9500851c1d740814c1b6b9c92dd423055827fe961fa8c05f4da1738"
+        "current_sha256": "6d69d04cadd59b00bd1c2b6083344642fec204c6dfda1eee54b6ad940c7d2cb7"
       },
       "src/dddrv.c": {
         "baseline_sha256": "6d5a2456a4643b9ba6db2e4c34eed33057ea93f0bb8514a2e320fb2fc92cce4c",
@@ -3014,31 +3007,31 @@
       },
       "src/vx855_2d.c": {
         "baseline_sha256": "c1f1f0dc5eb4f3a6b19ccafc077387adbed7e86391adda2e9d43bf48c29575d3",
-        "current_sha256": "7bdb90541bf4d15687c942034a8ebd15e0a56218c8a9ce4018c4045987b85962"
+        "current_sha256": "775c288d3567e850c28e51be71386d8986b050daa928a56efe2db7c02e8114d1"
       },
       "src/vx855_2d.h": {
         "baseline_sha256": "a5e8f866b5cb9cb029c2a36af5fe7aae74d981324287dc53873b6187ce1907d8",
-        "current_sha256": "8cdb2a8a6b95b0c01d272ec9186dff7c517f0899a69ba911165ce756c5028deb"
+        "current_sha256": "baea7e46cbf50cc6ea4956768564b54287b6e9d3e9b51f296854d8a7b16b583c"
       },
       "src/vx855_3d.c": {
         "baseline_sha256": "d11d2234f42c66bb34e9bacf851bcf0fd83a5ae3cde5552326440de5ed29ea4f",
-        "current_sha256": "89ad91ec83d70e2cc5f6fe0ab1c3ecc1534b2b7e6dbece39f307af47726f4476"
+        "current_sha256": "691128fab1463149c5df08bd34d7e3658e8faf4728434e9ecd96726f6bdda1b0"
       },
       "src/vx855_flip.c": {
         "baseline_sha256": "f91b1a022c0aa6309828e7b6c948f5164c7ecd9f43648f3b19dde28b56705422",
-        "current_sha256": "9b058aa086e936d62355a10ebfb80018af13c86beb00db26bf2190ea3e19d218"
+        "current_sha256": "841ec91b9c23cf18cf3ad8682ffaff3b170b547e87340cabe414be2a814fcc3a"
       },
       "src/vx_ddraw.c": {
         "baseline_sha256": "6f615cca66ae742b28cc412f9ab42c04ed11642390576cd7362fe5669dc28d29",
-        "current_sha256": "dcc5c75ecb4bd3437767f2e38fc9ebea4d76a9edb7befc756fdef7d10168d580"
+        "current_sha256": "9fd83e903dd2e5e105c5544070b0e8b8d18446bd47df1d58aa8df68e9c334f7c"
       },
       "src/vxd_main.c": {
         "baseline_sha256": "c457b4c71299c0d10ba748d7bf994f2045c69b032869d3d41db779c71e228aa7",
-        "current_sha256": "8485c0084e9a4def31e07a66115a0c02442d57687f46338c83e5787565f6b7bf"
+        "current_sha256": "ee994be8ff79bcacb3e3dbfa262d9df82f278f92b4ccc64f4a7bfc0ba197bd53"
       },
       "src/vxd_vesa.c": {
         "baseline_sha256": "09a6ba3f12c8499c1daa252d0cfcaff7a86c111e70d176ef8c24c4c4a27b02c1",
-        "current_sha256": "ccc127aa5b35486ce6e1b39298b7a608f16b4861a819bae480543bb56c9b94fb"
+        "current_sha256": "555b42c6378fbc482e789ab26e45eed4740465d5ce4eef08cd462c642468510a"
       },
       "src/ddhal32/vmdahal32.h": {
         "baseline_sha256": "35cceccf472ba9c4b07498d18aa41ff41fe98f136f105b0b340b8e4d8d29cbdd",
@@ -3058,11 +3051,11 @@
       },
       "src/vx85598.h": {
         "baseline_sha256": "57ecf71fc9a37bf6b7589d7ce2c41ac46673b07b5c33d34362006298d21f25ba",
-        "current_sha256": "6d4b76bd3682b7fc3a8448cf9d8d6272c04894d57a61ecd35345e104bd1722b3"
+        "current_sha256": "35b9b2715a9088729ed3af6ccc9be010db51633cf71fe1a57d32cf9c490466db"
       },
       "src/control.c": {
         "baseline_sha256": "30c52253296056384cee039cfbdd691ba3299fde748d49408f20ec6e16d24830",
-        "current_sha256": "2efdc2b7d3bee9ae716e6d5979e1deb76513ff8c23c74cb9e148cc9b188f6904"
+        "current_sha256": "f5f0d53bea590e1f52b8a0323a0b461b0e1629bc69ca297fe31fa27bd436def6"
       },
       "src/3d_accel.h": {
         "baseline_sha256": "db1e408e812a5a6290b4c93f438412faa0430a3fe8aba3035d963069e6e9f0d9",
@@ -3074,19 +3067,19 @@
       },
       "src/vxd_lib.c": {
         "baseline_sha256": "e0f36bd364e53cd3d4f880bd32fe612efd193ffab2435140c07aa744d4b43dde",
-        "current_sha256": "22202f3c6e05546446b647a841db4c007ed23b1e261732e6d0a4600a493d61a5"
+        "current_sha256": "07303398e0793c6bfc8ba54a11493dee5bfc2190b93d3540e1f02919e3375752"
       },
       "src/vxd_lib.h": {
         "baseline_sha256": "386e1a9e15be203e71435fabf69ff3afc10f4f9b6a42e1dbd5952c4f6197173e",
-        "current_sha256": "39662fa6905da43b0ee071d289d39f252cdd21588d46ea88e06160bea8988974"
+        "current_sha256": "3b1fdfb47f934a326f3ce0204b524524ccc243cbe3e03c48cc34a4740406b8d1"
       },
       "src/pm16_calls.c": {
         "baseline_sha256": "92860497a8572229bcc55c1a834b267caf0dbfd93dead81e716319dbd6b44854",
-        "current_sha256": "ba14ab0aec29fbc94300d58a15998774551a9b5df042fa711b7ada9e47ee0d1c"
+        "current_sha256": "e19a153f71a620154d2a6ba652203b378139b563cec67354217bd7efe52c57bb"
       },
       "src/dibcall.c": {
         "baseline_sha256": "f85d338747e5748a74112745fdc1f2b036bf2883281d2911e1134ce9f2a19305",
-        "current_sha256": "0ccfcbf27391e239331a3790f7b4d4598a76f953d518c58a3ea38bfe7fe05a24"
+        "current_sha256": "5218d675d3f955a8e8aa596ff196124ea12ece7e36129537f03a94e6c1c50cce"
       },
       "src/vxd_mouse_conv.h": {
         "baseline_sha256": "a4ea6bbf93f289d8f0d77e82238b58371a59138310d9cb411185d2ff967dd200",
@@ -3094,15 +3087,15 @@
       },
       "src/vx_cache.c": {
         "baseline_sha256": "ef9d3fa4491181fc0908d091d57278f7329c50057b66e55487c7fe42ebcec8ae",
-        "current_sha256": "9f888b0b9c8a24192e34df3baa42ee929541e06ef19673b463cbbe9a42d5e159"
+        "current_sha256": "d0954e89ec3a80714c5f861be03dcf340506179cb30594c2e2cf14989db1a045"
       },
       "src/enable.c": {
         "baseline_sha256": "c8b8875ae237fea8e0d131356d526b5df9d0def959725d4d8134e3089f7f4aa3",
-        "current_sha256": "2ffce087a176d003206bc7da0914aa4d79767d562b44dc501a79e4deaab94a30"
+        "current_sha256": "3881f743893c30c66ac98cf4268d0ba2160a55f41009cac801595725398b83a3"
       },
       "src/sswhook.asm": {
         "baseline_sha256": "ead30a5fb5bffa1cf51e01433b4d9c70437a885d561a4b6d96b145185df31c99",
-        "current_sha256": "a6c1ead7c5cf513885309d9ff45288ba8ddb8a4ba69351b526b3acbfd2d21440"
+        "current_sha256": "32e848d1bd98ce46e8a90bf689b16f22efe890ab421bf0a866c0af26b2e274e2"
       },
       "src/vx2bench.c": {
         "baseline_sha256": "ee56c78e01e3934e0d98e24d3a7dd03eb32b7be35eb643671e7746de3eba77ec",
@@ -3110,7 +3103,7 @@
       },
       "src/vxd_fbhda.c": {
         "baseline_sha256": "0cb58340bcbaf112118e604a670a4bde737bc6072baf9e6ba19dc80eae1181bb",
-        "current_sha256": "f82cd121631ddf1121359ff225abfa9c0363ec504c6233359dcebe40ee5d0bb5"
+        "current_sha256": "bd6dcd932ad0c689076ed4b693c1f33b585649cb05133fc4cfa1477212a67967"
       },
       "src/vx_hatch_diag.h": {
         "baseline_sha256": "b8e22c13700ef81e9574166b94cce52770f186d8ae1636cca36dad47c9569f85",
@@ -3122,7 +3115,7 @@
       },
       "src/vx85598.c": {
         "baseline_sha256": "0b0bad044f9aa1caac79da79752c0531704f7e3021b559dc5205ffa192137af4",
-        "current_sha256": "9cb2f55f4c9b98d8e0e26866a853dedd34d08c1eaf1a06a4c2d183d335cf9884"
+        "current_sha256": "1c81ad0bc48309050069b55d41f5ffebf3d2861ee803fab885708652f7b62564"
       },
       "src/dibthunk.asm": {
         "baseline_sha256": "b3e0c4dfecbd08dbf08b3411d8ea49d55c247b433fc1c06b576a5dc30a3c2591",
@@ -3134,11 +3127,11 @@
       },
       "src/init.c": {
         "baseline_sha256": "670f899afa4e45d6686395e2ee596079729f9efe00af2af7a5c9529a5d338f45",
-        "current_sha256": "ccb862194e6dd1cf69ae51ff8c816d5da4ed36872b89de842a146455efd9c738"
+        "current_sha256": "78c36d94c8ce5cb428532f37f612a9a75edf1e9416d3277e667f461d1604b45c"
       },
       "src/vx855_3d_core.c": {
         "baseline_sha256": "3fba9c39d343c8c4ac1a978c81554f5953d3ca8a628e0930f381c56ad024f83f",
-        "current_sha256": "31c9eb92014e7504ff1123bd0d47c5945e4c4b44015c77f754f797c942d0fdc5"
+        "current_sha256": "631c59720b56837c089fae6ae7cb9f7d1a4704e25a5bbd3e6c11e943229b6859"
       },
       "src/vxd_wram.c": {
         "baseline_sha256": "63fe6183704799a3e72e2ad5f85775eaf72044221f6986e1d58428e71496a0e6",
@@ -3146,7 +3139,7 @@
       },
       "src/vx855_flip.h": {
         "baseline_sha256": "5b7dd63bc3d8183e19db3f396c9dafa377f53d0da8dfe9bfdb84b583b8da8e10",
-        "current_sha256": "2b11b3f1dab62ff32e5f1682f6df4fa1ad3ce71ae94490774977996e36f77ae2"
+        "current_sha256": "56879cbf65e3c696fcc1597e9a2fbc09e7fe241b2288cd44825c059c10b7af28"
       },
       "src/pm16_calls.h": {
         "baseline_sha256": "1ae743c115ce423d2fe6c46e2ef972ddfab91bc615b141e019ee8e901a784e6a",
@@ -3162,11 +3155,11 @@
       },
       "src/scrsw.c": {
         "baseline_sha256": "ef452857c72ce0a230d586f7d1abb49a8c1bb1853cab5916da395b0f8d668984",
-        "current_sha256": "1ccb36b4dccb5a51fbe7f634014be403cb0dc49beebd76c4985314cf51885cd3"
+        "current_sha256": "efa2e87700456f45a91ecfd159d86ef900ee6499348f97c29f2f624732245b14"
       },
       "src/vxd_vdd.c": {
         "baseline_sha256": "c6863276d96c966d4e45d164af2503a91e39a3760dae90ee8965d7eb6813c080",
-        "current_sha256": "3c853375eca1f29cb2aa2c977d284f7451f3176121d6183471cd7aae8f202f51"
+        "current_sha256": "8d97368bf9edd0e789a85f84049938565f607a9aa484a6388f70b6dbe7891302"
       },
       "src/io.h": {
         "baseline_sha256": "63d0d71cc888c4e44615faf703ba9720056edae302b9d6a7ead3e16fe3e06e68",
@@ -3214,7 +3207,7 @@
       },
       "src/vx2edid.c": {
         "baseline_sha256": "ca0e70e49255eeabe9c0d9d1e61e92410e6f917cd4810797b48208105d3ae21d",
-        "current_sha256": "4e28333baa7907d162155bd914e458942781a43f916de49b7c0d6088e8229ec4"
+        "current_sha256": "93f642cc4a901d033286e701e13abf002c9f525ddc676ef9ec1b2f7de248fbcf"
       },
       "src/res/display.rcv": {
         "baseline_sha256": "4ded39b0bc4e2422fd50943ee68ecad9090d75ad4a0db9175ddce9337dac06e9",
@@ -3236,14 +3229,6 @@
         "baseline_sha256": "07d2e426e5b3fac06ddbefbb6858536258aae7223e58c3eb591b41b6a029094c",
         "current_sha256": "9517de73519647a95f044ed9c2b61b4cd59ca94426afbd1a0e4a97e9bd183b5c"
       },
-      "src/vxd_terror.c": {
-        "baseline_sha256": "899754ba37d0f44542fb807647c05c0324e068d9dd6d07be304bcf9569d3b152",
-        "current_sha256": "ef3f3e7c95998a3a4e408fb758141c01f289b05d19963cf8d410e6c27a79e17d"
-      },
-      "src/vxd_terror.h": {
-        "baseline_sha256": "be8b62e79e7863308a8efbb34dbf68d6105fb47f501cc8794b8fba98d0b48d54",
-        "current_sha256": "46a31cdcf00ab1733a11b78d4ceee6500f67f4ea05765571d72d08d9f8d2040f"
-      },
       "src/wram.h": {
         "baseline_sha256": "423cd76631e240bd6eab9253fe2974ff18275de2831cdf3021617456e98757b4",
         "current_sha256": "63e60087dfdc55f06cc2de72755eb6388e475c28012fcf7d12577fd3a938d04a"
@@ -3254,7 +3239,7 @@
       },
       "src/vx2gdi.c": {
         "baseline_sha256": "6b78f1d9cd7e2ecf44cf86fb18d7345f28f0582d84228eb9e8dea2b848247ce5",
-        "current_sha256": "a5322b26f5e4e59803386855d6bb25077117d4ecb9beb4b8364754b2335c72fb"
+        "current_sha256": "970482abd33bc3a246aff82e0b3841d815149438878413fd0335749ed26cde07"
       },
       "src/vx2fix.c": {
         "baseline_sha256": "6718451c079d685f75202b53e453127691cc2389294b5cbbc4716c37d7929a47",
@@ -3271,9 +3256,32 @@
       "src/vx855_edid.c": {
         "baseline_sha256": "7454d18ad56e4d8eaf48ea34b6615b22bee20a2bfcd859d8d4c0ec2b55218351",
         "current_sha256": "d6e667018ab65f3d8d69dfc4897527ec1921639a8ed227c3d932a750cde9b96f"
+      },
+      "src/dpmi.h": {
+        "baseline_sha256": "167ca67ba3448bcc5d7f4dea6764cc7e831cab561743efecd6c2feb0b6a84622",
+        "current_sha256": "1d5209efc16fa3fdf660bef072309844d1a259477eb397b5614232bb42b5ef98"
+      },
+      "src/palette.c": {
+        "baseline_sha256": "2e04c643695f2160dad55d718f5e7fa5d4e7212eb015caea9a32173046613dd2",
+        "current_sha256": "894e82a2942b080577301f5572fe1af51cdc6f309dc924a69c95c63a3129b857"
+      },
+      "src/vx855_vbe_init.inc": {
+        "baseline_sha256": "b929e16bf5e0ecdb90d3e9308e5d2ac6e5cc9fcc02314ecba0ebd29a70fd6a3c",
+        "current_sha256": "a7a00dc7484a61d3cf78e28d29b29514f7103a40e67f796d5100ea5e8fa7afc2"
+      },
+      "src/makefile": {
+        "baseline_sha256": "e53d8a4b2ae5390089aa07d05aa88f240270e8c199245567f536ecc7d70b0946",
+        "current_sha256": "e53d8a4b2ae5390089aa07d05aa88f240270e8c199245567f536ecc7d70b0946"
+      },
+      "src/vxd_gtf.c": {
+        "baseline_sha256": "f452d4f082b6feb617396b4f6f3e98855ff4df40a372e9a1da7308119e83ab90",
+        "current_sha256": "95b118c22e7b1b56b2733e33a97dfba88df2be25a3cbfe956814f8d0eccdb4fd"
       }
     },
-    "removed_files": {}
+    "removed_files": {
+      "src/vxd_terror.c": "899754ba37d0f44542fb807647c05c0324e068d9dd6d07be304bcf9569d3b152",
+      "src/vxd_terror.h": "be8b62e79e7863308a8efbb34dbf68d6105fb47f501cc8794b8fba98d0b48d54"
+    }
   },
-  "passed_compiled_code_checks": 2283
+  "passed_compiled_code_checks": 2286
 }

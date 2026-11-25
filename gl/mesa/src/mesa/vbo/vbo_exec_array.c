@@ -35,7 +35,7 @@
 #include "vbo_context.h"
 
 extern int _vbo_vx855_fastindex; /* VX855 v10.501 (vbo_rebase.c) */
-/* VX855 .506 (ACCEL_OPENGL_MINMAX2; the review's: host bench, Quake 3's batches: the index scan 5% of the driver's time): the scan by SSE2
+/* VX855 .506 (ACCEL_OPENGL_MINMAX2; Fable's: host bench, Quake 3's batches: the index scan 5% of the driver's time): the scan by SSE2
  * (the ICD sets _vbo_vx855_minmax2 when the processor has it), four 32-bit or eight 16-bit indices a step: the indices biased by the sign
  * bit (an unsigned order as a signed one), the lane minimums and maximums kept (32-bit: pcmpgtd and a masked blend; 16-bit: pminsw,
  * pmaxsw), the lanes reduced in C, the indices past the last whole step one at a time. The same minimum and maximum. */
@@ -43,7 +43,7 @@ int _vbo_vx855_minmax2 = 0;
 unsigned long _vbo_vx855_minmax2_n;
 #if defined(__WATCOMC__) && defined(__386__)
 static void vx_mm32(const GLuint *p, GLuint nblk, GLuint *out);
-#pragma aux vx_mm32 = "pcmpeqd xmm7,xmm7" "pslld xmm7,31" \
+#pragma aux vx_mm32 = ".686" ".xmm2" "pcmpeqd xmm7,xmm7" "pslld xmm7,31" \
  "movdqu xmm0,[esi]" "pxor xmm0,xmm7" "movdqa xmm1,xmm0" "add esi,16" "dec ecx" "jz M32E" \
  "M32L: movdqu xmm2,[esi]" "pxor xmm2,xmm7" \
  "movdqa xmm3,xmm0" "pcmpgtd xmm3,xmm2" "movdqa xmm4,xmm0" "pxor xmm4,xmm2" "pand xmm4,xmm3" "pxor xmm0,xmm4" \
@@ -52,7 +52,7 @@ static void vx_mm32(const GLuint *p, GLuint nblk, GLuint *out);
  "M32E: pxor xmm0,xmm7" "pxor xmm1,xmm7" "movdqu [edi],xmm0" "movdqu [edi+16],xmm1" \
  parm [esi] [ecx] [edi] modify exact [esi ecx];
 static void vx_mm16(const GLushort *p, GLuint nblk, GLushort *out);
-#pragma aux vx_mm16 = "pcmpeqw xmm7,xmm7" "psllw xmm7,15" \
+#pragma aux vx_mm16 = ".686" ".xmm2" "pcmpeqw xmm7,xmm7" "psllw xmm7,15" \
  "movdqu xmm0,[esi]" "pxor xmm0,xmm7" "movdqa xmm1,xmm0" "add esi,16" "dec ecx" "jz M16E" \
  "M16L: movdqu xmm2,[esi]" "pxor xmm2,xmm7" "pminsw xmm0,xmm2" "pmaxsw xmm1,xmm2" "add esi,16" "dec ecx" "jnz M16L" \
  "M16E: pxor xmm0,xmm7" "pxor xmm1,xmm7" "movdqu [edi],xmm0" "movdqu [edi+16],xmm1" \

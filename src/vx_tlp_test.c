@@ -1,4 +1,8 @@
-/* VXTLP v1.42 (driver .723: 6W, the water against a reference drawn here, variants). VXTLP v1.41 (driver .721: 6Q the guard band on and off only, the floors judged). VXTLP v1.40 (driver .720: 6Q, the clipped projected floor and the water with strips and the guard band switched). VXTLP v1.39 (driver .719: 6P NA, a clipped blended floor with a strong vertex alpha gradient against the software device's). VXTLP v1.38 (driver .718: 6P, deep floors and a floor across the near plane, 2 huge triangles against a grid; 6N, a Dragothic-like water scene against the software device's, 24 frames; 6M in one round, .717's rhw switch gone; PROJ runs 6M and 6N). VXTLP v1.37 (driver .717: 6M, projected texture coordinates on large triangles against the software device's, the driver's rhw multiply off and on (see test_proj); VXTLP PROJ runs 6M alone). VXTLP v1.36 (driver .704: VP, every scene through a viewport at (40, 40), the guard band across a clip edge that is not 0). VXTLP v1.35 (driver .699: 6l writes its depth too, ZWRITEENABLE). VXTLP v1.34 (driver .696: 6l depth-tested, so its CULL_NONE frame hides the back faces; T682-T694 failed only because ZENABLE was off). VXTLP v1.33 (driver .682: 6l checked against its own frame with CULL_NONE; v1.32's 6k comparison was wrong, the views differ). VXTLP v1.32 (driver .680: 6l's picture against 6k's, the engine's back-face cull checked without the software device). VXTLP v1.31 (driver .677: 6l, 6k with back faces culled (D3DCULL_CCW) and the screen's sides crossing the outer tori: the driver's culling before lighting, .676, on a picture compared with the software device's; GRID 6L alone). VXTLP v1.30 (driver .668: 10, what the review of .667 found: a state block past 1,024 bytes of T&L state, 65 light indices with the first
+/* VXTLP v1.51 (driver .737: 12c/12d, fog on 8 big triangles 2 to 80 deep, the software device's vertex fog against the driver's per-pixel
+ * fog: the difference and both pictures, not judged). VXTLP v1.50 (driver .734: 10d/10e, untransformed vertices with three coordinate sets through the T&L, against the software device).
+ * VXTLP v1.49 (driver .733: 12. depth vertex fog under a perspective projection, linear and EXP2, against the software device:
+ * ACCEL_D3D_TFOG's fog from W). VXTLP v1.48 (driver .731: 11. WRAP0 the short way 0.75 to 0.0 against the long way (v1.47's case could not tell them apart); 10c
+ * three distinct coordinate sets against the software device at 2%). VXTLP v1.47 (driver .730: 11. D3DRS_WRAP0 U and V, the short way across 1.0 against the long way). VXTLP v1.46 (driver .729: the header names the build). VXTLP v1.45 (driver .727: FILL, the texture fill rate with one and two units). VXTLP v1.44 (driver .726: 6W counts a frame not read back as wrong). VXTLP v1.43 (driver .724: 6P and 6Q judged against references drawn here; 6W q other than 1, folded or projected). VXTLP v1.42 (driver .723: 6W, the water against a reference drawn here, variants). VXTLP v1.41 (driver .721: 6Q the guard band on and off only, the floors judged). VXTLP v1.40 (driver .720: 6Q, the clipped projected floor and the water with strips and the guard band switched). VXTLP v1.39 (driver .719: 6P NA, a clipped blended floor with a strong vertex alpha gradient against the software device's). VXTLP v1.38 (driver .718: 6P, deep floors and a floor across the near plane, 2 huge triangles against a grid; 6N, a Dragothic-like water scene against the software device's, 24 frames; 6M in one round, .717's rhw switch gone; PROJ runs 6M and 6N). VXTLP v1.37 (driver .717: 6M, projected texture coordinates on large triangles against the software device's, the driver's rhw multiply off and on (see test_proj); VXTLP PROJ runs 6M alone). VXTLP v1.36 (driver .704: VP, every scene through a viewport at (40, 40), the guard band across a clip edge that is not 0). VXTLP v1.35 (driver .699: 6l writes its depth too, ZWRITEENABLE). VXTLP v1.34 (driver .696: 6l depth-tested, so its CULL_NONE frame hides the back faces; T682-T694 failed only because ZENABLE was off). VXTLP v1.33 (driver .682: 6l checked against its own frame with CULL_NONE; v1.32's 6k comparison was wrong, the views differ). VXTLP v1.32 (driver .680: 6l's picture against 6k's, the engine's back-face cull checked without the software device). VXTLP v1.31 (driver .677: 6l, 6k with back faces culled (D3DCULL_CCW) and the screen's sides crossing the outer tori: the driver's culling before lighting, .676, on a picture compared with the software device's; GRID 6L alone). VXTLP v1.30 (driver .668: 10, what the review of .667 found: a state block past 1,024 bytes of T&L state, 65 light indices with the first
  * switched on again, transformed vertices with three coordinate sets). VXTLP v1.29 (driver .663: 9, what the review of .661 found in the driver's T&L, each picture against the software device's: flat-shaded
  * triangles whose first vertex is clipped away, fog with flat shading, a texture matrix that reads a third coordinate, a cube map read by
  * three coordinates). VXTLP v1.28 (driver .658: a fault written to the log with its place, and the program ended, no dialog). VXTLP v1.27 (driver .657: the window has the arrow pointer, and its messages are read in the warm-up frames too). VXTLP v1.26 (driver .655, diagnosis: the board's 6k as a program's first scene gave NaN frame times and hung (and the software
@@ -294,7 +298,7 @@ static void test_540(int sw) {
 typedef struct {float x,y,z;U32 c;} PV; /* FVF 0x42 */
 #define DPUP(t,n,v) ((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,t,n,v,sizeof(PV))
 #define DIPUP(t,nv,n,ix,v) ((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,const void*,U32,const void*,U32))VT(dev,DEV_DIPUP))(dev,t,0,nv,n,ix,101,v,sizeof(PV))
-static U32 p7_sw[15][WIN*WIN];static int p7_have[15]; /* v1.29: 8-11 for 9; v1.30: 12-14 for 10 */
+static U32 p7_sw[21][WIN*WIN];static int p7_have[21]; /* v1.51: 19-20 for 12c-12d */ /* v1.29: 8-11 for 9; v1.30: 12-14 for 10; v1.49: 15-16 for 12; v1.50: 17-18 for 10d-10e */
 static PV p7_v[30000];static unsigned short p7_ix[1800];
 static void p7_begin(void) {static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
  ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);
@@ -443,9 +447,112 @@ static void test_663(int sw) {
  * three stages (.667 left them out: nothing drawn; .668 draws stage 2 on the second set, so only "drawn" is judged there) */
 enum {DEV_BEGINSB=52,DEV_ENDSB=53,DEV_APPLYSB=54,DEV_DELSB=56};
 typedef struct {float x,y,z,rhw;U32 c;float u0,v0,u1,v1,u2,v2;} TV3; /* FVF 0x344 */
+typedef struct {float x,y,z;U32 c;float u0,v0,u1,v1,u2,v2;} TU3; /* FVF 0x342: v1.50, untransformed */
 static void p10_mat(float r,float g,float b) {float m[17];memset(m,0,sizeof(m));m[0]=r;m[1]=g;m[2]=b;m[3]=1;m[4]=m[5]=m[6]=0.2f;m[7]=1;((HRESULT(__stdcall*)(void*,void*))VT(dev,DEV_SETMAT))(dev,m);}
 static void p10_dl(U32 idx,float r,float g,float b,float dx,float dy) {
  float lt[26];memset(lt,0,sizeof(lt));*(U32*)&lt[0]=3;lt[1]=r;lt[2]=g;lt[3]=b;lt[4]=1.0f;lt[16]=dx;lt[17]=dy;lt[18]=1.0f;((F2P)VT(dev,DEV_SETLIGHT))(dev,idx,lt);}
+/* v1.47 (.730): 11. D3DRS_WRAP0 (cylindrical wrap, FE/0B): a quad whose u runs 0.875 -> 0.125 with WRAP0 U on must be the quad whose u runs
+ * 0.875 -> 1.125 with it off (the short way across 1.0, address WRAP); the same quad with WRAP0 off goes the long way (0.875 -> 0.125), a
+ * different picture, which shows the case can tell them apart. The same for V. Pretransformed, point sampled, an 8x8 checker. */
+static void wrap_draw(float u0,float u1,float v0,float v1,U32 wrap,void *tx,U32 *out) {
+ TL q[4];int k;
+ for(k=0;k<4;k++){q[k].x=(k&1)?228.0f:28.0f;q[k].y=(k&2)?228.0f:28.0f;q[k].z=0.5f;q[k].w=1.0f;q[k].c=0xFFFFFFFFUL;q[k].u=(k&1)?u1:u0;q[k].v=(k&2)?v1:v0;}
+ ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);rs(7,0);rs(128,wrap);
+ ((F2P)VT(dev,DEV_SETTEX))(dev,0,tx);tss(0,1,2);tss(0,2,2);tss(0,4,2);tss(0,5,2);tss(0,13,1);tss(0,14,1);tss(0,16,1);tss(0,17,1);tss(0,18,0);tss(0,11,0);
+ ((F1)VT(dev,DEV_SETVS))(dev,0x144);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,5,2,q,sizeof(TL));
+ ((F0)VT(dev,DEV_END))(dev);rs(128,0);((F2P)VT(dev,DEV_SETTEX))(dev,0,0);
+ if(!read_bb(out))memset(out,0,WIN*WIN*4);
+}
+static void test_wrap(int sw) {
+ static U32 r[WIN*WIN],w[WIN*WIN],l[WIN*WIN];void *tx=p8_tex(0xFFFF0000UL,0xFF0000FFUL);int pass;
+ say("11. %s: D3DRS_WRAP0 (.730, FE/0B)\n",sw?"software device":"hardware device");
+ if(!tx){wrong("11: no texture");return;}
+ for(pass=0;pass<2;pass++){const int uv=pass==0;int nl,dw,dl;
+  /* v1.48: 0.75 to 0.0 the short way (across 1.0) is 0.75 to 1.0, one cell of the checker; the long way crosses 0.5, two cells (v1.47's
+   * 0.875 to 0.125 covered half of each cell both ways: no case could tell them apart) */
+  if(uv){wrap_draw(0.75f,1.0f,0,1,0,tx,r);wrap_draw(0.75f,0.0f,0,1,1,tx,w);wrap_draw(0.75f,0.0f,0,1,0,tx,l);}
+  else{wrap_draw(0,1,0.75f,1.0f,0,tx,r);wrap_draw(0,1,0.75f,0.0f,2,tx,w);wrap_draw(0,1,0.75f,0.0f,0,tx,l);}
+  nl=lit(r);dw=ndiff(w,r);dl=ndiff(l,r);
+  say("   11%c. %s across 1.0: lit %d; WRAP0 %s against the short way: %d pixels differ (%.1f%%); without it (the long way): %d differ%s\n",uv?'a':'b',uv?"u":"v",nl,uv?"U":"V",dw,nl?100.0*dw/nl:0.0,dl,dl<nl/10?" (the case cannot tell them apart)":"");
+  if(nl<1000||dw*100>nl){wrong(uv?"11a: WRAP0 U not applied":"11b: WRAP0 V not applied");bmp(uv?"VXTW_UW.BMP":"VXTW_VW.BMP",w);bmp(uv?"VXTW_UR.BMP":"VXTW_VR.BMP",r);}}
+ ((F0)VT(tx,D3D_REL))(tx);
+}
+/* v1.49 (.733, ACCEL_D3D_TFOG): 12. depth vertex fog under a perspective projection whose clip W is eye Z (fourth column 0 0 1 0): the
+ * driver's T&L hands it to the engine's fog unit from W (01/70 bit 4 clear), per pixel; the software device works it out per vertex. A
+ * finely cut floor from 2 to 80 deep, linear (5 to 50) and EXP2 (density 0.04), each against the software device's picture (2%): a
+ * wrong start, end, density or W (Z fog, a scale) shows across the whole floor. */
+static void tfog_floor(U32 mode) {
+ static PV v[33*33];static unsigned short ix[32*32*6];int i,j,k=0;const float zn=1.0f,zf=100.0f,q=zf/(zf-zn);
+ static float pr[16];static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ memset(pr,0,sizeof(pr));pr[0]=1.5f;pr[5]=1.5f;pr[10]=q;pr[11]=1.0f;pr[14]=-q*zn;
+ for(j=0;j<=32;j++)for(i=0;i<=32;i++){PV *p=&v[j*33+i];float t=(float)j/32.0f;p->x=-30.0f+i*(60.0f/32);p->y=-1.5f;p->z=2.0f+t*t*78.0f;
+  p->c=0xFF000000UL|((U32)(80+i*5)<<16)|((U32)(200-j*3)<<8)|(U32)(60+((i^j)&1)*60);}
+ for(j=0;j<32;j++)for(i=0;i<32;i++){unsigned short a=(unsigned short)(j*33+i);ix[k++]=a;ix[k++]=(unsigned short)(a+33);ix[k++]=(unsigned short)(a+1);ix[k++]=(unsigned short)(a+1);ix[k++]=(unsigned short)(a+33);ix[k++]=(unsigned short)(a+34);}
+ ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);rs(22,1);
+ ((F2P)VT(dev,DEV_SETXF))(dev,256,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)pr);
+ tss(0,1,2);tss(0,2,0);tss(0,4,2);tss(0,5,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);
+ rs(28,1);rs(34,0xFF8090A0UL);rs(35,0);rs(48,0);rs(140,mode);{float fs=5.0f,fe=50.0f,fd=0.04f;rs(36,*(U32*)&fs);rs(37,*(U32*)&fe);rs(38,*(U32*)&fd);}
+ ((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,const void*,U32,const void*,U32))VT(dev,DEV_DIPUP))(dev,4,0,33*33,32*32*2,ix,101,v,sizeof(PV));
+ rs(28,0);rs(140,0);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)id);}
+/* v1.51 (.737, the fourth review of .736, #9): the same floor in 2 x 2 cells, so each triangle spans a wide depth range. The engine's fog
+ * unit works fog out per pixel; Direct3D's vertex fog (the software device here) works it out at the corners and blends between them, so the
+ * two differ on such triangles. Nothing is judged WRONG: the difference and both pictures (VXTLFxS.BMP the software device's vertex fog,
+ * VXTLFxH.BMP the driver's per-pixel fog) are for deciding whether .733's fog from W stays */
+static void tfog_big(U32 mode) {
+ static PV v[9];static unsigned short ix[24];int i,j,k=0;const float zn=1.0f,zf=100.0f,q=zf/(zf-zn);
+ static float pr[16];static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ memset(pr,0,sizeof(pr));pr[0]=1.5f;pr[5]=1.5f;pr[10]=q;pr[11]=1.0f;pr[14]=-q*zn;
+ for(j=0;j<=2;j++)for(i=0;i<=2;i++){PV *p=&v[j*3+i];float t=(float)j/2.0f;p->x=-30.0f+i*30.0f;p->y=-1.5f;p->z=2.0f+t*t*78.0f;p->c=0xFF60C060UL;}
+ for(j=0;j<2;j++)for(i=0;i<2;i++){unsigned short a=(unsigned short)(j*3+i);ix[k++]=a;ix[k++]=(unsigned short)(a+3);ix[k++]=(unsigned short)(a+1);ix[k++]=(unsigned short)(a+1);ix[k++]=(unsigned short)(a+3);ix[k++]=(unsigned short)(a+4);}
+ ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);rs(22,1);
+ ((F2P)VT(dev,DEV_SETXF))(dev,256,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)id);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)pr);
+ tss(0,1,2);tss(0,2,0);tss(0,4,2);tss(0,5,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);
+ rs(28,1);rs(34,0xFF8090A0UL);rs(35,0);rs(48,0);rs(140,mode);{float fs=5.0f,fe=50.0f,fd=0.04f;rs(36,*(U32*)&fs);rs(37,*(U32*)&fe);rs(38,*(U32*)&fd);}
+ ((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,const void*,U32,const void*,U32))VT(dev,DEV_DIPUP))(dev,4,0,9,8,ix,101,v,sizeof(PV));
+ rs(28,0);rs(140,0);((F2P)VT(dev,DEV_SETXF))(dev,3,(void*)id);}
+static void tfog_cmp(int no,int sw,const char *what,char tag) {
+ int l,d,k,worst=0;char a[16],b[16];((F0)VT(dev,DEV_END))(dev);l=read_bb(cur)?lit(cur):0;present();
+ if(sw){memcpy(p7_sw[no],cur,sizeof(cur));p7_have[no]=1;say("   %s: lit %d\n",what,l);return;}
+ if(!p7_have[no]){say("   %s: lit %d (no software picture to compare)\n",what,l);return;}
+ for(k=0;k<WIN*WIN;k++){int c;for(c=0;c<24;c+=8){int x=(int)((p7_sw[no][k]>>c)&255)-(int)((cur[k]>>c)&255);if(x<0)x=-x;if(x>worst)worst=x;}}
+ d=ndiff(p7_sw[no],cur);
+ say("   %s: lit %d (software %d); %d pixels differ (%.1f%%), the largest difference %d of 255 in a colour channel (not judged: see VXTLF%cS / VXTLF%cH.BMP)\n",what,l,lit(p7_sw[no]),d,lit(p7_sw[no])?100.0*d/lit(p7_sw[no]):0.0,worst,tag,tag);
+ sprintf(a,"VXTLF%cS.BMP",tag);sprintf(b,"VXTLF%cH.BMP",tag);bmp(a,p7_sw[no]);bmp(b,cur);
+}
+/* v1.51 (.737, the fourth review of .736, #7): MAXMIPLEVEL on a DXT1 chain. A 64x64 DXT1 texture with all 7 levels, each one solid colour
+ * (red, green, blue, yellow, cyan, magenta, white), drawn 1:1 (LOD 0) with point mip filtering and MAXMIPLEVEL 0 to 2: the picture must be
+ * that level's colour. The sampler reads a DXT chain's levels packed in the top level's block; .736 based a level past 0 on the level's own
+ * block (the CPU's copy), so the lower mips were read from the wrong bytes. */
+static void test_maxmip(void) {
+ static const unsigned short c565[7]={0xF800,0x07E0,0x001F,0xFFE0,0x07FF,0xF81F,0xFFFF};
+ static const U32 c888[7]={0xFF0000UL,0x00FF00UL,0x0000FFUL,0xFFFF00UL,0x00FFFFUL,0xFF00FFUL,0xFFFFFFUL};
+ void *tx=0;LR lr;int l,b,x,y;TL v[4];
+ say("13. hardware: MAXMIPLEVEL 0 to 2 on a 64x64 DXT1 texture with 7 levels, each its own colour, drawn 1:1\n");
+ if(((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,U32,U32,void**))VT(dev,20))(dev,64,64,7,0,0x31545844UL,1,&tx)||!tx){say("   CreateTexture(DXT1, 7 levels) failed: skipped\n");return;}
+ for(l=0;l<7;l++){int w=64>>l,bw=w<4?1:w/4;
+  if(((HRESULT(__stdcall*)(void*,U32,LR*,void*,U32))VT(tx,16))(tx,(U32)l,&lr,0,0)){wrong("13: LockRect of a DXT1 level failed");((F0)VT(tx,D3D_REL))(tx);return;}
+  for(y=0;y<bw;y++)for(x=0;x<bw;x++){unsigned short *q=(unsigned short*)((char*)lr.bits+y*lr.pitch+x*8);q[0]=c565[l];q[1]=c565[l];q[2]=0;q[3]=0;}
+  ((F1)VT(tx,17))(tx,(U32)l);}
+ memset(v,0,sizeof(v));
+ for(l=0;l<4;l++){v[l].x=40.0f+(l&1)*64.0f-0.5f;v[l].y=40.0f+(l>>1)*64.0f-0.5f;v[l].z=0.5f;v[l].w=1.0f;v[l].c=0xFFFFFFFFUL;v[l].u=(float)(l&1);v[l].v=(float)(l>>1);}
+ for(b=0;b<3;b++){U32 got;int ok,k; /* 3 and up: the level's packed place (2688 bytes in for 64x64) is not 256-byte aligned: refused by design */
+  ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);((F2P)VT(dev,DEV_SETTEX))(dev,0,tx);
+  tss(0,1,2);tss(0,2,2);tss(0,4,2);tss(0,5,2);tss(0,16,1);tss(0,17,1);tss(0,18,1);tss(0,20,(U32)b);
+  ((F1)VT(dev,DEV_SETVS))(dev,0x144);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,5,2,v,sizeof(TL));
+  tss(0,20,0);tss(0,18,0);((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F0)VT(dev,DEV_END))(dev);
+  got=read_bb(cur)?at(cur,72,72)&0xFFFFFFUL:0xFFFFFFFFUL;present();
+  ok=got!=0xFFFFFFFFUL;for(k=0;k<24&&ok;k+=8){int d=(int)((got>>k)&255)-(int)((c888[b]>>k)&255);if(d<-16||d>16)ok=0;}
+  say("   MAXMIPLEVEL %d: the centre %06lX (level %d's colour %06lX): %s\n",b,got,b,c888[b],ok?"right":"WRONG");
+  if(!ok){char n[16];sprintf(n,"VXTLM%d.BMP",b);bmp(n,cur);wrong("13: MAXMIPLEVEL on a DXT1 chain sampled the wrong level's bytes");}}
+ ((F0)VT(tx,D3D_REL))(tx);
+}
+static void test_tfog(int sw) {
+ say("12. %s: depth vertex fog under a perspective projection (W = eye Z; .733 ACCEL_D3D_TFOG: the engine's fog unit from W)\n",sw?"software (the runtime's T&L)":"hardware (the driver's T&L)");
+ tfog_floor(3);p7_end(15,sw,"12a. linear fog 5 to 50 on a floor 2 to 80 deep",2);
+ tfog_floor(2);p7_end(16,sw,"12b. EXP2 fog, density 0.04, on the same floor",2);
+ tfog_big(3);tfog_cmp(19,sw,"12c. linear fog on the floor in 8 big triangles (per vertex against per pixel)",'L');
+ tfog_big(2);tfog_cmp(20,sw,"12d. EXP2 fog on the same 8 triangles",'E');
+}
 static void test_668(int sw) {
  static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},sc[16]={0.8f,0,0,0,0,0.8f,0,0,0,0,1,0,0.1f,-0.1f,0,1};
  U32 h=0,k;void *t0,*t1,*t2;static TV3 v[6];
@@ -473,7 +580,7 @@ static void test_668(int sw) {
  ((F2)VT(dev,DEV_LIGHTON))(dev,100,0);rs(137,0);
  p7_end(13,sw,"10b. 65 light indices set in turn, the first switched on again",2);
  /* 10c */
- t0=p8_tex(0xFFFF8000UL,0xFF0080FFUL);t1=p8_tex(0xFFFFFFFFUL,0xFF808080UL);t2=p8_tex(0xFFFFFFFFUL,0xFFC0C0C0UL);
+ t0=p8_tex(0xFFFF8000UL,0xFF0080FFUL);t1=p8_tex(0xFFFFFFFFUL,0xFF808080UL);t2=p8_tex(0xFFFFFFFFUL,0xFF40C040UL); /* v1.48: set 2's layer green, its cells crossing set 1's */
  p7_begin();
  if(t0&&t1&&t2){static const float px[6]={64,192,64,192,192,64},py[6]={64,64,192,64,192,192},pu[6]={0,1,0,1,1,0},pv[6]={0,0,1,0,1,1};
   ((F2P)VT(dev,DEV_SETTEX))(dev,0,t0);((F2P)VT(dev,DEV_SETTEX))(dev,1,t1);((F2P)VT(dev,DEV_SETTEX))(dev,2,t2);
@@ -482,7 +589,23 @@ static void test_668(int sw) {
   ((F1)VT(dev,DEV_SETVS))(dev,0x344);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,4,2,v,sizeof(TV3));
   tss(1,1,1);tss(1,4,1);tss(2,1,1);tss(2,4,1);tss(1,11,1);tss(2,11,2);
   ((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F2P)VT(dev,DEV_SETTEX))(dev,1,0);((F2P)VT(dev,DEV_SETTEX))(dev,2,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);}
- p7_end(14,sw,"10c. transformed vertices, three stages on three coordinate sets (drawn: stage 2 on the second set)",100);
+ p7_end(14,sw,"10c. transformed vertices, three stages on three coordinate sets (.731: stage 2 on its own set, slot C)",2);
+
+ /* 10d, 10e (v1.50, driver .734): the same three stages on three coordinate sets, untransformed vertices through the T&L (the driver's: a
+  * third output set of its own, slot C), 10e with stage 2's coordinates through its own texture matrix (COUNT2, scaled and moved) */
+ {static TU3 u[6];static const float sc2[16]={1.5f,0,0,0, 0,0.75f,0,0, 0.25f,0.1f,1,0, 0,0,0,1},id4[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};int e;
+  for(e=0;e<2;e++){
+   p7_begin();
+   if(t0&&t1&&t2){static const float px[6]={-0.5f,0.5f,-0.5f,0.5f,0.5f,-0.5f},py[6]={0.5f,0.5f,-0.5f,0.5f,-0.5f,-0.5f},pu[6]={0,1,0,1,1,0},pv[6]={0,0,1,0,1,1};
+    ((F2P)VT(dev,DEV_SETTEX))(dev,0,t0);((F2P)VT(dev,DEV_SETTEX))(dev,1,t1);((F2P)VT(dev,DEV_SETTEX))(dev,2,t2);
+    tss(0,1,4);tss(0,2,2);tss(0,3,0);tss(0,11,0);tss(1,1,4);tss(1,2,2);tss(1,3,1);tss(1,4,2);tss(1,5,1);tss(1,11,1);tss(2,1,4);tss(2,2,2);tss(2,3,1);tss(2,4,2);tss(2,5,1);tss(2,11,2);
+    if(e){((F2P)VT(dev,DEV_SETXF))(dev,18,(void*)sc2);tss(2,24,2);}
+    for(k=0;k<6;k++){u[k].x=px[k];u[k].y=py[k];u[k].z=0.5f;u[k].c=0xFFFFFFFFUL;u[k].u0=pu[k];u[k].v0=pv[k];u[k].u1=pu[k]*2;u[k].v1=pv[k]*2;u[k].u2=1-pu[k];u[k].v2=pv[k]*1.5f;}
+    ((F1)VT(dev,DEV_SETVS))(dev,0x342);((HRESULT(__stdcall*)(void*,U32,U32,void*,U32))VT(dev,DEV_DPUP))(dev,4,2,u,sizeof(TU3));
+    tss(2,24,0);((F2P)VT(dev,DEV_SETXF))(dev,18,(void*)id4);
+    tss(1,1,1);tss(1,4,1);tss(2,1,1);tss(2,4,1);tss(1,11,1);tss(2,11,2);
+    ((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F2P)VT(dev,DEV_SETTEX))(dev,1,0);((F2P)VT(dev,DEV_SETTEX))(dev,2,0);((F1)VT(dev,DEV_SETVS))(dev,0x42);}
+   p7_end(17+e,sw,e?"10e. untransformed, three stages on three sets, stage 2 through its texture matrix (COUNT2)":"10d. untransformed vertices, three stages on three coordinate sets (.734: the T&L's third output set)",2);}}
  if(t0)((F0)VT(t0,D3D_REL))(t0);if(t1)((F0)VT(t1,D3D_REL))(t1);if(t2)((F0)VT(t2,D3D_REL))(t2);
 }
 static void test_646(int sw) {
@@ -805,9 +928,16 @@ static void test_deep(int sw) {
   ds=!sw&&dp_have[c]?ndiff(dp_sw[c],cur):-1;
   say("   %-44s grid lit %6d; 2 triangles: %6d differ (%5.1f%%)",nm[c],lg,d,lg&&d>=0?100.0*d/lg:0.0);if(ds>=0)say("; against the software device's: %6d (%5.1f%%)",ds,lg?100.0*ds/lg:0.0);say("\n");
   if(!lg){wrong("6P: the grid drew nothing");continue;}
-  if(c==6)d=0; /* .719: NA's grid is no reference (Gouraud is screen-linear, so 2 triangles and a grid differ by design): the software device's clipping is */
-  if(d<0||d*100>lg*2||(ds>=0&&ds*100>lg*2)){sprintf(n,"6P%s%cG.BMP",ab[c],sw?'S':'H');bmp(n,g);sprintf(n,"6P%s%cT.BMP",ab[c],sw?'S':'H');bmp(n,cur);
-   wrong(d<0||d*100>lg*2?"6P: the 2 huge triangles are not the grid's picture":"6P: the driver's 2 triangles are not the software device's");}}
+  /* v1.43 (driver .724): judged against the reference drawn here (wr_floor) where it has one (no mip chain, not NA): more than 3% of
+   * its lit, not-aliased pixels off by more than 64 is wrong. T719-T723: the grid differed from 2 triangles by 3.5-5.5% on both devices
+   * alike (aliasing where the far floor packs many texels in a pixel), so the grid only judges the mip cases, at 8%; NA differs from the
+   * software device by design (its colours across a clip, .719) and is shown, not judged */
+  {int rl=0,rb=-1,refd=c!=3&&c!=4&&c!=6&&!g_vp,bad;
+   if(refd&&ok){static U32 rf[WIN*WIN];wr_floor(c==5?5:c,rf);rb=wr_gross(cur,rf,&rl);say("      against its own reference: %d of %d pixels off (%.1f%%)\n",rb,rl,rl?100.0*rb/rl:0.0);
+    if(rl&&rb*100>rl*3){sprintf(n,"6P%s%cR.BMP",ab[c],sw?'S':'H');bmp(n,rf);}}
+   bad=refd?(rb<0||rb*100>rl*3):(c==6?0:(d<0||d*100>lg*8));if(!refd&&c!=6&&ds>=0&&ds*100>lg*2)bad=1;if(refd&&ds>=0&&ds*100>lg*2)bad=1;
+   if(bad){sprintf(n,"6P%s%cG.BMP",ab[c],sw?'S':'H');bmp(n,g);sprintf(n,"6P%s%cT.BMP",ab[c],sw?'S':'H');bmp(n,cur);
+    wrong(refd&&(rb<0||rb*100>rl*3)?"6P: the 2 huge triangles are not the reference's picture":!refd&&(d<0||d*100>lg*8)?"6P: the 2 huge triangles are not the grid's picture":"6P: the driver's 2 triangles are not the software device's");}}}
  out:if(t0)((F0)VT(t0,D3D_REL))(t0);if(t1)((F0)VT(t1,D3D_REL))(t1);
 }
 /* v1.38 (driver .718): 6N. a water scene of 3DMark 2001's Dragothic kind, the driver's T&L against the runtime's (software vertex
@@ -834,10 +964,12 @@ static void wn_cam(int f,float *vw) { /* the view matrix of frame f */
  F[0]=sy*cp;F[1]=-sp;F[2]=cy2*cp;R[0]=cy2;R[1]=0;R[2]=-sy;U[0]=F[1]*R[2]-F[2]*R[1];U[1]=F[2]*R[0]-F[0]*R[2];U[2]=F[0]*R[1]-F[1]*R[0];E[0]=cx;E[1]=cy;E[2]=cz;
  memset(vw,0,64);for(k=0;k<3;k++){vw[k*4]=R[k];vw[k*4+1]=U[k];vw[k*4+2]=F[k];}
  vw[12]=-(R[0]*E[0]+R[1]*E[1]+R[2]*E[2]);vw[13]=-(U[0]*E[0]+U[1]*E[1]+U[2]*E[2]);vw[14]=-(F[0]*E[0]+F[1]*E[1]+F[2]*E[2]);vw[15]=1;}
-static U32 wn_ttf=3|256,wn_filt=2,wn_blend=1; /* v1.42: 6W's variants (TEXTURETRANSFORMFLAGS, MAG/MINFILTER, ALPHABLENDENABLE of the water) */
+static U32 wn_ttf=3|256,wn_filt=2,wn_blend=1,wn_qm=0;static void *wn_cubetx; /* v1.43: the water reads this cube map when set (TTF 0: the reflection vector itself) */ /* v1.42: 6W's variants (TEXTURETRANSFORMFLAGS, MAG/MINFILTER, ALPHABLENDENABLE of the water) */
 static void wn_frame(int f,void *tx) {
  static const float id[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
- static const float tm[16]={0.373904f,0.0305479f,0,0, 0.039355f,-0.368455f,0,0, 0.0391257f,0.0786848f,0,0, 0.5f,0.5f,1,1}; /* Dragothic's */
+ static const float tm1[16]={0.373904f,0.0305479f,0,0, 0.039355f,-0.368455f,0,0, 0.0391257f,0.0786848f,0,0, 0.5f,0.5f,1,1}; /* Dragothic's */
+ static const float tmq[16]={0.373904f,0.0305479f,0.30f,0, 0.039355f,-0.368455f,0.20f,0, 0.0391257f,0.0786848f,-0.25f,0, 0.5f,0.5f,1,1}; /* v1.43: q = 1 + 0.3 Rx + 0.2 Ry - 0.25 Rz, 0.4 to 1.6 */
+ const float *tm=wn_qm?tmq:tm1;
  float pr[16],vw[16],w[16];WV v[24];int k,i,j,d;const float zn=1.0f,zf=1000.0f,Q=zf/(zf-zn),t=(float)f/(WN_FR-1);
  memset(pr,0,sizeof(pr));pr[0]=1.3f;pr[5]=1.3f;pr[10]=Q;pr[11]=1;pr[14]=-Q*zn;wn_cam(f,vw);
  ((F0)VT(dev,DEV_BEGIN))(dev);clear();base_states();rs(137,0);rs(22,1);
@@ -854,7 +986,8 @@ static void wn_frame(int f,void *tx) {
   ((F2P)VT(dev,DEV_SETXF))(dev,2,(void*)vw);}
  /* the water */
  rs(27,wn_blend);rs(19,5);rs(20,6);rs(14,0);rs(23,4);rs(142,1);
- tss(0,11,0x30000UL);tss(0,24,wn_ttf);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)tm);
+ if(wn_cubetx)((F2P)VT(dev,DEV_SETTEX))(dev,0,wn_cubetx);
+ tss(0,11,0x30000UL);tss(0,24,wn_cubetx?0:wn_ttf);((F2P)VT(dev,DEV_SETXF))(dev,16,(void*)tm);
  for(d=0;d<8;d++){int n=0;for(k=0;k<2;k++){int tile=d*2+k,tx0=tile%4,tz0=tile/4;float x0=-240.0f+tx0*120.0f,z0=-120.0f+tz0*120.0f;float cx[4],cz[4];static const int qi[6]={0,2,3,0,3,1};
    cx[0]=x0;cz[0]=z0;cx[1]=x0+120;cz[1]=z0;cx[2]=x0;cz[2]=z0+120;cx[3]=x0+120;cz[3]=z0+120;
    for(i=0;i<6;i++){WV *q=&v[n++];float x=cx[qi[i]],z=cz[qi[i]],sx,cxs,sz,czs,nx,ny,nz,l;U32 a;
@@ -895,13 +1028,33 @@ static void test_water(int sw) {
  * COUNT2, no divide: the same coordinates, q = 1), and with the old layout: point filtering, and the water opaque. The old-layout rows
  * are shown, not judged: they say what the engine's projected layout trips on. */
 #define WR_W WIN
-static U32 wr_tex(int x,int y){U32 R=240-y*3/4,G=140-y/4+(x>>3),B=40+y*3/4;if(((x>>5)^(y>>5))&1){R=R*3/4;G=G*3/4;B=B*3/4;}return (R<<16)|(G<<8)|B;}
+/* v1.43 (driver .724): the reference renderer shared by 6W, 6P and 6Q (wr_tex_id: 0 6N's 256x256 sky texture, 1 6P's 64x64 checker;
+ * wr_al marks the pixels where the texture is minified past a texel a pixel: aliasing there makes any two right rasterizers differ, so
+ * the judges leave them out) */
+static int wr_tex_id;static unsigned char wr_al[WR_W*WR_W];
+static U32 wr_tex(int x,int y){U32 R,G,B;
+ if(wr_tex_id==1){x&=63;y&=63;return ((x>>3)^(y>>3))&1?0xF0C040UL:0x3050E0UL;}
+ R=240-y*3/4;G=140-y/4+(x>>3);B=40+y*3/4;if(((x>>5)^(y>>5))&1){R=R*3/4;G=G*3/4;B=B*3/4;}return (R<<16)|(G<<8)|B;}
 static int wr_fl(double v){int i=(int)v;return (double)i>v?i-1:i;}
 static void wr_sample(double u,double v,int pt,double *c){
- double x=u*256-0.5,y=v*256-0.5;int x0,y0,k;
- if(pt){int xi=wr_fl(u*256)&255,yi=wr_fl(v*256)&255;U32 t=wr_tex(xi,yi);c[0]=(t>>16)&255;c[1]=(t>>8)&255;c[2]=t&255;return;}
- x0=wr_fl(x);y0=wr_fl(y);{double fx=x-x0,fy=y-y0;U32 a=wr_tex(x0&255,y0&255),b=wr_tex((x0+1)&255,y0&255),cc=wr_tex(x0&255,(y0+1)&255),d=wr_tex((x0+1)&255,(y0+1)&255);
+ const int ts=wr_tex_id==1?64:256,tm=ts-1;double x=u*ts-0.5,y=v*ts-0.5;int x0,y0,k;
+ if(pt){int xi=wr_fl(u*ts)&tm,yi=wr_fl(v*ts)&tm;U32 t=wr_tex(xi,yi);c[0]=(t>>16)&255;c[1]=(t>>8)&255;c[2]=t&255;return;}
+ x0=wr_fl(x);y0=wr_fl(y);{double fx=x-x0,fy=y-y0;U32 a=wr_tex(x0&tm,y0&tm),b=wr_tex((x0+1)&tm,y0&tm),cc=wr_tex(x0&tm,(y0+1)&tm),d=wr_tex((x0+1)&tm,(y0+1)&tm);
   for(k=0;k<3;k++){int sh=16-8*k;c[k]=((a>>sh)&255)*(1-fx)*(1-fy)+((b>>sh)&255)*fx*(1-fy)+((cc>>sh)&255)*(1-fx)*fy+((d>>sh)&255)*fx*fy;}}}
+/* v1.43: 6W's cube map: six 64x64 faces (+X -X +Y -Y +Z -Z), each its own colour with a gentle gradient, so a face chosen wrong is
+ * far off and filtering is not; the reference picks the face and its s, t as Direct3D does and filters within the face (edges clamped) */
+static U32 wr_cubetex(int f,int x,int y){static const U32 b[6][3]={{200,40,40},{40,180,40},{40,60,200},{200,190,40},{40,190,190},{190,40,190}};
+ U32 r=b[f][0]+(U32)(x>>2),g=b[f][1]+(U32)(y>>2),bl=b[f][2]+(U32)((x+y)>>3);return (r<<16)|(g<<8)|bl;}
+static void wr_cube(double rx,double ry,double rz,double *c){
+ double ax=rx<0?-rx:rx,ay=ry<0?-ry:ry,az=rz<0?-rz:rz,sc,tc,ma,x,y;int f,x0,y0,k;
+ if(ax>=ay&&ax>=az){f=rx>=0?0:1;ma=ax;sc=rx>=0?-rz:rz;tc=-ry;}
+ else if(ay>=az){f=ry>=0?2:3;ma=ay;sc=rx;tc=ry>=0?rz:-rz;}
+ else{f=rz>=0?4:5;ma=az;sc=rz>=0?rx:-rx;tc=-ry;}
+ x=((sc/ma+1)/2)*64-0.5;y=((tc/ma+1)/2)*64-0.5;x0=wr_fl(x);y0=wr_fl(y);
+ {double fx=x-x0,fy=y-y0;int xa=x0<0?0:x0>63?63:x0,xb=x0+1<0?0:x0+1>63?63:x0+1,ya=y0<0?0:y0>63?63:y0,yb=y0+1<0?0:y0+1>63?63:y0+1;
+  U32 a=wr_cubetex(f,xa,ya),b=wr_cubetex(f,xb,ya),cc=wr_cubetex(f,xa,yb),d=wr_cubetex(f,xb,yb);
+  for(k=0;k<3;k++){int sh=16-8*k;c[k]=((a>>sh)&255)*(1-fx)*(1-fy)+((b>>sh)&255)*fx*(1-fy)+((cc>>sh)&255)*(1-fx)*fy+((d>>sh)&255)*fx*fy;}}}
+static int wr_cubeon;
 typedef struct {double c[4],a[4];} WRV;
 static double wr_pl(const WRV *v,int k){const double *c=v->c;switch(k){case 0:return c[2];case 1:return c[3]-c[2];case 2:return c[3]+c[0];case 3:return c[3]-c[0];case 4:return c[3]+c[1];default:return c[3]-c[1];}}
 static int wr_clip(WRV *p,int n){WRV o[16];int k,i,m;
@@ -911,30 +1064,33 @@ static int wr_clip(WRV *p,int n){WRV o[16];int k,i,m;
   n=m;for(i=0;i<n;i++)p[i]=o[i];}
  return n;}
 static double wr_img[WR_W*WR_W][3];
-static void wr_tri(const WRV *t0,const WRV *t1,const WRV *t2,int water,int pt,int blend){
- double sx[3],sy[3],rw[3],ar;const WRV *t[3];int k,xa,xb,ya,yb,x,y;t[0]=t0;t[1]=t1;t[2]=t2;
+static void wr_tri(const WRV *t0,const WRV *t1,const WRV *t2,int pt,int blend){
+ double sx[3],sy[3],rw[3],ar;const WRV *t[3];int k,xa,xb,ya,yb,x,y;const int ts=wr_tex_id==1?64:256;t[0]=t0;t[1]=t1;t[2]=t2;
  for(k=0;k<3;k++){double w=t[k]->c[3];sx[k]=(t[k]->c[0]/w+1)*WR_W/2;sy[k]=(1-t[k]->c[1]/w)*WR_W/2;rw[k]=1/w;}
  ar=(sx[1]-sx[0])*(sy[2]-sy[0])-(sx[2]-sx[0])*(sy[1]-sy[0]);if(ar<1e-9&&ar>-1e-9)return;
  xa=wr_fl(sx[0]);xb=xa;ya=wr_fl(sy[0]);yb=ya;for(k=1;k<3;k++){int a=wr_fl(sx[k]),b=wr_fl(sy[k]);if(a<xa)xa=a;if(a>xb)xb=a;if(b<ya)ya=b;if(b>yb)yb=b;}
  xb++;yb++;if(xa<0)xa=0;if(ya<0)ya=0;if(xb>WR_W-1)xb=WR_W-1;if(yb>WR_W-1)yb=WR_W-1;
- for(y=ya;y<=yb;y++)for(x=xa;x<=xb;x++){double w0=((sx[1]-x)*(sy[2]-y)-(sx[2]-x)*(sy[1]-y))/ar,w1=((sx[2]-x)*(sy[0]-y)-(sx[0]-x)*(sy[2]-y))/ar,w2=1-w0-w1,r,c[3],*o=wr_img[y*WR_W+x];
+ for(y=ya;y<=yb;y++)for(x=xa;x<=xb;x++){double w0=((sx[1]-x)*(sy[2]-y)-(sx[2]-x)*(sy[1]-y))/ar,w1=((sx[2]-x)*(sy[0]-y)-(sx[0]-x)*(sy[2]-y))/ar,w2=1-w0-w1,c[3],*o=wr_img[y*WR_W+x],uv[3][2];int j;
   if(w0<0||w1<0||w2<0)continue;
-  r=w0*rw[0]+w1*rw[1]+w2*rw[2];
-  #define PC(i) ((w0*t[0]->a[i]*rw[0]+w1*t[1]->a[i]*rw[1]+w2*t[2]->a[i]*rw[2])/r)
-  if(water){double q=PC(2),al=blend?(w0*t[0]->a[3]+w1*t[1]->a[3]+w2*t[2]->a[3])/255.0:1.0;wr_sample(PC(0)/q,PC(1)/q,pt,c);for(k=0;k<3;k++)o[k]=c[k]*al+o[k]*(1-al);}
-  else{wr_sample(PC(0),PC(1),pt,c);for(k=0;k<3;k++)o[k]=c[k];}
-  #undef PC
+  for(j=0;j<3;j++){double px=x+(j==1),py=y+(j==2),b0=((sx[1]-px)*(sy[2]-py)-(sx[2]-px)*(sy[1]-py))/ar,b1=((sx[2]-px)*(sy[0]-py)-(sx[0]-px)*(sy[2]-py))/ar,b2=1-b0-b1,r=b0*rw[0]+b1*rw[1]+b2*rw[2],
+   s=(b0*t[0]->a[0]*rw[0]+b1*t[1]->a[0]*rw[1]+b2*t[2]->a[0]*rw[2])/r,tt=(b0*t[0]->a[1]*rw[0]+b1*t[1]->a[1]*rw[1]+b2*t[2]->a[1]*rw[2])/r,q=(b0*t[0]->a[2]*rw[0]+b1*t[1]->a[2]*rw[1]+b2*t[2]->a[2]*rw[2])/r;
+   uv[j][0]=s/q;uv[j][1]=tt/q;}
+  {double dx=(uv[1][0]-uv[0][0])*ts,dy=(uv[1][1]-uv[0][1])*ts,ex=(uv[2][0]-uv[0][0])*ts,ey=(uv[2][1]-uv[0][1])*ts;wr_al[y*WR_W+x]=(dx*dx+dy*dy>1.0||ex*ex+ey*ey>1.0);}
+  if(wr_cubeon&&blend){double r=w0*rw[0]+w1*rw[1]+w2*rw[2];wr_cube((w0*t[0]->a[0]*rw[0]+w1*t[1]->a[0]*rw[1]+w2*t[2]->a[0]*rw[2])/r,(w0*t[0]->a[1]*rw[0]+w1*t[1]->a[1]*rw[1]+w2*t[2]->a[1]*rw[2])/r,(w0*t[0]->a[2]*rw[0]+w1*t[1]->a[2]*rw[1]+w2*t[2]->a[2]*rw[2])/r,c);}
+  else wr_sample(uv[0][0],uv[0][1],pt,c);
+  {double al=blend?(w0*t[0]->a[3]+w1*t[1]->a[3]+w2*t[2]->a[3])/255.0:1.0;for(k=0;k<3;k++)o[k]=c[k]*al+o[k]*(1-al);}
  }}
+static void wr_out(U32 *out){int k,j;for(k=0;k<WR_W*WR_W;k++){U32 c=0;for(j=0;j<3;j++){double v=wr_img[k][j]+0.5;int iv=v<0?0:v>255?255:(int)v;c|=(U32)iv<<(16-8*j);}out[k]=c;}}
 static void wr_frame(int f,int pt,int blend,U32 *out){
- static const float tm[16]={0.373904f,0.0305479f,0,0, 0.039355f,-0.368455f,0,0, 0.0391257f,0.0786848f,0,0, 0.5f,0.5f,1,1};
+ static const float tm1[16]={0.373904f,0.0305479f,0,0, 0.039355f,-0.368455f,0,0, 0.0391257f,0.0786848f,0,0, 0.5f,0.5f,1,1},tmq[16]={0.373904f,0.0305479f,0.30f,0, 0.039355f,-0.368455f,0.20f,0, 0.0391257f,0.0786848f,-0.25f,0, 0.5f,0.5f,1,1};const float *tm=wn_qm?tmq:tm1;
  static const float o6[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};static const int fc[8][3]={{0,2,4},{2,1,4},{1,3,4},{3,0,4},{2,0,5},{1,2,5},{3,1,5},{0,3,5}};
  static const int qi[6]={0,2,3,0,3,1};
  float vw[16];const double zn=1.0,zf=1000.0,Q=zf/(zf-zn),t=(double)f/(WN_FR-1);WRV p[16];int k,j,d,i,n,m;
  #define PRJ(cs,o) {o[0]=1.3*cs[0];o[1]=1.3*cs[1];o[2]=Q*cs[2]-Q*zn;o[3]=cs[2];}
- memset(wr_img,0,sizeof(wr_img));wn_cam(f,vw);
+ memset(wr_img,0,sizeof(wr_img));memset(wr_al,0,sizeof(wr_al));wr_tex_id=0;wn_cam(f,vw);
  {float s1,c1,s2,c2;double P[3];t_sincos((float)(t*7.0),&s1,&c1);t_sincos((float)(t*5.0),&s2,&c2);P[0]=s1*2.2;P[1]=-0.4+c2*0.9;P[2]=1.8+1.6*s2;
   for(k=0;k<8;k++){for(j=0;j<3;j++){const float *a=o6[fc[k][j]];double cs[3];int q;for(q=0;q<3;q++)cs[q]=P[q]+a[q]*1.2;PRJ(cs,p[j].c);p[j].a[0]=0.5+0.5*a[0];p[j].a[1]=0.5+0.5*a[1]+0.25*a[2];p[j].a[2]=1;p[j].a[3]=255;}
-   n=wr_clip(p,3);for(i=1;i+1<n;i++)wr_tri(&p[0],&p[i],&p[i+1],0,pt,0);}}
+   n=wr_clip(p,3);for(i=1;i+1<n;i++)wr_tri(&p[0],&p[i],&p[i+1],pt,0);}}
  for(d=0;d<8;d++)for(k=0;k<2;k++){int tile=d*2+k,tx0=tile%4,tz0=tile/4;double x0=-240.0+tx0*120.0,z0=-120.0+tz0*120.0,cx[4],cz[4];WRV v6[6];
   cx[0]=x0;cz[0]=z0;cx[1]=x0+120;cz[1]=z0;cx[2]=x0;cz[2]=z0+120;cx[3]=x0+120;cz[3]=z0+120;
   for(i=0;i<6;i++){double x=cx[qi[i]],z=cz[qi[i]],nx,ny,nz,l,pc[3],nc[3],E[3],R[3],ne,el;float sx,cxs,sz,czs;U32 a;int q;
@@ -942,36 +1098,57 @@ static void wr_frame(int f,int pt,int blend,U32 *out){
    a=0x57UL+((U32)((int)(x+300)*7+(int)(z+300)*3)%0x61UL);
    for(q=0;q<3;q++){pc[q]=x*vw[q]+0*vw[4+q]+z*vw[8+q]+vw[12+q];nc[q]=nx*vw[q]+ny*vw[4+q]+nz*vw[8+q];}
    el=sqrt(pc[0]*pc[0]+pc[1]*pc[1]+pc[2]*pc[2]);for(q=0;q<3;q++)E[q]=-pc[q]/el;ne=E[0]*nc[0]+E[1]*nc[1]+E[2]*nc[2];for(q=0;q<3;q++)R[q]=2*ne*nc[q]-E[q];
-   PRJ(pc,v6[i].c);for(q=0;q<3;q++)v6[i].a[q]=R[0]*tm[q]+R[1]*tm[4+q]+R[2]*tm[8+q]+tm[12+q];v6[i].a[3]=(double)a;}
-  for(i=0;i<6;i+=3){p[0]=v6[i];p[1]=v6[i+1];p[2]=v6[i+2];n=wr_clip(p,3);for(m=1;m+1<n;m++)wr_tri(&p[0],&p[m],&p[m+1],1,pt,blend);}}
+   PRJ(pc,v6[i].c);for(q=0;q<3;q++)v6[i].a[q]=wr_cubeon?R[q]:R[0]*tm[q]+R[1]*tm[4+q]+R[2]*tm[8+q]+tm[12+q];v6[i].a[3]=(double)a;}
+  for(i=0;i<6;i+=3){p[0]=v6[i];p[1]=v6[i+1];p[2]=v6[i+2];n=wr_clip(p,3);for(m=1;m+1<n;m++)wr_tri(&p[0],&p[m],&p[m+1],pt,blend);}}
  #undef PRJ
- for(k=0;k<WR_W*WR_W;k++){U32 c=0;for(j=0;j<3;j++){double v=wr_img[k][j]+0.5;int iv=v<0?0:v>255?255:(int)v;c|=(U32)iv<<(16-8*j);}out[k]=c;}
+ wr_out(out);
 }
+/* v1.43: 6P / 6Q's floors (dp_draw's two-triangle form, case c) by Direct3D's rules: the checker, bilinear, WRAP, no mip chain */
+static void wr_floor(int c,U32 *out){
+ const int nc=c>=5;const double zn=1.0,zf=5000.0,Q=zf/(zf-zn),y0=nc?-0.3:-1.0,z0=c==7?1.02:c==8?0.8:nc?-3.0:1.02,z1=nc?60.0:3000.0,xs=nc?80.0:0.95,xn=c==8?0.05:xs,xf=c==8?40.0:xs;
+ WRV v[4],p[16];int i,j,n,m;static const int tri[2][3]={{0,2,3},{0,3,1}};
+ memset(wr_img,0,sizeof(wr_img));memset(wr_al,0,sizeof(wr_al));wr_tex_id=1;
+ for(j=0;j<2;j++)for(i=0;i<2;i++){WRV *q=&v[j*2+i];double t=j,s2=i,z=nc?z0+(z1-z0)*t:1.0/(1.0/z0+(1.0/z1-1.0/z0)*t),x=nc?(2*s2-1)*(xn+(xf-xn)*t):(2*s2-1)*xs*z;
+  q->c[0]=x;q->c[1]=y0;q->c[2]=Q*z-Q*zn;q->c[3]=z;q->a[0]=x*0.25;q->a[1]=z*0.25;q->a[2]=1;q->a[3]=c==2?128:255;}
+ for(i=0;i<2;i++){for(j=0;j<3;j++)p[j]=v[tri[i][j]];n=wr_clip(p,3);for(m=1;m+1<n;m++)wr_tri(&p[0],&p[m],&p[m+1],0,c==2);}
+ wr_out(out);}
+/* pixels off by more than 64 in a channel where the reference is not aliased, and the lit pixels counted there */
+static int wr_gross(const U32 *b,const U32 *r,int *lit_out){int n=0,l=0,k,j;for(k=0;k<WIN*WIN;k++){int bad=0;if(wr_al[k])continue;if(r[k])l++;
+  for(j=0;j<24;j+=8){int d=(int)((b[k]>>j)&255)-(int)((r[k]>>j)&255);if(d>64||d<-64)bad=1;}n+=bad;}
+ if(lit_out)*lit_out=l;return n;}
 static int wr_bad(const U32 *b,const U32 *r){int n=0,k;for(k=0;k<WIN*WIN;k++){int hb=(int)(b[k]&255)-(int)((b[k]>>16)&255),hr=(int)(r[k]&255)-(int)((r[k]>>16)&255),d=hb-hr;if(d>32||d<-32)n++;}return n;}
 static U32 wr_ref[WIN*WIN];
 static void test_wref(int sw) {
  static const int fr0=10,fr1=23;
- static const struct {const char *nm;int dev,q1,ttf,pt,bl,judge;} vr[]={
-  {"as it is (.723: q = 1 sent plain)",0,1,0x103,0,1,1},{"the projected layout (.722)",0,0,0x103,0,1,0},{"the application's COUNT2 form",0,1,2,0,1,1},
-  {"projected layout, point filter",0,0,0x103,1,1,0},{"projected layout, water opaque",0,0,0x103,0,0,0},
-  {"as it is (.723: q = 1 sent plain)",1,1,0x103,0,1,1},{"the projected layout (.722)",1,0,0x103,0,1,0}};
- DWORD (WINAPI *ts)(DWORD,DWORD)=0;HMODULE h=GetModuleHandleA("VXDDRAW.DLL");void *tx=wn_tex();int v,f,ok;char n[16];DWORD q0=1;
+ static const struct {const char *nm;int dev,q1,ttf,pt,bl,judge,qm,cube;} vr[]={
+  {"as it is (.723: q = 1 sent plain)",0,1,0x103,0,1,1,0},{"the projected layout (.722)",0,0,0x103,0,1,0,0},{"the application's COUNT2 form",0,1,2,0,1,1,0},
+  {"projected layout, point filter",0,0,0x103,1,1,0,0},{"projected layout, water opaque",0,0,0x103,0,0,0,0},
+  {"q 0.4-1.6 folded into W (.724)",0,1,0x103,0,1,1,1},{"q 0.4-1.6, the projected layout",0,0,0x103,0,1,0,1},{"a cube map (the reflection vector)",0,1,0,0,1,1,0,1},
+  {"as it is (.723: q = 1 sent plain)",1,1,0x103,0,1,1,0},{"the projected layout (.722)",1,0,0x103,0,1,0,0},
+  {"q 0.4-1.6 folded into W (.724)",1,1,0x103,0,1,1,1},{"q 0.4-1.6, the projected layout",1,0,0x103,0,1,0,1},{"a cube map (the reflection vector)",1,1,0,0,1,1,0,1}};
+ DWORD (WINAPI *ts)(DWORD,DWORD)=0;HMODULE h=GetModuleHandleA("VXDDRAW.DLL");void *tx=wn_tex(),*cubetx=0;int v,f,ok;char n[16];DWORD q0=1;
  say("6W. %s: the water scene against a reference drawn by Direct3D's rules in this program (pixels whose blue minus red is more than 32 off, %% of the lit ones), frames %d-%d\n",sw?"software vertex processing (the runtime's T&L, the driver's rasterizer)":"hardware vertex processing (the driver's T&L)",fr0,fr1);
  if(!tx){wrong("6W: the texture was not made");return;}
+ if(!((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,U32,void**))VT(dev,22))(dev,64,1,0,22,1,&cubetx)&&cubetx){int j,x,y;LR lr;
+  for(j=0;j<6;j++)if(!((HRESULT(__stdcall*)(void*,U32,U32,LR*,void*,U32))VT(cubetx,16))(cubetx,(U32)j,0,&lr,0,0)){
+   for(y=0;y<64;y++){U32 *r=(U32*)((char*)lr.bits+y*lr.pitch);for(x=0;x<64;x++)r[x]=0xFF000000UL|wr_cubetex(j,x,y);}((F2)VT(cubetx,17))(cubetx,(U32)j,0);}}
+ else cubetx=0;
  ts=h?(DWORD (WINAPI *)(DWORD,DWORD))GetProcAddress(h,"VX_D3D_TestSet"):0;
  if(ts){q0=ts(2,0xFFFFFFFFUL);if(q0==0xFFFFFFFFUL)ts=0;}
  for(v=0;v<(int)(sizeof(vr)/sizeof(vr[0]));v++){int bad=0,worst=-1,wd=-1,d[WN_FR];
   if(vr[v].dev!=sw)continue;
   if(!vr[v].q1&&!ts){say("   %-36s not run (VX_D3D_TestSet 2: a driver before .723)\n",vr[v].nm);continue;}
-  if(ts)ts(2,(DWORD)vr[v].q1);wn_ttf=vr[v].ttf;wn_filt=vr[v].pt?1:2;wn_blend=vr[v].bl;
+  if(vr[v].qm&&vr[v].q1&&ts&&ts(3,0xFFFFFFFFUL)==0xFFFFFFFFUL){say("   %-36s not run (a driver before .724)\n",vr[v].nm);continue;}
+  if(vr[v].cube&&!cubetx){say("   %-36s not run (CreateCubeTexture refused)\n",vr[v].nm);continue;}
+  if(ts)ts(2,(DWORD)vr[v].q1);wn_ttf=vr[v].ttf;wn_filt=vr[v].pt?1:2;wn_blend=vr[v].bl;wn_qm=(U32)vr[v].qm;wn_cubetx=vr[v].cube?cubetx:0;wr_cubeon=vr[v].cube;
   say("   %-36s",vr[v].nm);
   for(f=fr0;f<=fr1;f++){int l;wr_frame(f,vr[v].pt,vr[v].bl,wr_ref);l=lit(wr_ref);wn_frame(f,tx);ok=read_bb(cur);present();
    d[f]=ok?wr_bad(cur,wr_ref):-1;say(" %2d:%4.1f%%",f,ok&&l?100.0*d[f]/l:-1.0);if(f==16)say("\n   %-36s","");
-   if(ok&&d[f]*100>l*3)bad++;if(ok&&d[f]>wd){wd=d[f];worst=f;}}
+   if(!ok||!l||d[f]*100>l*3)bad++; /* v1.44 (driver .726, review): a frame not read back, or a reference that drew nothing, is wrong too */if(ok&&d[f]>wd){wd=d[f];worst=f;}}
   say("\n");
   if(worst>=0&&wd>0){wr_frame(worst,vr[v].pt,vr[v].bl,wr_ref);wn_frame(worst,tx);if(read_bb(cur)){sprintf(n,"6W%c%d%02d.BMP",sw?'S':'H',v,worst);bmp(n,cur);sprintf(n,"6WR%d%02d.BMP",v,worst);bmp(n,wr_ref);}present();}
   if(vr[v].judge&&bad){char m[96];sprintf(m,"6W: %s: %d frame(s) past 3%% wrong (%s)",vr[v].nm,bad,sw?"software":"hardware");wrong(m);}}
- if(ts)ts(2,q0);wn_ttf=3|256;wn_filt=2;wn_blend=1;
+ if(ts)ts(2,q0);wn_ttf=3|256;wn_filt=2;wn_blend=1;wn_qm=0;wn_cubetx=0;wr_cubeon=0;if(cubetx)((F0)VT(cubetx,D3D_REL))(cubetx);
  ((F0)VT(tx,D3D_REL))(tx);
 }
 /* v1.40 (driver .720): 6Q. which part of the driver's path breaks a clipped projected floor (T719 on the VX855: 6P NC, P3 across the
@@ -987,23 +1164,26 @@ static U32 cq_sw[4][WIN*WIN];static int cq_have;
 static void test_clipab(int sw) {
  static const int cs[4]={5,7,8,9};static const char *const nm[4]={"NC (P3, near plane and sides)","NS (P3, sides only)","NN (P3, near plane only)","N2 (NC, plain coordinates)"};
  static const int fr[4]={14,16,19,22};static const int cf[5]={1,0,1,0,1};static const char *const cfn[5]={"band","no band","band","no band","band"};
- DWORD (WINAPI *ts)(DWORD,DWORD)=0;void *t0=dp_tex(0),*wt=wn_tex();DWORD b0=1;int c,k,r,ok,d[8][5];char n[16];HMODULE h=GetModuleHandleA("VXDDRAW.DLL");
+ DWORD (WINAPI *ts)(DWORD,DWORD)=0;void *t0=dp_tex(0),*wt=wn_tex();DWORD b0=1;int c,k,r,ok,d[8][5],e[4][5],el[4];char n[16];HMODULE h=GetModuleHandleA("VXDDRAW.DLL");static U32 qr[4][WIN*WIN];static unsigned char qal[4][WIN*WIN];
  say("6Q. %s: a clipped projected floor and the water scene with the guard band switched\n",sw?"software vertex processing (the reference)":"hardware vertex processing (the driver's T&L)");
  if(!t0||!wt){wrong("6Q: the textures were not made");goto out;}
  if(sw){for(c=0;c<4;c++){dp_draw(cs[c],0,t0);ok=read_bb(cq_sw[c]);present();if(!ok)wrong("6Q: back buffer lock failed");}cq_have=1;say("   the software device's pictures kept\n");goto out;}
  ts=h?(DWORD (WINAPI *)(DWORD,DWORD))GetProcAddress(h,"VX_D3D_TestSet"):0;
  if(!ts){say("   VX_D3D_TestSet not there (a driver before .720): 6Q not run\n");goto out;}
  b0=ts(1,0xFFFFFFFFUL);
+ for(c=0;c<4;c++){wr_floor(cs[c]==9?5:cs[c],qr[c]);memcpy(qal[c],wr_al,sizeof(wr_al));}
  for(r=0;r<5;r++){ts(1,(DWORD)cf[r]);
-  for(c=0;c<4;c++){dp_draw(cs[c],0,t0);ok=read_bb(cur);present();d[c][r]=ok&&cq_have?ndiff(cq_sw[c],cur):-1;if(ok&&r<4&&d[c][r]>0){sprintf(n,"6Q%c%d.BMP",'A'+c,r);bmp(n,cur);}}
+  for(c=0;c<4;c++){dp_draw(cs[c],0,t0);ok=read_bb(cur);present();d[c][r]=ok&&cq_have?ndiff(cq_sw[c],cur):-1;memcpy(wr_al,qal[c],sizeof(wr_al));e[c][r]=ok?wr_gross(cur,qr[c],&el[c]):-1;if(ok&&r<4&&d[c][r]>0){sprintf(n,"6Q%c%d.BMP",'A'+c,r);bmp(n,cur);}}
   for(k=0;k<4;k++){wn_frame(fr[k],wt);ok=read_bb(cur);present();d[4+k][r]=ok&&wn_have?ndiff(wn_sw[fr[k]],cur):-1;if(ok&&r<4&&d[4+k][r]>0){sprintf(n,"6QW%d%d.BMP",k,r);bmp(n,cur);}}}
  ts(1,b0);
  if(cq_have)for(c=0;c<4;c++){sprintf(n,"6Q%cS.BMP",'A'+c);bmp(n,cq_sw[c]);}
  say("   pixels differing from the software device's picture:\n   %-34s","");for(r=0;r<5;r++)say(" %12s",cfn[r]);say("\n");
  for(c=0;c<8;c++){int ls=c<4?lit(cq_sw[c]):lit(wn_sw[fr[c-4]]);char lb[40];if(c<4)sprintf(lb,"%s",nm[c]);else sprintf(lb,"6N frame %d",fr[c-4]);say("   %-34s",lb);
   for(r=0;r<5;r++){if(d[c][r]<0)say("        -    ");else say(" %6d %4.1f%%",d[c][r],ls?100.0*d[c][r]/ls:0.0);}say("\n");}
- say("   (the guard band was %lu before; put back)\n",b0);
- for(c=0;c<4;c++){int ls=lit(cq_sw[c]);for(r=0;r<5;r++)if(d[c][r]>=0&&d[c][r]*100>ls*3){wrong("6Q: a clipped floor is not the software device's picture (past 3%)");break;}}
+ {DWORD gb1;ts(1,1);gb1=ts(1,0xFFFFFFFFUL);ts(1,b0);say("   (the guard band was %lu before; put back)%s\n",b0,gb1?"":"; this chip's VxD does not take the band (VX800 / VX900): every column drawn without it");}
+ say("   v1.43 (driver .724): the floors against their own reference (pixels off by more than 64 where it is not aliased, %% of its lit ones there; the judge, 3%%):\n");
+ for(c=0;c<4;c++){say("   %-34s",nm[c]);for(r=0;r<5;r++){if(e[c][r]<0)say("        -    ");else say(" %6d %4.1f%%",e[c][r],el[c]?100.0*e[c][r]/el[c]:0.0);}say("\n");
+  for(r=0;r<5;r++)if(e[c][r]<0||e[c][r]*100>el[c]*3){char m[96];sprintf(m,"6Q: %s is not its reference's picture (%s)",nm[c],cfn[r]);wrong(m);sprintf(n,"6QR%c.BMP",'A'+c);bmp(n,qr[c]);break;}}
  out:if(t0)((F0)VT(t0,D3D_REL))(t0);if(wt)((F0)VT(wt,D3D_REL))(wt);
 }
 static void test_grid(int sw) {
@@ -1054,6 +1234,54 @@ static void test_grid(int sw) {
 }
 static int make_device(U32 behaviour);
 static U32 att_ref[WIN*WIN];
+/* v1.45 (.727): FILL, the texture fill rate with one and with two units (3DMark 2001: the VX800 gave the same rate with two textures as
+ * with one, the VX855 1.6 times and the VX900 1.8 times). 64 screen-sized quads a frame, pretransformed, no depth, no blend, bilinear,
+ * each unit its own texture: 32x32 at one texel a pixel (wrapped: held in the texture cache), 256x256 at one texel a pixel, 1024x1024
+ * shrunk four times (no mips: every pixel's texels far apart), each as R5G6B5, X8R8G8B8 and DXT1. If small textures double with two
+ * units and large ones do not, memory feeds the units; if none does, the engine (or our set-up of its second unit) does not overlap them. */
+typedef struct {float x,y,z,rhw,u0,v0,u1,v1;} FQ;
+static void *fill_tex(U32 sz,U32 fmt,U32 seed) {void *tx=0;LR lr;U32 y,rows,bytes;
+ if(((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,U32,U32,void**))VT(dev,20))(dev,sz,sz,1,0,fmt,1,&tx)||!tx)return 0;
+ rows=fmt==0x31545844UL?sz/4:sz;bytes=fmt==0x31545844UL?sz/4*8:fmt==23?sz*2:sz*4;
+ if(!((HRESULT(__stdcall*)(void*,U32,LR*,void*,U32))VT(tx,16))(tx,0,&lr,0,0)){
+  for(y=0;y<rows;y++){unsigned char *r=(unsigned char*)lr.bits+y*lr.pitch;U32 x;for(x=0;x<bytes;x++){seed=seed*1664525UL+1013904223UL;r[x]=(unsigned char)(seed>>24);}}
+  ((F1)VT(tx,17))(tx,0);}
+ return tx;}
+static double fill_run(int units,float span) {
+ static FQ q[4];LARGE_INTEGER f,a,b;int fr,l,k;const float W=(float)WIN;
+ for(k=0;k<4;k++){q[k].x=(k&1)?W:0.0f;q[k].y=(k&2)?W:0.0f;q[k].z=0.5f;q[k].rhw=1.0f;q[k].u0=q[k].u1=(k&1)?span:0.0f;q[k].v0=q[k].v1=(k&2)?span:0.0f;}
+ ((F1)VT(dev,DEV_SETVS))(dev,0x204);
+ for(fr=0;fr<12;fr++){
+  if(fr==2){QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);}
+  ((F0)VT(dev,DEV_BEGIN))(dev);
+  for(l=0;l<64;l++)((HRESULT(__stdcall*)(void*,U32,U32,const void*,U32))VT(dev,DEV_DPUP))(dev,5,2,q,sizeof(FQ));
+  ((F0)VT(dev,DEV_END))(dev);present();}
+ {static U32 px[WIN*WIN];read_bb(px);} /* a Lock of the back buffer: the engine finished */
+ QueryPerformanceCounter(&b);
+ if(!f.QuadPart||b.QuadPart<=a.QuadPart)return 0;
+ return (double)WIN*WIN*64.0*10.0*units/((double)(b.QuadPart-a.QuadPart)/(double)f.QuadPart)/1e6; /* texels a second, millions */
+}
+static void test_fill(void) {
+ static const U32 fmts[3]={23,22,0x31545844UL};static const char *fn[3]={"R5G6B5","X8R8G8B8","DXT1"};
+ static const U32 sizes[3]={32,256,1024};static const float spans[3]={8.0f,1.0f,1.0f};static const char *sn[3]={"32x32, a texel a pixel (cache)","256x256, a texel a pixel","1024x1024, shrunk 4x, no mips"};
+ int si,fi;
+ say("FILL. the texture fill rate, one unit and two (64 screen quads a frame, 10 frames; millions of texels a second; 3DMark 2001's multitexture question)\n");
+ if(!make_device(0x20)){wrong("FILL: no device");return;}
+ rs(7,0);rs(14,0);rs(27,0);rs(15,0);rs(22,1);rs(137,0);rs(28,0);rs(29,0);
+ for(si=0;si<3;si++)for(fi=0;fi<3;fi++){
+  void *t0=fill_tex(sizes[si],fmts[fi],1+si*3+fi),*t1=fill_tex(sizes[si],fmts[fi],100+si*3+fi);double r1,r2;int k;
+  if(!t0||!t1){say("   %-32s %-9s not made (format not offered)\n",sn[si],fn[fi]);if(t0)((F0)VT(t0,D3D_REL))(t0);if(t1)((F0)VT(t1,D3D_REL))(t1);continue;}
+  for(k=0;k<2;k++){tss(k,16,2);tss(k,17,2);tss(k,18,0);tss(k,13,1);tss(k,14,1);tss(k,11,k);}
+  ((F2P)VT(dev,DEV_SETTEX))(dev,0,t0);tss(0,1,2);tss(0,2,2);tss(0,4,2);tss(0,5,2);
+  ((F2P)VT(dev,DEV_SETTEX))(dev,1,0);tss(1,1,1);tss(1,4,1);
+  r1=fill_run(1,spans[si]);
+  ((F2P)VT(dev,DEV_SETTEX))(dev,1,t1);tss(1,1,4);tss(1,2,2);tss(1,3,1);tss(1,4,3);tss(1,6,1);
+  r2=fill_run(2,spans[si]);
+  ((F2P)VT(dev,DEV_SETTEX))(dev,0,0);((F2P)VT(dev,DEV_SETTEX))(dev,1,0);tss(1,1,1);tss(1,4,1);
+  ((F0)VT(t0,D3D_REL))(t0);((F0)VT(t1,D3D_REL))(t1);
+  say("   %-32s %-9s one unit %7.1f, two units %7.1f: %.2fx\n",sn[si],fn[fi],r1,r2,r1>0?r2/r1:0.0);}
+ ((F0)VT(dev,D3D_REL))(dev);dev=0;
+}
 static void test_attach(int sw) {
  STARTUPINFOA si;PROCESS_INFORMATION pi;char cmd[64];DWORD t0;int k,n=0,d,l;MSG msg;
  say("10. a second program (VXD3DMON.EXE 8) started while the %s device draws the GTA3-like frame\n",sw?"software":"hardware");
@@ -1125,6 +1353,49 @@ static void test_textures(void) {
 out:
  for(k=0;k<NTX;k++)if(txs[k]){((F0)VT(txs[k],D3D_REL))(txs[k]);txs[k]=0;}
 }
+/* v1.52 (driver .752): VXTLP VBOX. The driver's T&L keeps a box of a vertex range and drops a draw whose box is off the screen before it
+ * reads a vertex; the box is good only while the vertices are the ones it was measured on. This rewrites a mesh's vertices in every
+ * way a program can, moving it off the screen and back with the matrices left alone, and looks at the picture after each move: a box
+ * that outlived its vertices would leave the window empty when the mesh has come back. Six ways: a static vertex buffer locked with
+ * no flags; a dynamic one locked with DISCARD; a dynamic one locked with NOOVERWRITE; a static one written through the pointer of an
+ * earlier Lock, with no Lock at all; a managed one; and DrawPrimitiveUP (the runtime's own buffer). 128 triangles (384 vertices, a
+ * list in order). Each state is drawn six times (the driver measures a range on its second draw and drops from the third), the
+ * picture read after the first and the sixth. The driver's counters for each way are printed (QueryPhases 472-500); only the pictures
+ * decide. Run it with VXREG VBUF OFF and ON and VXREG VBOX 0, 1, 2: the pictures must be right in every one. */
+#define VBN 384
+static void vbox_fill(PV *p,float ox) {int i,j,k=0;static const float qx[6]={0,1,0,1,1,0},qy[6]={0,0,1,0,1,1};
+ for(j=0;j<8;j++)for(i=0;i<8;i++){int q;for(q=0;q<6;q++,k++)p7_pv(p+k,ox-0.4f+0.1f*((float)i+qx[q]),-0.4f+0.1f*((float)j+qy[q]),0.5f,0xFF00FF00UL);}}
+static int vbox_frames(void *vb,const PV *up,int n) {int k,l=0;
+ for(k=0;k<n;k++){p7_begin();
+  if(vb){((F3P)VT(dev,DEV_STREAM))(dev,0,(U32)vb,(void*)sizeof(PV));((HRESULT(__stdcall*)(void*,U32,U32,U32))VT(dev,DEV_DP))(dev,4,0,VBN/3);((F3P)VT(dev,DEV_STREAM))(dev,0,0,0);}
+  else DPUP(4,VBN/3,(void*)up);
+  ((F0)VT(dev,DEV_END))(dev);l=read_bb(cur)?lit(cur):-1;present();}
+ return l;}
+static void test_vbox(void) {
+ static const char *name[6]={"a static vertex buffer, Lock with no flags","a dynamic vertex buffer, Lock with DISCARD","a dynamic vertex buffer, Lock with NOOVERWRITE","a static vertex buffer written through a kept pointer, no Lock","a managed vertex buffer, Lock with no flags","DrawPrimitiveUP (no vertex buffer)"};
+ static const U32 usage[6]={8,0x208,0x208,8,8,0},pool[6]={0,0,0,0,1,0},flags[6]={0,0x2000,0x1000,0,0,0};
+ static PV up[VBN];static DWORD q0[501],q1[501];int m,c,bad0=fails;
+ say("VBOX. vertices rewritten under a cached box (.752): the mesh moved off the screen and back six ways\n");
+ if(hal_phases&&hal_phases(q0,501)==501)say("   the driver: cached boxes mode %lu (0 off, 1 on, 2 counted and checked only); the HAL's vertex buffers %s\n",q0[480],q0[481]?"on":"off");
+ else{say("   QueryPhases with 501 words: not answered (a driver before .752)\n");q0[0]=0;}
+ for(m=0;m<6;m++){void *vb=0;PV *p=0,*kept=0;int l0,l1,ok=1;char line[200];
+  if(q0[0])hal_phases(q0,501);
+  if(m<5){if(((HRESULT(__stdcall*)(void*,U32,U32,U32,U32,void**))VT(dev,DEV_CREATEVB))(dev,VBN*sizeof(PV),usage[m],0x42,pool[m],&vb)||!vb){say("   %s: CreateVertexBuffer failed\n",name[m]);fails++;continue;}}
+  for(c=0;c<7&&ok;c++){const float ox=(c&1)?0.0f:3.0f; /* off, on, off, on, off, on, off */
+   if(m==5)vbox_fill(up,ox);
+   else if(m==3&&kept)vbox_fill(kept,ox); /* no Lock: the pointer of the first one */
+   else{p=0;if(((HRESULT(__stdcall*)(void*,U32,U32,void**,U32))VT(vb,VB_LOCK))(vb,0,0,(void**)&p,c?flags[m]:(m==1||m==2?0x2000:0))||!p){wrong("vertex buffer Lock failed");ok=0;break;}
+    vbox_fill(p,ox);kept=p;((F0)VT(vb,VB_UNLOCK))(vb);}
+   l0=vbox_frames(vb,up,1);l1=vbox_frames(vb,up,5);
+   if((c&1)?(l0<=0||l1<=0):(l0!=0||l1!=0)){sprintf(line,"%s, move %d (%s the screen): lit %d after the first draw, %d after the sixth",name[m],c,(c&1)?"onto":"off",l0,l1);wrong(line);
+    if(c&1){bmp("VXTLVBOX.BMP",cur);}ok=0;}}
+  if(vb)((F0)VT(vb,D3D_REL))(vb);
+  if(q0[0]&&hal_phases(q1,501)==501)say("   %s: %s; draws from a buffer with a generation %lu, with a box %lu, dropped before the gather %lu, boxes made %lu, dropped by the three-vertex check %lu, a box wrong (mode 2) %lu; buffers created %lu, locks seen %lu, unlocks %lu\n",
+    name[m],ok?"the pictures right":"WRONG",q1[472]-q0[472],q1[473]-q0[473],q1[474]-q0[474],q1[476]-q0[476],q1[477]-q0[477],q1[479]-q0[479],q1[484]-q0[484],q1[487]-q0[487],q1[491]-q0[491]);
+  else say("   %s: %s\n",name[m],ok?"the pictures right":"WRONG");
+  if(q0[0]&&q1[479]!=q0[479])wrong("a cached box said a draw was off the screen and its vertices were not (mode 2's check)");}
+ say("   VBOX: %s\n",fails==bad0?"RIGHT: every picture as the vertices were":"WRONG");
+}
 static void test_d3d8(void) {
  HMODULE d8=LoadLibrary("d3d8.dll");void *(__stdcall *create)(U32);MODE mode;unsigned char caps[512];DWORD qb[302];int k;static U32 sw_lit[WIN*WIN];int have_lit=0;
  create=d8?(void*(__stdcall*)(U32))GetProcAddress(d8,"Direct3DCreate8"):0;
@@ -1137,7 +1408,9 @@ static void test_d3d8(void) {
   if(!strstr(args(),"SW")){if(make_device(0x40)){test_grid(0);((F0)VT(dev,D3D_REL))(dev);dev=0;}else wrong("no hardware-processing device (ACCEL_D3D_TNL off?)");}}
   g_mode=0;
   ((F0)VT(d3d,D3D_REL))(d3d);d3d=0;return;}
+ if(strstr(args(),"FILL")){test_fill();((F0)VT(d3d,D3D_REL))(d3d);d3d=0;return;} /* v1.45 */
  if(strstr(args(),"ATTACH")){test_attach(1);test_attach(0);g_mode=0;((F0)VT(d3d,D3D_REL))(d3d);d3d=0;return;} /* v1.25 */
+ if(strstr(args(),"VBOX")){if(make_device(0x40)){test_vbox();((F0)VT(dev,D3D_REL))(dev);dev=0;}else wrong("no hardware-processing device (ACCEL_D3D_TNL off?)");((F0)VT(d3d,D3D_REL))(d3d);d3d=0;return;} /* v1.52 */
  say("2. Direct3D 8: the HAL's caps\n");
  memset(caps,0,sizeof(caps));
  if(((HRESULT(__stdcall*)(void*,U32,U32,void*))VT(d3d,D3D_CAPS))(d3d,0,1,caps)){wrong("GetDeviceCaps failed");}
@@ -1160,6 +1433,8 @@ static void test_d3d8(void) {
   test_649(1); /* v1.20 */
   test_663(1); /* v1.29 */
   test_668(1); /* v1.30 */
+  test_wrap(1); /* v1.47 */
+  test_tfog(1); /* v1.49 */
   test_proj(1); /* v1.37 */
   test_deep(1);test_water(1);test_wref(1);test_clipab(1); /* v1.38; v1.40 6Q; v1.42 6W */
   test_grid(1); /* v1.8 */
@@ -1204,6 +1479,9 @@ static void test_d3d8(void) {
   test_649(0); /* v1.20 */
   test_663(0); /* v1.29 */
   test_668(0); /* v1.30 */
+  test_wrap(0); /* v1.47 */
+  test_tfog(0); /* v1.49 */
+  test_maxmip(); /* v1.51 */
   test_proj(0); /* v1.37 */
   test_deep(0);test_water(0);test_wref(0);test_clipab(0); /* v1.38; v1.40 6Q; v1.42 6W */
   test_grid(0); /* v1.8 */
@@ -1219,7 +1497,7 @@ int main(void) {
  char path[MAX_PATH],*s;WNDCLASS wc;
  SetUnhandledExceptionFilter(crash_log); /* v1.28 */
  GetModuleFileName(0,path,sizeof(path));s=strrchr(path,'\\');if(s)strcpy(s+1,"VXTLP.LOG");logf=fopen(path,"w");
- say("VXTLP v1.42 (driver .723; 6W: the water against its own reference; 6Q: guard band A/B; 6P NA: clipped vertex alpha; 6M: projected texture coordinates on large triangles; 6P: deep floors; 6N: a Dragothic-like water scene; PROJ: 6M, 6P and 6N alone; VP: a viewport at (40, 40)): the driver's T&L; 6b-6l timed scenes (6l: 6k with back faces culled) (a point light, small draws, a second stage on and off, a GTA3-like frame, the second stage always on, always off, eight lights with specular lighting, spot lights with generated coordinates, 30 tori with one light and with eight); 7. points, lines, large draws; 8. spot, specular, high light indices, a third stage's set; 9. depth surfaces swapped and released; 10. a state block past 1,024 bytes, 65 lights, three coordinate sets\n");
+ say("VXTLP v1.52 (driver .752; VBOX: vertices rewritten under a cached box; 12c/12d: fog on big triangles, per vertex against per pixel; 10d/10e: three sets through the T&L; 12: fog from W; 11: WRAP0 0.75 to 0.0; 10c: three sets; FILL: one and two units; 6P/6Q/6W against references drawn here; 6Q: guard band A/B; 6P NA: clipped vertex alpha; 6M: projected texture coordinates on large triangles; 6P: deep floors; 6N: a Dragothic-like water scene; PROJ: 6M, 6P and 6N alone; VP: a viewport at (40, 40)): the driver's T&L; 6b-6l timed scenes (6l: 6k with back faces culled) (a point light, small draws, a second stage on and off, a GTA3-like frame, the second stage always on, always off, eight lights with specular lighting, spot lights with generated coordinates, 30 tori with one light and with eight); 7. points, lines, large draws; 8. spot, specular, high light indices, a third stage's set; 9. depth surfaces swapped and released; 10. a state block past 1,024 bytes, 65 lights, three coordinate sets\n");
  {char dll[MAX_PATH];UINT n=GetSystemDirectoryA(dll,MAX_PATH-16);HMODULE h=0;
   if(n&&n<MAX_PATH-16){strcpy(dll+n,dll[n-1]=='\\'?"VXDDRAW.DLL":"\\VXDDRAW.DLL");h=LoadLibraryA(dll);}
   hal_phases=h?(DWORD (WINAPI *)(DWORD *,DWORD))GetProcAddress(h,"VX_D3D_QueryPhases"):0;}
@@ -1237,7 +1515,7 @@ int main(void) {
  g_vp=strstr(args(),"VP")!=0; /* v1.36 */
  g_proj=strstr(args(),"PROJ")!=0; /* v1.37 */
  if(strstr(args(),"GRID"))g_secs=strstr(args(),"HW")?20:strstr(args(),"SW")?15:10; /* v1.25: 10 s a device (20 and 15 alone); v1.11: HW, the driver's alone, 60 s */ /* v1.10; v1.11: HW, the driver's alone, 60 s; v1.17: each of the three scenes */
- if(!g_secs&&!g_proj)test_d3d7();
+ if(!g_secs&&!g_proj&&!strstr(args(),"VBOX"))test_d3d7();
  test_d3d8();
  DestroyWindow(wnd);
  say("%s: %d wrong\n",fails?"FAILED":"PASSED",fails);
