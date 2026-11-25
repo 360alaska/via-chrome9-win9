@@ -2,7 +2,7 @@
 
 This is the final build of the driver line that ran from .723 to .769B. After this build the project is rebased onto the faster line that replaced this one. This build is published so that this line's design and its code stay available. **For everyday use, take the main branch's release when it comes out.**
 
-**Download:** `VIA_Chrome9_794_full.zip` below, the driver and the test tools in one zip. Install `CHROME9.INF` from the zip's top folder. The `tools` folder is optional.
+**Download:** `VIA_Chrome9_794.zip` below, the driver. Install `CHROME9.INF` from the zip.
 
 Supported chips: VX800 / VX820 (Chrome9 HC3), VX855 / VX875 (Chrome9 HCM), VX900 (Chrome9 HD). VX900 boards still need [the boot fix](https://github.com/360alaska/vx900-win9x-bootfix) first.
 
