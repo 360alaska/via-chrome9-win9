@@ -1,6 +1,6 @@
-## .794: the last build of the original line, before the rebase onto .793
+## .794: the last build of the original line before the rebase
 
-This is the final build of the driver line that ran from .723 to .769B. From the next release on, the project continues from .793, the faster line that replaced this one. This build is published so that this line's design and its code stay available. **For everyday use, take .793 or later when it is released.**
+This is the final build of the driver line that ran from .723 to .769B. After this build the project is rebased onto the faster line that replaced this one. This build is published so that this line's design and its code stay available. **For everyday use, take the main branch's release when it comes out.**
 
 **Download:** `VIA_Chrome9_794_full.zip` below, the driver and the test tools in one zip. Install `CHROME9.INF` from the zip's top folder. The `tools` folder is optional.
 
@@ -42,9 +42,9 @@ The gains came from:
 - If the monitor was off or switched away at boot, the larger modes appear without a restart once it is read later.
 - Mode timings are worked out without floating point.
 
-### Known differences from .793
+### Known differences from the main branch
 
-.793 is faster. It has hardware T&L and a DirectX 8 interface, and it was tested on the boards after many more fixes. This line keeps its own design:
+The main branch is faster. It has hardware T&L and a DirectX 8 interface, and it was tested on the boards after many more fixes. This line keeps its own design:
 - the driver's own T&L in the HAL;
 - the vertex-buffer code, kept here but off by default (VXREG VBUF ON turns it on live for testing);
 - its own test tools and switches.
