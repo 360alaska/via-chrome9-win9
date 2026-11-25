@@ -42,7 +42,7 @@ def pe(path):
   rows=[]
   for a in range(0,len(b)-12):
    if u32(a)==name_offset and u32(a+8)==dispatch_offset:rows.append(u32(a+4))
-  m=re.search(r'^([0-9a-fA-F]{8})[ *]+_gl_dispatch_stub_748@16\s*$',(root/'verification'/'VXGL.map').read_text(),re.M)
+  m=re.search(r'^([0-9a-fA-F]{8})[ *]+_gl_dispatch_stub_748@16\s*$',((root/'verification'/'VXGL.map') if (root/'verification'/'VXGL.map').exists() else (root/'build'/'VXGL.map')).read_text() # E771 (outside audit, item 9): the linker's own copy when none is staged,re.M)
   assert m, 'typed stdcall depth-bounds stub missing from link map'
   target=int(m.group(1),16)
   assert rows==[target], ('depth-bounds lookup missing/null/wrong target',rows,hex(target))
@@ -50,7 +50,7 @@ def pe(path):
   result['depth_bounds_dispatch']={'name':'glDepthBoundsEXT','offset':dispatch_offset,'linked_target':hex(target),'status':'passed'}
  return result
 result={}
-for name in ['VXDDRAW.DLL','VXGL.DLL','VXFEAT.EXE']:
+for name in ['VXDDRAW.DLL','VXGL.DLL']+(['VXFEAT.EXE'] if (root/'driver'/'VXFEAT.EXE').exists() else []): # E771 (outside audit, item 9): VXFEAT.EXE is the feature tool's own build, checked when it is there
  r=pe(root/'driver'/name)
  assert set(r['imports'])<={'KERNEL32.DLL','USER32.DLL','GDI32.DLL','ADVAPI32.DLL','OPENGL32.DLL'},name
  if baseline and name!='VXFEAT.EXE':

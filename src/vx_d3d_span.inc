@@ -28,14 +28,19 @@ typedef struct {
  /* 24 */ uint32_t smode,soff;        /* specular: 0 none (0), 1 white (0xFF000000), 2 the word at soff */
  /* 32 */ uint32_t t0,v0on;           /* the first set's offset (0: no coordinates, 0 0), its second word read */
  /* 40 */ uint32_t two,t1,v1on;       /* two units: the second set's offset (0: 0 0), its second word read; one unit: the first set again */
- /* 52 */ uint32_t pad0,pad1,pad2;
+ /* 52 */ const uint32_t *xy;         /* .767: vxs_convg: the grid words, an x y pair a vertex (the ICD's snapped positions) */
+ /* 56 */ uint32_t pad1,pad2;
  /* 64 */ uint32_t xlo,xrange,ylo,yrange; /* GB_IN's: w - lo <= range */
  /* 80 */ uint32_t xg,yg;             /* 0xFFFFFFFF: the guard band also takes 0x80000000..0xBF000000 (tc.guard and lo 0) */
  /* 88 */ uint32_t pad3,pad4;
  /* 96: the kernels' lane constants (the C does not read them): fixed (vxs_init) */
  /* 96 */ uint32_t kbias[4],kgu[4],kz[4],kw[4],kone[4],kneg0[4]; /* 0x80000000; 0xBF000000, 0x3F800000, 0x7F7FFFFF each xor the bias; 1; -0 in lanes 0-2 */
  /* 192: the template's (vxs_tc) */
- /* 192 */ uint32_t kxlo[4],kxr[4],kylo[4],kyr[4],kxg[4],kyg[4]; /* xlo, xrange ^ bias, ylo, yrange ^ bias, xg, yg */
+ /* 192 */ uint32_t kxlo[4],kxr[4],kylo[4],kyr[4],kxg[4],kyg[4]; /* xlo, xrange ^ bias, ylo, yrange ^ bias, xg, yg (.545's vxs_check; not read since .767) */
+ /* 288: .767: vxs_check's constants by lane (x, y, z, rhw), the template's (vxs_tc): k1 = bias - lo, rb1 = range ^ bias with lo and range
+  * xlo / xrange, ylo / yrange, 0 / 0x3F800000, 1 / 0x7F7FFFFE; rb2 = 0xBF000000 (the guard's words are the signed values up to it);
+  * ng = all ones in a lane with no guard alternative (xg or yg 0; z and rhw always) */
+ /* 288 */ uint32_t k1[4],rb1[4],rb2[4],ng[4];
 } vxs_frame;
 static uint32_t vxs_check_c(const vxs_frame *f) {
  uint32_t i;const uint8_t *p=f->vb;
@@ -56,6 +61,19 @@ static void vxs_conv_c(const vxs_frame *f) {
   else{w[8]=u;w[9]=v;}
  }
 }
+/* .767: vxs_conv_c with x and y the pair at f->xy (the OpenGL ICD's grid words, vx_d3d_gl_presnap: taken as they are, as gw_vertex takes
+ * them), not the vertex's own: the ten words gw_vertex writes for a store vertex under the ICD's snap, a run of vertices at a time */
+static void vxs_convg_c(const vxs_frame *f) {
+ uint32_t i;const uint8_t *p=f->vb;uint8_t *o=(uint8_t*)f->w;const uint32_t *xy=f->xy;
+ for(i=0;i<f->n;i++,p+=f->stride,o+=f->wstride,xy+=2){uint32_t *w=(uint32_t*)(void*)o,z=u32(p+8),u=0,v=0;
+  if(z==0x80000000UL)z=0;
+  if(f->t0){u=vxs_fin(u32(p+f->t0));if(f->v0on)v=vxs_fin(u32(p+f->t0+4));}
+  w[0]=xy[0];w[1]=xy[1];w[2]=z;w[3]=u32(p+12);w[4]=f->coff?u32(p+f->coff):0xFFFFFFFFUL;
+  w[5]=f->smode==2?u32(p+f->soff):f->smode==1?0xFF000000UL:0;w[6]=u;w[7]=v;
+  if(f->two){uint32_t u1=0,v1=0;if(f->t1){u1=vxs_fin(u32(p+f->t1));if(f->v1on)v1=vxs_fin(u32(p+f->t1+4));}w[8]=u1;w[9]=v1;}
+  else{w[8]=u;w[9]=v;}
+ }
+}
 /* the largest of count 16-bit indices (INDEXEDTRIANGLELIST2's token: three a triangle, back to back) */
 static uint32_t vxs_max16_c(const uint8_t *p,uint32_t count) {uint32_t m=0,k,a;for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;if(a>m)m=a;}return m;}
 /* .645: count 16-bit indices copied to dst, with their smallest and largest (mm[0], mm[1]; 0xFFFF and 0 for none): the driver's T&L
@@ -63,26 +81,45 @@ static uint32_t vxs_max16_c(const uint8_t *p,uint32_t count) {uint32_t m=0,k,a;f
  * the largest single line of the T&L on the host's count, 11% of it) */
 static void vxs_cmm16_c(const uint8_t *p,uint16_t *dst,uint32_t count,uint32_t *mm) {uint32_t lo=0xFFFF,hi=0,k,a;
  for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;dst[k]=(uint16_t)a;if(a<lo)lo=a;if(a>hi)hi=a;}mm[0]=lo;mm[1]=hi;}
+/* .767: the smallest and the largest of count 16-bit indices (mm[0], mm[1]; 0xFFFF and 0 for none): vxs_cmm16 without the copy */
+static void vxs_mm16_c(const uint8_t *p,uint32_t count,uint32_t *mm) {uint32_t lo=0xFFFF,hi=0,k,a;
+ for(k=0;k<count;k++){a=(uint32_t)p[k*2]|(uint32_t)p[k*2+1]<<8;if(a<lo)lo=a;if(a>hi)hi=a;}mm[0]=lo;mm[1]=hi;}
+/* .767: count 16-bit indices copied to dst with gain added to each (the sum's low 16 bits) */
+static void vxs_add16_c(uint16_t *dst,const uint8_t *src,uint32_t count,uint32_t gain) {uint32_t k;
+ for(k=0;k<count;k++)dst[k]=(uint16_t)(((uint32_t)src[k*2]|(uint32_t)src[k*2+1]<<8)+gain);}
 /* VXS KERNELS END */
 #define VXS_OFF(f,o) typedef char vxs_off_##f[(offsetof(vxs_frame,f)==(o))?1:-1];
 #ifdef __WATCOMC__
 VXS_OFF(vb,0) VXS_OFF(stride,4) VXS_OFF(n,8) VXS_OFF(w,12) VXS_OFF(wstride,16) VXS_OFF(coff,20) VXS_OFF(smode,24) VXS_OFF(soff,28) VXS_OFF(t0,32)
 VXS_OFF(v0on,36) VXS_OFF(two,40) VXS_OFF(t1,44) VXS_OFF(v1on,48) VXS_OFF(xlo,64) VXS_OFF(xrange,68) VXS_OFF(ylo,72) VXS_OFF(yrange,76) VXS_OFF(xg,80) VXS_OFF(yg,84)
 VXS_OFF(kbias,96) VXS_OFF(kgu,112) VXS_OFF(kz,128) VXS_OFF(kw,144) VXS_OFF(kone,160) VXS_OFF(kneg0,176) VXS_OFF(kxlo,192) VXS_OFF(kxr,208) VXS_OFF(kylo,224) VXS_OFF(kyr,240) VXS_OFF(kxg,256) VXS_OFF(kyg,272)
+VXS_OFF(k1,288) VXS_OFF(rb1,304) VXS_OFF(rb2,320) VXS_OFF(ng,336) VXS_OFF(xy,52) /* .767 */
 extern uint32_t __cdecl vxs_check(const vxs_frame *f);
 extern void __cdecl vxs_conv(const vxs_frame *f);
 extern uint32_t __cdecl vxs_max16(const uint8_t *p,uint32_t count);
 extern void __cdecl vxs_cmm16(const uint8_t *p,uint16_t *dst,uint32_t count,uint32_t *mm);
+extern void __cdecl vxs_conv8(const vxs_frame *f); /* .767 */
+extern void __cdecl vxs_mm16(const uint8_t *p,uint32_t count,uint32_t *mm); /* .767 */
+extern void __cdecl vxs_add16(uint16_t *dst,const uint8_t *src,uint32_t count,uint32_t gain); /* .767 */
+extern void __cdecl vxs_convg(const vxs_frame *f); /* .767 */
 #define VXS_CMM16(p,d,n,m) do{if(vx_d3d_sse2)vxs_cmm16(p,d,n,m);else vxs_cmm16_c(p,d,n,m);}while(0)
 #define VXS_MAX16(p,n) (vx_d3d_sse2?vxs_max16(p,n):vxs_max16_c(p,n))
 #define VXS_CHECK(f) (vx_d3d_sse2?vxs_check(f):vxs_check_c(f))
-#define VXS_CONV(f) do{if(vx_d3d_sse2)vxs_conv(f);else vxs_conv_c(f);}while(0)
+/* .767: vxs_conv8 for a frame whose layout is the 8-word one (vxs_c8, worked out with the template's part of the frame) into 8-word records */
+#define VXS_CONV(f) do{if(vx_d3d_sse2){if(vxs_c8&&(f)->wstride==32UL)vxs_conv8(f);else vxs_conv(f);}else vxs_conv_c(f);}while(0)
+#define VXS_CONVG(f) do{if(vx_d3d_sse2)vxs_convg(f);else vxs_convg_c(f);}while(0)
+#define VXS_MM16(p,n,m) do{if(vx_d3d_sse2)vxs_mm16(p,n,m);else vxs_mm16_c(p,n,m);}while(0)
+#define VXS_ADD16(d,s,n,g) do{if(vx_d3d_sse2)vxs_add16(d,s,n,g);else vxs_add16_c(d,s,n,g);}while(0)
 #else
 #define VXS_CHECK(f) vxs_check_c(f)
 #define VXS_CONV(f) vxs_conv_c(f)
+#define VXS_CONVG(f) vxs_convg_c(f)
 #define VXS_MAX16(p,n) vxs_max16_c(p,n)
 #define VXS_CMM16(p,d,n,m) vxs_cmm16_c(p,d,n,m)
+#define VXS_MM16(p,n,m) vxs_mm16_c(p,n,m)
+#define VXS_ADD16(d,s,n,g) vxs_add16_c(d,s,n,g)
 #endif
+static uint32_t vxs_c8; /* .767: the frame's layout is x y z rhw, diffuse at 16, the specular word at 20, one coordinate pair at 24 (vxs_tc) */
 uint32_t vx_d3d_sse2,vx_d3d_vxs[4]; /* vx_d3d_sse2: the HAL sets it from the VxD's 0xFFFFFE34 (SSE2 and OSFXSR); vx_d3d_vxs: [0] spans,
  * [1] vertices passed by vxs_check, [2] spans converted by vxs_conv, [3] their vertices */
 static vxs_frame vxs;static int vxs_ready;static uint32_t vxs_tid,vxs_fvf;
@@ -101,12 +138,20 @@ static void vxs_tc(void) {
  vxs_k(vxs.kxlo,vxs.xlo);vxs_k(vxs.kxr,vxs.xrange^0x80000000UL);vxs_k(vxs.kylo,vxs.ylo);vxs_k(vxs.kyr,vxs.yrange^0x80000000UL);vxs_k(vxs.kxg,vxs.xg);vxs_k(vxs.kyg,vxs.yg);
  vxs.coff=tc.lay.coff;vxs.smode=tc.prog>=0?(tc.lay.soff?2:1):0;vxs.soff=tc.lay.soff;
  vxs.t0=tex?tc.lay.t0:0;vxs.v0on=tc.lay.n0>=2;vxs.two=two;vxs.t1=two?tc.lay.t1:0;vxs.v1on=tc.lay.n1>=2;
+ /* .767: vxs_check's constants by lane, and whether vxs_conv8 serves this layout */
+ vxs.k1[0]=0x80000000UL-vxs.xlo;vxs.k1[1]=0x80000000UL-vxs.ylo;vxs.k1[2]=0x80000000UL;vxs.k1[3]=0x80000000UL-1UL;
+ vxs.rb1[0]=vxs.xrange^0x80000000UL;vxs.rb1[1]=vxs.yrange^0x80000000UL;vxs.rb1[2]=0x3F800000UL^0x80000000UL;vxs.rb1[3]=0x7F7FFFFEUL^0x80000000UL;
+ vxs_k(vxs.rb2,0xBF000000UL);vxs.ng[0]=~vxs.xg;vxs.ng[1]=~vxs.yg;vxs.ng[2]=vxs.ng[3]=0xFFFFFFFFUL;
+ vxs_c8=vxs.coff==16&&vxs.smode==2&&vxs.soff==20&&vxs.t0==24&&vxs.v0on&&!vxs.two;
  vxs_tid=tc.id;vxs_fvf=tc.lay.fvf;vxs_template_valid=1;
 }
 /* .546: the indexed token's vertex range (dp2_body sets it with ix_proof_new) and ix_list's proof that every vertex in it passes
  * (0 not tried, 1 proven, 2 not), for the template tc.id */
 static uint32_t ix_tok_lo,ix_tok_hi,ix_tok_n,ix_proof_tid,ix_proof_state;
-static void ix_proof_new(uint32_t lo,uint32_t hi,uint32_t n) {ix_tok_lo=lo;ix_tok_hi=hi;ix_tok_n=n;ix_proof_state=0;}
+/* .767: the smallest index of the token whose n triangles' indices lie back to back at ix_tok_mnq (dp2_body's one pass over an
+ * INDEXEDTRIANGLELIST2's indices gives it with the largest: vxs_mm16); 0: not known (ix_pass then works it out) */
+static const uint8_t *ix_tok_mnq;static uint32_t ix_tok_mn,ix_tok_mnn;
+static void ix_proof_new(uint32_t lo,uint32_t hi,uint32_t n) {ix_tok_lo=lo;ix_tok_hi=hi;ix_tok_n=n;ix_proof_state=0;ix_tok_mnq=0;}
 uint32_t vx_d3d_vxs_skip; /* .547: spans inside a proven range, not checked again (QueryPhases 311) */
 /* the span's vertices checked: 1 when every one passes (ix_check's answer for each) */
 static int vxs_span_ok(const vx_d3d_input *in,uint32_t lo,uint32_t hi) {

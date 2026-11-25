@@ -60,7 +60,8 @@ static DWORD reg_dword(const char *name,DWORD def) {
 
 /* ---------------------------------------------------------------- the VxD */
 static int vxd_open(void) {
- if(vxgl_vxd==INVALID_HANDLE_VALUE)vxgl_vxd=CreateFileA("\\\\.\\VX85598",0,0,NULL,OPEN_EXISTING,0,NULL);
+ /* .729 (review of .723, #10): opened under the lock, so two threads cannot both open it (one handle leaked) */
+ if(vxgl_vxd==INVALID_HANDLE_VALUE){EnterCriticalSection(&lock);if(vxgl_vxd==INVALID_HANDLE_VALUE)vxgl_vxd=CreateFileA("\\\\.\\VX85598",0,0,NULL,OPEN_EXISTING,0,NULL);LeaveCriticalSection(&lock);}
  return vxgl_vxd!=INVALID_HANDLE_VALUE;
 }
 #pragma aux tsc_low = 0x0F 0x31 value [eax] modify [edx];
@@ -75,7 +76,9 @@ static int vxd_call(DWORD code,const void *in,DWORD n,void *out,DWORD z) {
  if(!vxd_open())return 0;
  t0=tsc_low();r=DeviceIoControl(vxgl_vxd,code,(void*)in,n,out,z,&got,0);d=tsc_low()-t0;st_calls++;st_total+=(double)d;if(d>st_max){st_max=d;st_code=code;}
  if(r)return 1;
- CloseHandle(vxgl_vxd);vxgl_vxd=INVALID_HANDLE_VALUE; /* opened again on the next call */
+ {HANDLE h; /* E776 (outside audit, GL-4): closed once, under the lock (two threads' failed calls closed it twice, or closed the one just opened again) */
+  EnterCriticalSection(&lock);h=vxgl_vxd;vxgl_vxd=INVALID_HANDLE_VALUE;LeaveCriticalSection(&lock);
+  if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);} /* opened again on the next call */
  return 0;
 }
 int vxgl_vxd_info(vx3dn_info *i) {memset(i,0,sizeof(*i));return vxd_call(VX_IOCTL_3DN_INFO,0,0,i,sizeof(*i))&&i->ready;}
@@ -844,8 +847,32 @@ BOOL APIENTRY DrvDeleteContext(HGLRC h) {
 BOOL APIENTRY DrvCopyContext(HGLRC a,HGLRC b,UINT mask) {
  int i,j;BOOL r=FALSE;if(vxgl_gone)return FALSE;big_lock();i=ctx_slot(a);j=ctx_slot(b);if(i>=0&&j>=0){_mesa_copy_context(&ctx_tab[i]->gl,&ctx_tab[j]->gl,mask);r=TRUE;}big_unlock();return r;
 }
+/* .765 (outside audit of .757, item 1): _mesa_share_state drops context b's shared state (freed when b held its last reference) and points
+ * b at a's. Before: wglShareLists(h, h) freed the state it then used; and b's texture units and current programs still pointed at the
+ * objects of the state just freed (its defaults always), and its held batch at its textures. Now: the same context or the same state
+ * already shared is a success with nothing done; b's batch is drawn first; b's texture units and current programs are bound to the
+ * new state's defaults (the references the old state's objects held given back first, while that state still exists); everything
+ * of b's derived state built again. */
+#include "texobj.h"
+static void share_rebind(GLcontext *g,struct gl_shared_state *ns) {
+ GLuint u;
+ for(u=0;u<MAX_TEXTURE_UNITS;u++){struct gl_texture_unit *t=&g->Texture.Unit[u];
+  _mesa_reference_texobj(&t->Current1D,ns->Default1D);_mesa_reference_texobj(&t->Current2D,ns->Default2D);_mesa_reference_texobj(&t->Current3D,ns->Default3D);
+  _mesa_reference_texobj(&t->CurrentCubeMap,ns->DefaultCubeMap);_mesa_reference_texobj(&t->CurrentRect,ns->DefaultRect);t->_Current=NULL;}
+ /* the programs: the reference only (each is owned by its state's table or is the state's default, freed with the state) */
+ if(g->VertexProgram.Current)g->VertexProgram.Current->Base.RefCount--;
+ g->VertexProgram.Current=(struct gl_vertex_program*)ns->DefaultVertexProgram;if(g->VertexProgram.Current)g->VertexProgram.Current->Base.RefCount++;
+ if(g->FragmentProgram.Current)g->FragmentProgram.Current->Base.RefCount--;
+ g->FragmentProgram.Current=(struct gl_fragment_program*)ns->DefaultFragmentProgram;if(g->FragmentProgram.Current)g->FragmentProgram.Current->Base.RefCount++;
+ if(g->ATIFragmentShader.Current)g->ATIFragmentShader.Current->RefCount--;
+ g->ATIFragmentShader.Current=ns->DefaultFragmentShader;if(g->ATIFragmentShader.Current)g->ATIFragmentShader.Current->RefCount++;
+}
 BOOL APIENTRY DrvShareLists(HGLRC a,HGLRC b) {
- int i,j;BOOL r=FALSE;if(vxgl_gone)return FALSE;big_lock();i=ctx_slot(a);j=ctx_slot(b);if(i>=0&&j>=0)r=_mesa_share_state(&ctx_tab[j]->gl,&ctx_tab[i]->gl)?TRUE:FALSE;big_unlock();return r;
+ int i,j;BOOL r=FALSE;if(vxgl_gone)return FALSE;big_lock();i=ctx_slot(a);j=ctx_slot(b);
+ if(i>=0&&j>=0){GLcontext *gb=&ctx_tab[j]->gl,*ga=&ctx_tab[i]->gl;
+  if(i==j||(ga->Shared&&ga->Shared==gb->Shared))r=TRUE;
+  else if(ga->Shared&&gb->Shared){vxgl_hw_flush(ctx_tab[j]);share_rebind(gb,ga->Shared);r=_mesa_share_state(gb,ga)?TRUE:FALSE;gb->NewState=_NEW_ALL;ctx_tab[j]->new_state=~0U;}}
+ big_unlock();return r;
 }
 void *APIENTRY DrvSetContext(HDC hdc,HGLRC h,void *callback) {
  int i,ok;(void)callback;
@@ -861,7 +888,7 @@ BOOL APIENTRY DrvSwapBuffers(HDC hdc) {
  vxgl_engine_lock();
  if(gl&&VXGL_CTX(gl)->owner!=GetCurrentThreadId())gl=0; /* v10.309 (review): the process-wide current context of another thread is not this caller's */
  if(gl)r=vxgl_swap(VXGL_CTX(gl),hdc)?TRUE:FALSE;
- else {vxgl_fb *f=vxgl_fb_for(hdc);vxgl_hw_flush_all();r=f&&vxgl_swap_blit(f)?TRUE:FALSE;} /* SwapBuffers needs no current context: what the window's back buffer holds; v10.288 (review): with the core's batch drawn first */
+ else {vxgl_fb *f=vxgl_fb_for(hdc);vxgl_hw_flush_all();r=f&&vxgl_swap_blit(f)?TRUE:FALSE;if(f){f->fstate=0;(void)vxgl_fb_validate(0,f);}} /* E776 (outside audit, GL-9): as the swap with a context: the front read again when next used, lost surfaces made again */ /* SwapBuffers needs no current context: what the window's back buffer holds; v10.288 (review): with the core's batch drawn first */
  if(!r){static int logged;if(logged++<8)vxgl_log("SwapBuffers(%p) failed: window %p, %s\n",(void*)hdc,(void*)WindowFromDC(hdc),vxgl_fb_for(hdc)?"its buffers not shown":"no pixel format of ours on it");}
  vxgl_engine_unlock();
  return r;
@@ -949,6 +976,7 @@ static int pf_attrib(int pf,int a,int *ok) {
  case WGLA_DRAW_TO_BITMAP:case WGLA_NEED_PALETTE:case WGLA_NEED_SYSTEM_PALETTE:case WGLA_SWAP_LAYER_BUFFERS:case WGLA_NUMBER_OVERLAYS:case WGLA_NUMBER_UNDERLAYS:
  case WGLA_TRANSPARENT:case WGLA_SHARE_DEPTH:case WGLA_SHARE_STENCIL:case WGLA_SHARE_ACCUM:case WGLA_SUPPORT_GDI:case WGLA_STEREO:case WGLA_AUX_BUFFERS:
  case WGLA_ALPHA_BITS:case WGLA_ALPHA_SHIFT:case WGLA_SAMPLE_BUFFERS:case WGLA_SAMPLES:return 0;
+ case 0x2037:case 0x2038:case 0x2039:case 0x203A:case 0x203B:return 0; /* E781 (outside audit, GL-15): WGL_TRANSPARENT_*_VALUE_ARB: no transparency, as WGLA_TRANSPARENT says (they were refused as unknown attributes) */
  case WGLA_ACCELERATION:return WGLA_FULL_ACCELERATION;
  case WGLA_SWAP_METHOD:return (d.dwFlags&PFD_DOUBLEBUFFER)?WGLA_SWAP_COPY:WGLA_SWAP_UNDEFINED;
  case WGLA_DOUBLE_BUFFER:return (d.dwFlags&PFD_DOUBLEBUFFER)?1:0;
@@ -973,8 +1001,9 @@ static int pf_matches(int pf,const int *ia,const FLOAT *fa) {
  for(k=0;ia&&ia[k];k+=2){v=pf_attrib(pf,ia[k],&ok);if(!ok)continue; /* unknown: no constraint */
   if(ia[k]==WGLA_NUMBER_PIXEL_FORMATS||ia[k]==WGLA_MAX_PBUFFER_WIDTH||ia[k]==WGLA_MAX_PBUFFER_HEIGHT||ia[k]==WGLA_MAX_PBUFFER_PIXELS)continue;
   if(pf_minimum(ia[k])?v<ia[k+1]:(v!=ia[k+1]&&!(ia[k+1]&&v&&(ia[k]==WGLA_DRAW_TO_WINDOW||ia[k]==WGLA_SUPPORT_OPENGL||ia[k]==WGLA_DRAW_TO_PBUFFER||ia[k]==WGLA_DOUBLE_BUFFER))))return 0;}
- for(k=0;fa&&fa[k]!=0.0F;k+=2){int a=(int)fa[k];v=pf_attrib(pf,a,&ok);if(!ok)continue;
-  if(pf_minimum(a)?(FLOAT)v<fa[k+1]:(FLOAT)v!=fa[k+1])return 0;}
+ for(k=0;fa&&fa[k]!=0.0F;k+=2){int a=(int)fa[k];v=pf_attrib(pf,a,&ok);if(!ok)continue; /* E781 (GL-15): the float list by the integer list's rules (what is not a constraint; any true value for the yes / no attributes) */
+  if(a==WGLA_NUMBER_PIXEL_FORMATS||a==WGLA_MAX_PBUFFER_WIDTH||a==WGLA_MAX_PBUFFER_HEIGHT||a==WGLA_MAX_PBUFFER_PIXELS)continue;
+  if(pf_minimum(a)?(FLOAT)v<fa[k+1]:((FLOAT)v!=fa[k+1]&&!(fa[k+1]!=0.0F&&v&&(a==WGLA_DRAW_TO_WINDOW||a==WGLA_SUPPORT_OPENGL||a==WGLA_DRAW_TO_PBUFFER||a==WGLA_DOUBLE_BUFFER))))return 0;}
  return 1;
 }
 static BOOL APIENTRY vx_wgl_choose_pf(HDC dc,const int *ia,const FLOAT *fa,UINT max,int *fmts,UINT *num) {
@@ -986,7 +1015,7 @@ static BOOL APIENTRY vx_wgl_choose_pf(HDC dc,const int *ia,const FLOAT *fa,UINT 
  {int k,ok;for(k=0;ia&&ia[k];k+=2){(void)pf_attrib(1,ia[k],&ok);if(!ok){SetLastError(ERROR_INVALID_DATA);return FALSE;}}
   for(k=0;fa&&fa[k]!=0.0F;k+=2){(void)pf_attrib(1,(int)fa[k],&ok);if(!ok){SetLastError(ERROR_INVALID_DATA);return FALSE;}}}
  for(pf=1;pf<=n;pf++)if(pf_matches(pf,ia,fa)){if(fmts&&got<max)fmts[got]=pf;got++;}
- *num=got<max?got:max;return TRUE;
+ *num=!max?got:got<max?got:max;return TRUE; /* .765 (audit GL-H4): with no room asked for (max 0) the count of matching formats; else at most max, the formats written */
 }
 static BOOL APIENTRY vx_wgl_get_pf_iv(HDC dc,int pf,int layer,UINT n,const int *a,int *v) {
  UINT k;int ok;(void)dc;vxgl_screen_bpp();
@@ -997,10 +1026,12 @@ static BOOL APIENTRY vx_wgl_get_pf_iv(HDC dc,int pf,int layer,UINT n,const int *
  return TRUE;
 }
 static BOOL APIENTRY vx_wgl_get_pf_fv(HDC dc,int pf,int layer,UINT n,const int *a,FLOAT *v) {
- UINT k;int t[64];
- if(!a||!v||n>64){SetLastError(ERROR_INVALID_PARAMETER);return FALSE;}
- if(!vx_wgl_get_pf_iv(dc,pf,layer,n,a,t))return FALSE;
- for(k=0;k<n;k++)v[k]=(FLOAT)t[k];return TRUE;
+ UINT k,m;int t[64];
+ if(!a||!v){SetLastError(ERROR_INVALID_PARAMETER);return FALSE;}
+ for(k=0;k<n;k+=m){m=n-k>64?64:n-k; /* .765: any number of attributes, 64 at a time (more than 64 was refused) */
+  if(!vx_wgl_get_pf_iv(dc,pf,layer,m,a+k,t))return FALSE;
+  {UINT q;for(q=0;q<m;q++)v[k+q]=(FLOAT)t[q];}}
+ return TRUE;
 }
 
 /* v10.357: WGL_ARB_pbuffer. A pbuffer is a hidden window of its size with the pixel format set through GDI (so opengl32 knows the format of
@@ -1024,8 +1055,11 @@ static HANDLE APIENTRY vx_wgl_create_pbuffer(HDC dc,int pf,int w,int h,const int
  for(k=0;attr&&attr[k];k+=2){if(attr[k]==WGLA_PBUFFER_LARGEST)largest=attr[k+1]!=0;else{SetLastError(ERROR_INVALID_DATA);return 0;}}
  if(w<=0||h<=0){SetLastError(ERROR_INVALID_DATA);return 0;}
  if(w>VXGL_PBUFFER_MAX||h>VXGL_PBUFFER_MAX){if(!largest){SetLastError(ERROR_NO_SYSTEM_RESOURCES);return 0;}if(w>VXGL_PBUFFER_MAX)w=VXGL_PBUFFER_MAX;if(h>VXGL_PBUFFER_MAX)h=VXGL_PBUFFER_MAX;}
+ EnterCriticalSection(&lock); /* .729 (review of .723, #10): the class registered once, whichever thread comes first */
  if(!pb_class){WNDCLASSA wc;memset(&wc,0,sizeof(wc));wc.style=CS_OWNDC;wc.lpfnWndProc=pb_proc;wc.hInstance=vxgl_inst;wc.lpszClassName="VXGLPbuffer";
-  pb_class=RegisterClassA(&wc);if(!pb_class){SetLastError(ERROR_NO_SYSTEM_RESOURCES);return 0;}}
+  pb_class=RegisterClassA(&wc);}
+ LeaveCriticalSection(&lock);
+ if(!pb_class){SetLastError(ERROR_NO_SYSTEM_RESOURCES);return 0;}
  p=(vx_pbuffer*)_mesa_calloc(sizeof(*p));if(!p){SetLastError(ERROR_NOT_ENOUGH_MEMORY);return 0;}
  p->w=CreateWindowExA(WS_EX_TOOLWINDOW,"VXGLPbuffer","",WS_POPUP|WS_DISABLED,-32000,-32000,w,h,NULL,NULL,vxgl_inst,NULL);
  if(!p->w){_mesa_free(p);SetLastError(ERROR_NO_SYSTEM_RESOURCES);return 0;}
@@ -1173,7 +1207,7 @@ static int blit_to_window(vxgl_fb *fb,LPDIRECTDRAWSURFACE7 from,int *shown) {
  *shown=0;
  {VXGL_PROF_BEGIN;vxgl_fb_settle(fb);VXGL_PROF_END(13);} /* v10.363: the swap in its parts (VXGL.LOG): 13 settling the buffers (the queue sent), 14 the blit */
  if(!IsWindow(fb->hwnd)){vxgl_log("swap: the window is gone\n");return 0;}
- if(!from){if(fails++<8)vxgl_log("swap: no back buffer surface (%ux%u)\n",fb->w,fb->h);return 0;}
+ if(!from){if(fails++<8)vxgl_log("swap: no back buffer surface (%ux%u)\n",fb->w,fb->h);return fb->pf?1:0;} /* E776 (outside audit, GL-8): a window of ours whose surfaces are lost for now (Alt+Tab, a mode change): this frame is not shown, the swap does not fail (it ended Quake 2) */
  if(!window_rects(fb,&dst,&src,&scr)){*shown=1;return 1;} /* a minimised window: nothing to show */
  /* v10.366 (3D Pipes: its dissolve showed black, or old video memory, over the desktop GDI had put in the window): a single-buffered
   * window's surface and a front buffer show only what was drawn into them since they were last shown, as drawing into the window
@@ -1269,6 +1303,7 @@ BOOL WINAPI DllMain(HINSTANCE h,DWORD why,LPVOID r) {
    vx_d3d_gl_plan=(1)!=0;vxgl_tsc_on=reg_dword("ACCEL_OPENGL_TSCPROF",0)!=0; /* .506; .530: kept for development (VXFLAT turns it on itself): DELETE WHEN DEVELOPMENT IS FINISHED */
    {extern int _vbo_vx855_minmax2;_vbo_vx855_minmax2=vxgl_sse_ok&&(vxgl_sse_edx&0x04000000UL)&&(1)!=0;} /* .506 */
    {extern int vxgl_ssepass_sse2,vxgl_ssepass_defer;vxgl_ssepass_sse2=vxgl_sse_ok&&(vxgl_sse_edx&0x04000000UL)&&(1)!=0;vxgl_ssepass_defer=(1)!=0;} /* .503: SSE2 by CPUID 1 EDX bit 26 */
+   {extern uint32_t vx_d3d_sse2;vx_d3d_sse2=vxgl_sse_ok&&(vxgl_sse_edx&0x04000000UL);} /* .767: the core's span kernels for this DLL's copy of it (vx_hal_sse.obj is linked here: the indexed draws' vertex checks and records, vx_d3d_core.c gl_range_ok / gl_run_conv; the HAL sets its own copy from the same answer) */
    /* the packets in the Direct3D side's prepacked form (10 words a vertex) and, where the VxD has its vertex area, indexed */
    /* (the VxD's answer to the Direct3D HAL: o[3] bit 26 ACCEL_D3D_PREPACK as the VxD takes it, o[2] bit 7 its vertex area; an older VxD: neither) */
    if(vxd_call(0x85500012UL,&q,4,o,16)&&o[1]==0x56584433UL){if(o[2]&0x800UL)area=(o[2]>>7)&1;if(o[3]&0x80000000UL)pre=(o[3]>>26)&1;}

@@ -143,7 +143,7 @@ static int no_caret(void) {
 }
 int WINAPI WinMain(HINSTANCE hi,HINSTANCE hp,LPSTR cmd,int show) {
  DWORD c[4]; int phase,ci,fails=0,untested=0,total=0,have; DEVMODEA origm; char res[400]; (void)hi; (void)hp; (void)cmd; (void)show;
- lf=fopen("VX2GDI.TXT","w"); logline("VX2GDI v2.6 / driver .597\n"); finish("RUNNING: the run did not reach its end (VX2GDI.TXT ends where it stopped)");
+ lf=fopen("VX2GDI.TXT","w"); logline("VX2GDI v2.7 / driver .754\n"); finish("RUNNING: the run did not reach its end (VX2GDI.TXT ends where it stopped)");
  dev=CreateFileA("\\\\.\\VX85598",0,0,NULL,OPEN_EXISTING,0,NULL);
  if(dev==INVALID_HANDLE_VALUE) {logline("cannot open VX85598: Windows error %lu\n",GetLastError()); finish("FAIL: driver not found"); return 1;}
  if(!ctl(0xFFFFFE19UL,c)) {finish("FAIL: no control interface"); return 1;}
@@ -201,6 +201,13 @@ int WINAPI WinMain(HINSTANCE hi,HINSTANCE hp,LPSTR cmd,int show) {
  }
  ctl(0xFFFFFFFFUL,NULL);
  if(have) {ChangeDisplaySettingsA(&origm,0); logline("desktop put back\n");}
+ /* v2.7 (driver .754): the mapping modes' directions. The driver's GDIINFO gives each mode a window and a viewport extent; until .754
+  * MM_HIENGLISH and MM_TWIPS had the viewport's signs the wrong way round, so they drew mirrored and upside down. In every metric
+  * mode a logical point (+x, -y) lies right of and below the origin: LPtoDP must give a positive x and a positive y. */
+ if(!aborted) {HDC d=GetDC(NULL);static const int mm[5]={MM_LOMETRIC,MM_HIMETRIC,MM_LOENGLISH,MM_HIENGLISH,MM_TWIPS};static const char *mn[5]={"MM_LOMETRIC","MM_HIMETRIC","MM_LOENGLISH","MM_HIENGLISH","MM_TWIPS"};int k;
+  for(k=0;k<5;k++){POINT q;int ok;q.x=2000;q.y=-2000;SetMapMode(d,mm[k]);LPtoDP(d,&q,1);ok=q.x>0&&q.y>0;total++;if(!ok)fails++;
+   logline("mapping mode %s: logical (2000, -2000) -> device (%ld, %ld): %s\n",mn[k],(long)q.x,(long)q.y,ok?"right and down, as it must be":"WRONG (mirrored or upside down)");}
+  SetMapMode(d,MM_TEXT);ReleaseDC(NULL,d);}
  if(aborted) sprintf(res,"FAIL: aborted");
  else sprintf(res,"%s: %d cases, %d with differing pixels, %d where the new path drew nothing (see VX2GDI.TXT)",fails?"FAIL":untested?"PARTIAL":"PASS",total,fails,untested);
  finish(res); logline("%s\nFinished.\n",res); if(lf) fclose(lf); CloseHandle(dev); return 0;

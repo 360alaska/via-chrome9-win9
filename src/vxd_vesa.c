@@ -53,7 +53,6 @@ static void vxd_irq_restore(unsigned long f);
 #define IO_OUT8
 #include "io32.h"
 
-#include "vxd_terror.h"
 
 #include "code32.h"
 
@@ -144,12 +143,13 @@ static void cursor_hw_off(void)
  * at once (VX2D_hwcur_move), without the frame-buffer access bracket around it, whose show waited until every other access (an
  * asynchronous blit, a 3D draw to the screen, a Lock) had ended: the pointer lagged and then jumped while Tunnel ran. The general
  * path stays for the software cursor, a new shape, after an engine reset (cur_epoch), mode changes and a lost device. */
-volatile uint32_t vx_mouse_fast=1;
+/* .738: vx_mouse_fast removed (always 1) */
 BOOL VESA_cursor_fast_move(LONG x, LONG y)
 {
-	if(!vx_mouse_fast || !vx_direct || !vx2d_hwcur || !cur_hw || !cur_hw_ok || cur_drawn || vga_mode || act_mode < 0) return FALSE;
+	uint32_t g = VX2D_hwcur_hgen(); /* .765 (audit VXD-H2): the hide count before the visibility test */
+	if(!vx_direct || !vx2d_hwcur || !cur_hw || !cur_hw_ok || cur_drawn || vga_mode || act_mode < 0) return FALSE;
 	if(cur_hw_gen != vx_cursor_gen || cur_epoch != vx2d_reset_epoch || !wram->regs.s.cursor_visible || VX2D_is_lost()) return FALSE;
-	if(!VX2D_hwcur_move(x, y)) return FALSE;
+	if(!VX2D_hwcur_move_g(x, y, g)) return FALSE;
 	wram->regs.s.cursor_x = x; wram->regs.s.cursor_y = y;
 	return TRUE;
 }
@@ -286,7 +286,6 @@ static int vesa_pal_bits = 6;
 static BOOL vesa_valid = FALSE;
 
 static DWORD conf_dos_window = 0;
-static DWORD conf_hw_double_buf = 1; /* much better performance on real HW */
 static DWORD conf_mtrr = 1;
 
 #define MODE_OFFSET 1024
@@ -320,146 +319,12 @@ static DWORD VESA_pitch(DWORD width, DWORD bpp)
 DWORD vram_phy = 0;
 
 
-void VESA_load_vbios_pm();
 
 static char vesa_vxd_name[] = "CHROME9.VXD"; /* .580: the installed file's name (FBHDA vxdname) */
 #include "vx855_vbe_init.inc"
 
-static WORD *vbios32 = NULL;
-static WORD vbios32_sel = 0;
-static DWORD vbios32_mem = 0;
 
-BOOL VESA_display_start_pm(BOOL vtrace, DWORD start_addr)
-{
-	BYTE cmd = vtrace ? 0x80 : 0;
-	/* DOC: DX:CX is the 32 bit offset in display memory, aligned to a plane boundar,
-	... but in 8+ bits per pixel modes this is the offset from the start of memory divided by 4 */
-	WORD h1 = (start_addr >> 2) & 0xFFFF;
-	WORD h2 = start_addr >> 18;
 
-	if(vbios32 != NULL && vbios32[VESA_PMTABLE_OFF_DISPLAY_START])
-	{
-		//dbg_printf("VESA_display_start_pm ...");
-		_asm
-		{
-			pushad
-			push es
-			mov eax, [vbios32]
-			xor ebx, ebx
-			mov bx,  [eax+2] /* VESA_PMTABLE_OFF_DISPLAY_START*2 */
-			add eax, ebx
-			mov bx, [vbios32_sel]
-			or bx, bx
-			jz skip_load_es
-				mov es, bx
-			skip_load_es:
-			xor ebx, ebx
-			xor ecx, ecx
-			xor edx, edx
-			mov bl,[cmd]
-			mov cx,[h1]
-			mov dx,[h2]
-			call eax
-			pop es
-			popad
-		};
-		//dbg_printf("OK\n");
-		
-		return TRUE;
-	}
-	
-	return FALSE;
-}
-
-void VESA_load_vbios_pm()
-{
-	CRS_32 regs;
-
-	load_client_state(&regs);
-	regs.Client_EAX = VESA_CMD_PM_ENTRY;
-	regs.Client_EBX = 0;
-
-	vesa_bios_V86(&regs);
-
-	if(VESA_SUCC(regs))
-	{
-		WORD *bios_pm;
-		WORD *ports;
-		DWORD bios_pm_flat = regs.Client_ES * 0x10 + (regs.Client_EDI & 0xFFFF);
-		dbg_printf("table_flat es=%lX, edi=%lX, code_size=%ld\n",
-			regs.Client_ES, regs.Client_EDI, regs.Client_ECX & 0xFFFF);
-
-		if(bios_pm_flat != 0)
-		{
-			DWORD code_size = regs.Client_ECX & 0xFFFF;
-			DWORD code_pages = RoundToPages(code_size);
-
-			bios_pm = (WORD*)bios_pm_flat;
-			
-			dbg_printf("set display off func: %X\n", bios_pm[VESA_PMTABLE_OFF_DISPLAY_START]);
-
-			vbios32 = (WORD*)_PageAllocate(code_pages, PG_SYS, 0, 0x0, PAGE_ALLOC_MIN, PAGE_ALLOC_MAX, NULL, PAGEZEROINIT);
-			if(vbios32 != NULL)
-			{
-				memset(vbios32, 0xFF, code_pages*P_SIZE);
-				memcpy(vbios32, bios_pm, code_size);
-				_PageModifyPermissions(((DWORD)vbios32) / P_SIZE, code_pages, 0, PC_USER | PC_WRITEABLE);
-				dbg_printf("copy to vbios32 success\n");
-			}
-/*
-			terror("Here is dump of pm32 table:\n");
-			terrorf("vbios32[0] = %X\n", vbios32[0]);
-			terrorf("vbios32[1] = %X\n", vbios32[1]);
-			terrorf("vbios32[2] = %X\n", vbios32[2]);
-			terrorf("vbios32[3] = %X\n", vbios32[3]);
-			terrorf("code size = %d\n", code_size);
-*/
-			if(vbios32[VESA_PMTABLE_OFF_PORTS])
-			{
-				ports = vbios32 + vbios32[VESA_PMTABLE_OFF_PORTS];
-				// ^ some BIOSes has this table after the code to copy
-				
-				while(*ports != 0xFFFF)
-				{
-					dbg_printf("port: %04X\n", *ports);
-					//terrorf("port: = %X\n", *ports);
-					ports++;
-				}
-				ports++;
-				if(*ports != 0xFFFF)
-				{
-					DWORD mem_adr = *((DWORD*)ports);
-					DWORD mem_size = ports[2];
-					
-					//terrorf("mem: = %X, size = %d\n", mem_adr, mem_size);
-					
-					vbios32_mem = _MapPhysToLinear(mem_adr, mem_size, 0);
-					if(vbios32_mem != 0xFFFFFFFF)
-					{
-						DWORD hi  = 0;
-						DWORD low = 0;
-						DWORD selector;
-						_BuildDescriptorDWORDs(mem_adr, RoundToPages(mem_adr), 0x92, 0x80, 0, &hi, &low);
-	
-						_Allocate_GDT_Selector(hi, low, 0, &selector, NULL);
-						vbios32_sel = selector << 16;
-					}
-					
-					dbg_printf("VESA PM need memory addr=0x%8X (size=%d)\n", mem_adr, mem_size);
-				}
-			}
-
-		}
-		else
-		{
-			dbg_printf("VESA_CMD_ADAPTER_INFO success but no table\n");
-		}
-	}
-	else
-	{
-		dbg_printf("VESA_CMD_ADAPTER_INFO failed\n");
-	}
-}
 
 BOOL VESA_valid()
 {
@@ -537,6 +402,9 @@ void vt_irq_restore(unsigned long flags);
 #pragma aux vt_irq_save = "pushfd" "pop eax" "cli" value [eax] modify exact [eax];
 #pragma aux vt_irq_restore = "push eax" "popfd" parm [eax] modify exact [];
 DWORD vx_timing_fixed; /* 0 = untouched, 1 = reprogrammed, 2 = tried, still wrong */
+static DWORD vx_timing_test_hz, vx_timing_test_ms; /* E787 (VXTIME v3.0): while set, EVERY mode set from 640x480 takes the driver's timing at this rate (Windows sets a mode more than
+ * once a change: E783's one-shot rate was used up by the first set and the BIOS's timing came back). Set and cleared by VX_probe sub 5; forgotten 20 s after it was set (a tool that died) */
+static DWORD vx_timing_test(void) { if(vx_timing_test_hz && Get_System_Time() - vx_timing_test_ms > 20000UL) vx_timing_test_hz = 0; return vx_timing_test_hz; }
 static DWORD vx_timing_hz; /* v10.330 (review #168): the refresh the reprogrammed timing gives (DMT 60 Hz, GTF 60 Hz, or 1152x864's 75 Hz DMT) */
 static DWORD vx_1152_cvt = 1; /* v10.307: 1152x864 at 60 Hz (CVT); 0 = the 75 Hz DMT timing it had before */
 
@@ -544,7 +412,7 @@ typedef struct { unsigned short w, h, ht, hss, hse, vt, vss, vse; unsigned long 
 /* VESA DMT 60 Hz timings: monitors expect these porches, a GTF block leaves the picture shifted */
 static const vx_dmt_t vx_dmt[] = {
  {1280,1024,1688,1328,1440,1066,1025,1028,108000UL,0,0},
- {1280, 960,1688,1328,1440,1066,1025,1028,108000UL,0,0}, /* 960 lines do not fit this 900-line panel 1:1; the 1024-line timing makes the monitor scale it, so nothing is cropped */
+ {1280, 960,1800,1376,1488,1000, 961, 964,108000UL,0,0}, /* E791 (the owner, after VXTIME on E789: "the actual output of the display is what matters the most"): the true VESA DMT 1280x960 at 60 Hz. Before: the 1280x1024 timing (1688 x 1066), chosen so the 900-line E2210 scaled it; that monitor then reported 1280x1024 and showed a black band below the picture */
  {1280, 800,1680,1352,1480, 831, 803, 809, 83500UL,1,0},
  {1280, 768,1664,1344,1472, 798, 771, 778, 79500UL,1,0},
  {1368, 768,1800,1440,1584, 795, 769, 772, 85250UL,0,0},
@@ -561,6 +429,67 @@ static const vx_dmt_t vx_dmt[] = {
  {1920,1200,2592,2056,2256,1245,1203,1209,193250UL,1,0}
 };
 
+/* E784 (VXTIME v2.1; owner's board run of E783: 640x480 at 60 Hz by the GTF formula had its right edge off the screen): the VESA DMT
+ * timings at the test's other rates, and at 60 Hz up to 1024x768. A monitor that knows a size and rate as a standard mode places the
+ * picture by that mode's porches (GTF 640x480@60 has an 80-pixel back porch against DMT's 48: the picture sits 32 pixels to the right),
+ * so where a standard timing exists it is the one to send, and the formula is for the rest. Used only by the test rate for now. */
+typedef struct { unsigned short w, h, hz, ht, hss, hse, vt, vss, vse; unsigned long khz; unsigned char hneg, vneg; } vx_dmtr_t;
+static const vx_dmtr_t vx_dmt_r[] = {
+ { 640, 480,60, 800, 656, 752, 525, 490, 492, 25175UL,1,1},
+ { 640, 480,72, 832, 664, 704, 520, 489, 492, 31500UL,1,1},
+ { 640, 480,75, 840, 656, 720, 500, 481, 484, 31500UL,1,1},
+ { 800, 600,60,1056, 840, 968, 628, 601, 605, 40000UL,0,0},
+ { 800, 600,72,1040, 856, 976, 666, 637, 643, 50000UL,0,0},
+ { 800, 600,75,1056, 816, 896, 625, 601, 604, 49500UL,0,0},
+ {1024, 768,60,1344,1048,1184, 806, 771, 777, 65000UL,1,1},
+ {1024, 768,70,1328,1048,1184, 806, 771, 777, 75000UL,1,1},
+ {1024, 768,75,1312,1040,1136, 800, 769, 772, 78750UL,0,0},
+ {1152, 864,75,1600,1216,1344, 900, 865, 868,108000UL,0,0},
+ {1280, 768,75,1696,1360,1488, 805, 771, 778,102250UL,1,0},
+ {1280, 800,75,1696,1360,1488, 838, 803, 809,106500UL,1,0},
+ {1280,1024,75,1688,1296,1440,1066,1025,1028,135000UL,0,0},
+ {1440, 900,75,1936,1536,1688, 942, 903, 909,136750UL,1,0},
+ {1600,1200,65,2160,1664,1856,1250,1201,1204,175500UL,0,0},
+ {1600,1200,70,2160,1664,1856,1250,1201,1204,189000UL,0,0},
+ {1600,1200,75,2160,1664,1856,1250,1201,1204,202500UL,0,0},
+ {1680,1050,75,2272,1800,1976,1099,1053,1059,187000UL,1,0}
+};
+static DWORD vx_timing_want_khz; /* E785: the clock the last timing asked for */
+static DWORD vx_timing_src; /* E784: the last programmed timing's source: 1 the 60 Hz table, 2 the rate table, 3 the GTF formula */
+static DWORD vx_timing_regs[2][5]; /* E784: CR00-07, CR10 11 12 15 16, CR33 35 36, SR1C 1D, misc, one more: [0] as the BIOS left them, [1] as programmed */
+static void vx_timing_snap(unsigned short base, DWORD *d)
+{
+	static const unsigned char cr[16] = {0,1,2,3,4,5,6,7,0x10,0x11,0x12,0x15,0x16,0x33,0x35,0x36}; unsigned char b[20]; unsigned k;
+	for(k = 0; k < 16; k++) b[k] = vt_cr_get(base, cr[k]);
+	b[16] = vt_sr_get(0x1C); b[17] = vt_sr_get(0x1D); b[18] = (unsigned char)inp(0x3CC); b[19] = vt_sr_get(0x01);
+	for(k = 0; k < 5; k++) d[k] = (DWORD)b[k*4] | ((DWORD)b[k*4+1] << 8) | ((DWORD)b[k*4+2] << 16) | ((DWORD)b[k*4+3] << 24);
+}
+
+/* .763B (owner's board run, VXPOL v2.0 on .762, VX855 + Dell E2210 on VGA): the BIOS's VESA 640x480 modes leave positive / positive
+ * sync (misc 0F), while its own text and mode 12h send negative horizontal sync; an LCD that keeps one position for "640x480@60" then
+ * shows the desktop about 2 inches off against DOS and the boot screen (VGA only; DVI places by data enable). Negative horizontal sync
+ * alone lines it up; sync position, vertical sync and clock do not matter. Both negative = VESA DMT 640x480@60 and standard VGA's mode
+ * 12h (a CRT that sizes by polarity takes h- v+ as a 400-line mode). Only on the 800 x 525 frame it was proven on (CR00 5F, CR06 0B),
+ * and only when the BIOS left either sync positive. */
+unsigned long vx_640_sync_n;
+unsigned char vx_misc_now(void) { return (unsigned char)inp(0x3CC); } /* .763B: for VXREG (TEXDBG BC 456) */
+static void VX_640_sync(void)
+{
+	unsigned long fl; unsigned short base; unsigned char misc, sidx, cidx, sr1;
+	fl = vt_irq_save();
+	misc = inp(0x3CC); base = (misc & 1) ? 0x3D4 : 0x3B4;
+	sidx = inp(0x3C4); cidx = inp(base);
+	if(vt_cr_get(base, 0x00) == 0x5F && vt_cr_get(base, 0x06) == 0x0B && (misc & 0xC0) != 0xC0)
+	{
+		sr1 = vt_sr_get(0x01);
+		vt_sr_put(0x01, (unsigned char)(sr1 | 0x20));         /* screen off around the change, as VX_fix_timing */
+		outp(0x3C2, (unsigned char)(misc | 0xC0));            /* both syncs negative; clock select and the rest kept */
+		vt_sr_put(0x01, sr1);
+		vx_640_sync_n++;
+	}
+	outp(base, cidx); outp(0x3C4, sidx);
+	vt_irq_restore(fl);
+}
 static void VX_fix_timing(DWORD w, DWORD h, DWORD bpp)
 {
 	vesa_crtc_info_t ci;
@@ -583,11 +512,32 @@ static void VX_fix_timing(DWORD w, DWORD h, DWORD bpp)
 				ci.VerticalTotal = vx_dmt[k].vt; ci.VerticalSyncStart = vx_dmt[k].vss; ci.VerticalSyncEnd = vx_dmt[k].vse;
 				ci.PixelClock = vx_dmt[k].khz * 1000UL; hneg = vx_dmt[k].hneg; vneg = vx_dmt[k].vneg; found = 1; break;
 			}
-		if(!found) gtf_calc(w, h, 60, &ci);
+		vx_timing_src = found ? 1 : 3;
+		if(vx_timing_test()) /* E783: the test's rate, once. E784: by the standard timing where the size and rate have one, by the formula where not */
+		{
+			const DWORD hz = vx_timing_test_hz; int std = (found && hz == 60);
+			for(k = 0; !std && k < sizeof(vx_dmt_r)/sizeof(vx_dmt_r[0]); k++)
+				if(vx_dmt_r[k].w == w && vx_dmt_r[k].h == h && vx_dmt_r[k].hz == hz)
+				{
+					ci.HorizontalTotal = vx_dmt_r[k].ht; ci.HorizontalSyncStart = vx_dmt_r[k].hss; ci.HorizontalSyncEnd = vx_dmt_r[k].hse;
+					ci.VerticalTotal = vx_dmt_r[k].vt; ci.VerticalSyncStart = vx_dmt_r[k].vss; ci.VerticalSyncEnd = vx_dmt_r[k].vse;
+					ci.PixelClock = vx_dmt_r[k].khz * 1000UL; hneg = vx_dmt_r[k].hneg; vneg = vx_dmt_r[k].vneg; std = 1; vx_timing_src = 2;
+				}
+			if(!std) { gtf_calc(w, h, hz, &ci); hneg = 1; vneg = 0; vx_timing_src = 3; }
+		}
+		else if(!found) gtf_calc(w, h, 60, &ci);
 	}
 	ht = ci.HorizontalTotal / 8; hss = ci.HorizontalSyncStart / 8; hse = ci.HorizontalSyncEnd / 8;
 	vt = ci.VerticalTotal; vss = ci.VerticalSyncStart; vse = ci.VerticalSyncEnd;
 	khz = ci.PixelClock / 1000UL;
+	{	/* E785: the registers as the BIOS left them, taken before anything can refuse (E784 took them only on the way to programming: a
+		 * refused clock, every 640x480 one, left the list empty) */
+		unsigned long f2 = vt_irq_save(); unsigned char si = inp(0x3C4), ul = vt_sr_get(0x10), ci2; unsigned short b2;
+		vt_sr_put(0x10, (unsigned char)(ul | 1)); b2 = (inp(0x3CC) & 1) ? 0x3D4 : 0x3B4; ci2 = inp(b2);
+		vx_timing_snap(b2, vx_timing_regs[0]); vx_timing_regs[1][0] = vx_timing_regs[1][1] = vx_timing_regs[1][2] = vx_timing_regs[1][3] = vx_timing_regs[1][4] = 0;
+		outp(b2, ci2); vt_sr_put(0x10, ul); outp(0x3C4, si); vt_irq_restore(f2);
+	}
+	vx_timing_want_khz = khz;
 	if(ht < 8 || vt < h + 2 || khz < 10000UL) { vx_timing_fixed = 2; return; }
 
 	/* dot clock: f = 14318 * dm / (dn << dr), keep the VCO (14318*dm/dn) between 300 and 600 MHz (XP uses 432, BIOS 521); the first minimum in dr 3..0 / dn 2..12 order wins ties (v10.145: the comment used to say the highest VCO).
@@ -612,7 +562,30 @@ static void VX_fix_timing(DWORD w, DWORD h, DWORD bpp)
 				if(e < err) { err = e; best = f; bdm = dm; bdn = dn; bdr = dr; }
 			}
 		}
-	if(!best || err > khz / 50) { vx_timing_fixed = 2; return; }
+	if(!best || err > khz / 50)
+	{	/* E787 (board, VXTIME on E785B: every 640x480 clock refused; the BIOS's own 640x480 reads SR44 8D SR45 10 SR46 05: multiplier 141,
+		 * divider 5, post-divider 2^4, 25.2 MHz from a 404 MHz VCO): the post-divider 16 for the clocks the search above cannot make
+		 * (below 37.5 MHz). Tried only then, so no clock that had a setting gets another. */
+		best = 0; err = 0xFFFFFFFFUL; dr = 4;
+		for(dn = 2; dn <= 12; dn++)
+		{
+			DWORD lo = (300000UL * dn + 14317UL) / 14318UL, hi = (600000UL * dn) / 14318UL, q = (khz * (dn << dr)) / 14318UL, c[2], k;
+			if(lo < 2) lo = 2;
+			if(hi > 1023) hi = 1023;
+			if(lo > hi) continue;
+			c[0] = q < lo ? lo : q > hi ? hi : q;
+			c[1] = q + 1 < lo ? lo : q + 1 > hi ? hi : q + 1;
+			for(k = 0; k < 2; k++)
+			{
+				DWORD f, e;
+				dm = c[k];
+				if(k == 1 && dm == c[0]) break;
+				f = (14318UL * dm) / (dn << dr); e = (f > khz) ? f - khz : khz - f;
+				if(e < err) { err = e; best = f; bdm = dm; bdn = dn; bdr = dr; }
+			}
+		}
+		if(!best || err > khz / 50) { vx_timing_fixed = 2; return; }
+	}
 
 	bytes = (bpp + 7) / 8;
 	fetch = (w * bytes + 15) / 16 + 4;
@@ -684,6 +657,7 @@ static void VX_fix_timing(DWORD w, DWORD h, DWORD bpp)
 
 	vt_cr_mask(base, 0x11, 0x80, cr11);
 	vt_sr_put(0x01, (unsigned char)(vt_sr_get(0x01) & ~0x20));
+	vx_timing_snap(base, vx_timing_regs[1]); /* E784 */
 	vt_sr_put(0x10, unlock);
 	outp(base, cidx); outp(0x3C4, sidx);
 	vx_timing_fixed = 1;
@@ -764,12 +738,11 @@ BOOL VESA_setmode_phy(DWORD w, DWORD h, DWORD bpp, DWORD rr_min, DWORD rr_max)
 	vx_status.last_bios_ax=regs.Client_EAX & 0xFFFF;
  if(VESA_SUCC(regs))
  {
-  DWORD test_x;
-		DWORD test_y;
 
 		VESA_HIRES_enable();
 		vx_timing_fixed = 0; vx_timing_hz = 0; /* v10.330 (review #108): this mode's result, not the mode before's */
-		if(vx_custom_timing && (w > 1024 || h > 768)) VX_fix_timing(w, h, bpp);
+		if(vx_custom_timing && (w > 1024 || h > 768 || (vx_timing_test() && w >= 640 && h >= 480))) VX_fix_timing(w, h, bpp);
+		if(w == 640 && h == 480) VX_640_sync(); /* .763B */
 		/* v10.330 (review #168): above 1024x768 the timing is the driver's own (60 Hz, or 1152x864 at 75 Hz with TIMING_1152_CVT = 0), not the
 		 * rate asked of the BIOS: the asynchronous refresh interval follows what is scanned out */
 		if(vx_timing_fixed == 1 && vx_timing_hz) refresh = 1000 / vx_timing_hz;
@@ -816,59 +789,7 @@ BOOL VESA_setmode_phy(DWORD w, DWORD h, DWORD bpp, DWORD rr_min, DWORD rr_max)
 		}
 		num_buffers = 1;
 
-		/* I found there is some deadlock hazard on V86 or PM16 ints,
-		 * and when is called on very frame there is big chance on it.
-		 * This is why HW double/tripple buffering is available only
-		 * when there is PM32 procedure in VBIOS.
-		 */
-		if(vbios32 && vbios32[VESA_PMTABLE_OFF_DISPLAY_START])
-		{
-			if(conf_hw_double_buf > 0)
-			{
-				if(conf_hw_double_buf >= 2)
-				{
-					/* test if HW flip and vtrace supported */
-					offset_calc(video_stride, &test_x, &test_y);
-					regs.Client_EAX = VESA_CMD_DISPLAY_START;
-					regs.Client_EBX = VESA_DISPLAYSTART_VTRACE;
-					regs.Client_ECX = test_x;
-					regs.Client_EDX = test_y;
-					vesa_bios(&regs);
-					if(VESA_SUCC(regs))
-					{
-						num_buffers = 3;
-	
-						regs.Client_EAX = VESA_CMD_DISPLAY_START;
-						regs.Client_EBX = VESA_DISPLAYSTART_SET;
-						regs.Client_ECX = 0;
-						regs.Client_EDX = 0;
-						vesa_bios(&regs);
-					}
-				}
-	
-				if(num_buffers <= 1)
-				{
-					/* test if HW flip supported */
-					offset_calc(video_stride, &test_x, &test_y);
-					regs.Client_EAX = VESA_CMD_DISPLAY_START;
-					regs.Client_EBX = VESA_DISPLAYSTART_SET;
-					regs.Client_ECX = test_x;
-					regs.Client_EDX = test_y;
-					vesa_bios(&regs);
-	
-					if(VESA_SUCC(regs))
-					{
-						num_buffers = 2;
-	
-						regs.Client_EAX = VESA_CMD_DISPLAY_START;
-						regs.Client_EBX = VESA_DISPLAYSTART_SET;
-						regs.Client_ECX = 0;
-						regs.Client_EDX = 0;
-						vesa_bios(&regs);
-					}
-				}
-			}
-		}
+		/* .728: one buffer: the hardware double / triple buffering here needed the protected-mode BIOS entry, never loaded (Gemini review #9) */
 
 		hda->system_surface = 0;
 		hda->surface        = 0;
@@ -1007,24 +928,22 @@ static void mtrr_setup()
 	}
 }
 
+/* .728 (Fable's check of Gemini's review, #9): the protected-mode BIOS entry (VESA_load_vbios_pm) was never called, so the VBE call always ran */
 static void VESA_setptr(DWORD offset, BOOL triplebuf)
 {
-	if(!VESA_display_start_pm(triplebuf, offset))
-	{
-		CRS_32 regs;
-		DWORD off_x, off_y;
-	
-		offset_calc(offset, &off_x, &off_y);
-	
-		load_client_state(&regs);
-	
-		regs.Client_EAX = VESA_CMD_DISPLAY_START;
-		regs.Client_EBX = triplebuf ? VESA_DISPLAYSTART_VTRACE : VESA_DISPLAYSTART_SET;
-		regs.Client_ECX = off_x;
-		regs.Client_EDX = off_y;
-	
-		vesa_bios(&regs);
-	}
+	CRS_32 regs;
+	DWORD off_x, off_y;
+
+	offset_calc(offset, &off_x, &off_y);
+
+	load_client_state(&regs);
+
+	regs.Client_EAX = VESA_CMD_DISPLAY_START;
+	regs.Client_EBX = triplebuf ? VESA_DISPLAYSTART_VTRACE : VESA_DISPLAYSTART_SET;
+	regs.Client_ECX = off_x;
+	regs.Client_EDX = off_y;
+
+	vesa_bios(&regs);
 }
 
 BOOL VESA_setmode(DWORD w, DWORD h, DWORD bpp, DWORD rr_min, DWORD rr_max)
@@ -1061,6 +980,7 @@ void FBHDA_palette_set(unsigned char index, DWORD rgb)
 	if((vesa_caps & VESA_CAP_NONVGA) == 0)
 	{
 		/* if mode is VGA compatible, we can use VGA regitry */
+		unsigned long fl = vt_irq_save(); /* .765 (audit VXD-H6): the index and its three data writes as one (VX_dac and the gamma load write the DAC too) */
 		outp(VGA_DAC_W_INDEX, index);    /* Set starting index. */
 		if(vesa_pal_bits == 8)
 		{
@@ -1074,6 +994,7 @@ void FBHDA_palette_set(unsigned char index, DWORD rgb)
 			outp(VGA_DAC_DATA,   (rgb >> 10) & 0x3F);
 			outp(VGA_DAC_DATA,   (rgb >>  2) & 0x3F);
 		}
+		vt_irq_restore(fl);
 	}
 	else
 	{
@@ -1370,7 +1291,7 @@ void VX_probe(const DWORD *in, DWORD n, DWORD *o)
 	{
 		extern uint32_t VX3DN_peek(uint32_t);
 		DWORD at = n > 1 ? in[1] & ~3UL : 0xE00UL;
-		for(i = 0; i < 62; i++) o[2 + i] = (at + i * 4 <= 0x1FFCUL) ? VX3DN_peek(at + i * 4) : 0xDEADDEADUL;
+		for(i = 0; i < 62; i++) o[2 + i] = (at <= 0x1FFCUL && i * 4 <= 0x1FFCUL - at) ? VX3DN_peek(at + i * 4) : 0xDEADDEADUL; /* E775 (outside audit, VXD-11): an offset near 4 GB wrapped past the bound */
 	}
 	else if(sub == 2)
 	{
@@ -1413,13 +1334,17 @@ void VX_probe(const DWORD *in, DWORD n, DWORD *o)
 	                   * sets that follow (anything else only reads); [2] the switch before, [3] now, [4] the last set's result (0 the BIOS's
 	                   * timing, 1 the driver's, 2 refused), [5] its rate, [6] SR44 | SR45 << 8 | SR46 << 16 | SR40 << 24 (the primary PLL) */
 	{
-		unsigned long fl; unsigned char sidx, unlock;
+		unsigned long fl; unsigned char sidx, unlock; DWORD pll; /* .765 (audit VXD-C1): the registers read into pll with interrupts off, the caller's buffer written after */
 		o[2] = vx_custom_timing;
 		if(n > 1 && in[1] < 2) vx_custom_timing = in[1];
+		if(n > 1 && in[1] >= 0x100 && in[1] <= 0x1FF) { DWORD hz = in[1] & 0xFF; vx_timing_test_hz = (hz >= 50 && hz <= 120) ? hz : 0; vx_timing_test_ms = Get_System_Time(); } /* E783 (VXTIME v2.0): 0x100 | Hz: the next mode set at this rate by the GTF formula; 0x100 clears it */
+		o[7] = vx_timing_test_hz;
+		o[9] = vx_timing_want_khz;
+		o[8] = vx_timing_src; {DWORD k; for(k = 0; k < 5; k++) { o[16 + k] = vx_timing_regs[0][k]; o[24 + k] = vx_timing_regs[1][k]; }} /* E784 */
 		o[3] = vx_custom_timing; o[4] = vx_timing_fixed; o[5] = vx_timing_hz;
 		fl = vt_irq_save(); sidx = inp(0x3C4); unlock = vt_sr_get(0x10); vt_sr_put(0x10, (unsigned char)(unlock | 1));
-		o[6] = (DWORD)vt_sr_get(0x44) | ((DWORD)vt_sr_get(0x45) << 8) | ((DWORD)vt_sr_get(0x46) << 16) | ((DWORD)vt_sr_get(0x40) << 24);
-		vt_sr_put(0x10, unlock); outp(0x3C4, sidx); vt_irq_restore(fl);
+		pll = (DWORD)vt_sr_get(0x44) | ((DWORD)vt_sr_get(0x45) << 8) | ((DWORD)vt_sr_get(0x46) << 16) | ((DWORD)vt_sr_get(0x40) << 24);
+		vt_sr_put(0x10, unlock); outp(0x3C4, sidx); vt_irq_restore(fl); o[6] = pll;
 	}
 }
 
@@ -1693,36 +1618,42 @@ static void dac_write(unsigned long first, unsigned long count, const unsigned l
 		wram->palette[first + i].dw = keep;
 	}
 }
+/* .737 (review audit #7): the request's first and count are copied once and checked from the copy (count was read again from the
+ * caller's memory after the check: a second thread could change it between, past the 256 entries) */
 int VX_dac(const vx_dac_req *q)
 {
-	unsigned long i, all[256];
+	unsigned long i, all[256], first, count;
 	if(!q || q->cb != sizeof(*q) || q->abi != VX_DAC_ABI || !dac_ready()) return 0;
-	if(q->first == 0xFFFFFFFEUL && !q->count) return 1; /* probe */
-	if(q->first == 0xFFFFFFFFUL && !q->count)
+	first = q->first; count = q->count;
+	if(first == 0xFFFFFFFEUL && !count) return 1; /* probe */
+	if(first == 0xFFFFFFFFUL && !count)
 	{
 		for(i = 0; i < 256; i++) all[i] = wram->palette[i].dw & 0xFFFFFFUL;
 		dac_write(0, 256, all);
 		return 1;
 	}
-	if(q->first >= 256 || !q->count || q->count > 256 - q->first) return 0;
-	for(i = 0; i < q->count; i++) all[i] = q->rgb[i] & 0xFFFFFFUL;
-	dac_write(q->first, q->count, all);
+	if(first >= 256 || !count || count > 256 - first) return 0;
+	for(i = 0; i < count; i++) all[i] = q->rgb[i] & 0xFFFFFFUL;
+	dac_write(first, count, all);
 	return 1;
 }
 
 /* v10.71: read the DAC back (VX2AUTO). out->first = bits per component (6 or 8), out->count = 256, out->rgb = the raw components as (r<<16)|(g<<8)|b. VGA-compatible DAC only. */
 int VX_dac_read(vx_dac_req *out)
 {
-	unsigned long i, f;
+	unsigned long i, f, rgb[256];
 	if(!out || !dac_ready() || (vesa_caps & VESA_CAP_NONVGA)) return 0;
-	out->cb = sizeof(*out); out->abi = VX_DAC_ABI; out->first = vesa_pal_bits; out->count = 256;
+	/* .737 (review audit #28, P1): read into the VxD's own array with interrupts off, then copy out with them on (the caller's buffer may
+	 * be paged out: a fault in ring 0 with interrupts off) */
 	f = vxd_irq_save();
 	outp(0x3C7, 0);
 	for(i = 0; i < 256; i++)
 	{
 		unsigned long r = inp(0x3C9) & 0xFF, g = inp(0x3C9) & 0xFF, b = inp(0x3C9) & 0xFF;
-		out->rgb[i] = (r << 16) | (g << 8) | b;
+		rgb[i] = (r << 16) | (g << 8) | b;
 	}
 	vxd_irq_restore(f);
+	out->cb = sizeof(*out); out->abi = VX_DAC_ABI; out->first = vesa_pal_bits; out->count = 256;
+	for(i = 0; i < 256; i++) out->rgb[i] = rgb[i];
 	return 1;
 }

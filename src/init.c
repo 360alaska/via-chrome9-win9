@@ -210,6 +210,7 @@ UINT FAR DriverInit( UINT cbHeap, UINT hModule, LPSTR lpCmdLine )
 
     /* Lock the code segment. */
     GlobalSmartPageLock( GetCodeSelector() );
+    { extern WORD FAR vx_text_selector(void); GlobalSmartPageLock( vx_text_selector() ); } /* .728: and _TEXT (interrupt-time code: the cursor, the screen-switch hook) */
 
     /* Query the entry point of the Virtual Display Device. */
     VDDEntryPoint = (DWORD)int_2F_GetEP( 0x1684, VDD_ID );

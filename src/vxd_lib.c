@@ -423,33 +423,6 @@ void __cdecl vx_demand_info(DWORD *d)
 	}
 }
 
-DWORD __cdecl _GetFreePageCount(DWORD *pLockablePages)
-{
-	DWORD LockablePages = 0;
-	DWORD FreePages = 0;
-	_asm
-	{
-		push edx
-		push ecx
-		push 0 ; flags - must be zero
-	}
-	VMMCall(_GetFreePageCount);
-	_asm
-	{
-		mov [LockablePages], edx
-		mov [FreePages], eax
-		pop eax
-		pop ecx
-		pop edx
-	}
-	
-	if(LockablePages != NULL)
-	{
-		*pLockablePages = LockablePages;
-	}
-	
-	return FreePages;
-}
 
 static void __declspec(naked) __cdecl _BuildDescriptorDWORDs_(ULONG DESCBase, ULONG DESCLimit, ULONG DESCType, ULONG DESCSize, ULONG flags)
 {
@@ -580,10 +553,6 @@ ULONG __declspec(naked) __cdecl _SelectorMapFlat(ULONG VMHandle, ULONG Selector,
 	VMMJmp(_SelectorMapFlat);
 }
 
-ULONG __declspec(naked) __cdecl GetNulPageHandle()
-{
-	VMMJmp(_MapPhysToLinear);
-}
 
 ULONG __declspec(naked) __cdecl _PhysIntoV86(ULONG PhysPage, ULONG VM, ULONG VMLinPgNum, ULONG nPages, ULONG flags)
 {

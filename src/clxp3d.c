@@ -1,4 +1,6 @@
-/* CLXP3D v2.9 (driver .668: three texture-coordinate sets, T161 and T162: stage 0 MODULATE a texture on set 0, stage 1 MODULATE a
+/* CLXP3D v2.12 (driver .738B: the probe judged against each form's no-bump texel). CLXP3D v2.11 (driver .738: T164-T179, the VX900 bump probe: where the environment map is read for known du, dv and matrices).
+ * CLXP3D v2.10 (driver .737: T163, 3DMark's environment-bump layout with stage 2 on TEXCOORDINDEX 2, the alien of its EMBM test).
+ * CLXP3D v2.9 (driver .668: three texture-coordinate sets, T161 and T162: stage 0 MODULATE a texture on set 0, stage 1 MODULATE a
  * second on set 1, stage 2 MODULATE a third on set 2, the three sets different (set 1 set 0's doubled, set 2 set 0 mirrored), so each unit's
  * set shows; T161 three textures, T162 the same with stage 2's texture on set 1 again (a check of the two-set form beside it). The log's
  * caps line gives XP's FVF caps (its count of coordinate sets); the capture gives how XP feeds unit 2 a third set, if it does.
@@ -499,7 +501,9 @@ static int c_bump3_ladd(void){return bump3_case(D3DTOP_BUMPENVMAPLUMINANCE,DDPF_
  * the environment map on set 1 too, MODULATE (texture, current), alpha MODULATE. Set 1's coordinates are set 0's doubled (each map tiles
  * twice), so a unit on the wrong set shows. T157 as logged, T158 stage 2 ADD, T159 the luminance bump, T160 T157 with stages 1 and 2
  * passing the alpha (SELECTARG2 current): the set layout apart from the alpha. */
-static int bump3b_case(DWORD op,DWORD flags,DWORD bits,DWORD op2,int apass){const DDPIXELFORMAT *f=bumpfmt(flags,bits);vtx v[6];IDirectDrawSurface7 *bt;int r,k;
+static int bump3c_case(DWORD op,DWORD flags,DWORD bits,DWORD op2,int apass,DWORD tci2);
+static int bump3b_case(DWORD op,DWORD flags,DWORD bits,DWORD op2,int apass){return bump3c_case(op,flags,bits,op2,apass,1);}
+static int bump3c_case(DWORD op,DWORD flags,DWORD bits,DWORD op2,int apass,DWORD tci2){const DDPIXELFORMAT *f=bumpfmt(flags,bits);vtx v[6];IDirectDrawSurface7 *bt;int r,k;
  if(caps.wMaxSimultaneousTextures<3)SKIP("fewer than three textures");if(!f)SKIP("bump format not offered");
  if(!tq())SKIP("texture 0");
  bt=texture(f,8,8,1,bumps);if(!bt||!ok("SetTexture(1)",IDirect3DDevice7_SetTexture(dev,1,bt))){if(bt)IDirectDrawSurface7_Release(bt);SKIP("bump texture");}
@@ -508,7 +512,7 @@ static int bump3b_case(DWORD op,DWORD flags,DWORD bits,DWORD op2,int apass){cons
  colorop(1,op,D3DTA_TEXTURE,D3DTA_CURRENT);if(apass)alphaop(1,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);else alphaop(1,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);ts(1,D3DTSS_TEXCOORDINDEX,1);
  ts(1,D3DTSS_BUMPENVMAT00,f2dw(.5f));ts(1,D3DTSS_BUMPENVMAT01,0);ts(1,D3DTSS_BUMPENVMAT10,0);ts(1,D3DTSS_BUMPENVMAT11,f2dw(.5f));
  ts(1,D3DTSS_BUMPENVLSCALE,f2dw(1.f));ts(1,D3DTSS_BUMPENVLOFFSET,f2dw(.25f));ts(1,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);ts(1,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);
- colorop(2,op2,D3DTA_TEXTURE,D3DTA_CURRENT);if(apass)alphaop(2,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);else alphaop(2,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);ts(2,D3DTSS_TEXCOORDINDEX,1);
+ colorop(2,op2,D3DTA_TEXTURE,D3DTA_CURRENT);if(apass)alphaop(2,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);else alphaop(2,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);ts(2,D3DTSS_TEXCOORDINDEX,tci2);
  ts(2,D3DTSS_ADDRESSU,D3DTADDRESS_WRAP);ts(2,D3DTSS_ADDRESSV,D3DTADDRESS_WRAP);
  colorop(0,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_DIFFUSE);alphaop(0,D3DTOP_SELECTARG1,D3DTA_TEXTURE,D3DTA_DIFFUSE);
  corner(&v[0],32,32,.5f,1,0xFFC0C0C0UL,0,0);corner(&v[1],160,32,.5f,1,0xFFC0C0C0UL,1,0);corner(&v[2],32,160,.5f,1,0xFFC0C0C0UL,0,1);v[3]=v[1];corner(&v[4],160,160,.5f,1,0xFFC0C0C0UL,1,1);v[5]=v[2];
@@ -519,6 +523,46 @@ static int c_bump3b_mod(void){return bump3b_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV
 static int c_bump3b_add(void){return bump3b_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_ADD,0);}
 static int c_bump3b_lmod(void){return bump3b_case(D3DTOP_BUMPENVMAPLUMINANCE,DDPF_BUMPDUDV|DDPF_BUMPLUMINANCE,16,D3DTOP_MODULATE,0);}
 static int c_bump3b_pass(void){return bump3b_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_MODULATE,1);}
+/* v2.10 (driver .737, board: 3DMark 2001's Environment Bump Mapping on .736 left the alien out on all three chips): T157 with stage 2 on
+ * TEXCOORDINDEX 2 while the vertices carry two sets, as 3DMark sends it once the device offers three sets. Must draw T157's picture */
+static int c_bump3c_mod(void){return bump3c_case(D3DTOP_BUMPENVMAP,DDPF_BUMPDUDV,16,D3DTOP_MODULATE,0,2);}
+/* v2.11 (driver .738, board: 3DMark 2001's environment-bump alien wrong on the VX900 only; DOT3 right on every chip; the VX900 draws
+ * T153-T160 apart from the VX800 / VX855 and from Direct3D's rules): the VX900 bump probe. The environment map is a 256x256 ruler (red =
+ * the texel's column, green its row), point-sampled and clamped, so the colour at the quad's centre says where the unit read it. The bump
+ * map is one uniform (du, dv) (V8U8, R = du, G = dv, signed); the bump matrix varies. Direct3D: u' = u + M00 du + M10 dv, v' = v + M01 du
+ * + M11 dv (du, dv / 128). Each case logs the read place against that, in the two-stage form (stage 0 the bump, stage 1 the map) and in
+ * 3DMark's three-stage form (a white base, the bump on stage 1, the map on stage 2). Nothing is judged WRONG: the shifts are for the fix. */
+static DWORD pr_bumpv;static int pr_on,pr_three,pr_have[2];static float pr_eu,pr_ev;static DWORD pr_base[2][2]; /* v2.12: each form's no-bump texel */
+static DWORD pr_ruler(DWORD w,DWORD h,DWORD x,DWORD y,DWORD l){(void)w;(void)h;(void)l;return 0xFF000080UL|((x&255)<<16)|((y&255)<<8);}
+static DWORD pr_white(DWORD w,DWORD h,DWORD x,DWORD y,DWORD l){(void)w;(void)h;(void)x;(void)y;(void)l;return 0xFFFFFFFFUL;}
+static DWORD pr_bump(DWORD w,DWORD h,DWORD x,DWORD y,DWORD l){(void)w;(void)h;(void)x;(void)y;(void)l;return pr_bumpv;}
+static void pr_point(DWORD st){ts(st,D3DTSS_MAGFILTER,D3DTFG_POINT);ts(st,D3DTSS_MINFILTER,D3DTFN_POINT);ts(st,D3DTSS_MIPFILTER,D3DTFP_NONE);ts(st,D3DTSS_ADDRESSU,D3DTADDRESS_CLAMP);ts(st,D3DTSS_ADDRESSV,D3DTADDRESS_CLAMP);}
+static int probe_case(int three,int du,int dv,float m00,float m01,float m10,float m11){
+ const DDPIXELFORMAT *f=bumpfmt(DDPF_BUMPDUDV,16);vtx v[6];IDirectDrawSurface7 *bt,*env;int r;DWORD b=three?1:0,e=three?2:1;
+ if(caps.wMaxSimultaneousTextures<(three?3:2))SKIP("too few textures");if(!f)SKIP("bump format not offered");
+ pr_bumpv=0xFF000080UL|(((DWORD)du&255)<<16)|(((DWORD)dv&255)<<8);
+ bt=texture(f,8,8,1,pr_bump);env=texture(ARGB(),256,256,1,pr_ruler);if(!bt||!env){if(bt)IDirectDrawSurface7_Release(bt);if(env)IDirectDrawSurface7_Release(env);SKIP("textures");}
+ if(three){if(!use_tex(texture(ARGB(),8,8,1,pr_white))){IDirectDrawSurface7_Release(bt);IDirectDrawSurface7_Release(env);SKIP("texture 0");}
+  colorop(0,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_DIFFUSE);alphaop(0,D3DTOP_SELECTARG1,D3DTA_TEXTURE,D3DTA_DIFFUSE);ts(0,D3DTSS_TEXCOORDINDEX,0);
+  tex1=bt;IDirect3DDevice7_SetTexture(dev,1,bt);colorop(1,D3DTOP_BUMPENVMAP,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(1,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);
+  tex2=env;IDirect3DDevice7_SetTexture(dev,2,env);colorop(2,D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(2,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);}
+ else{tex0=bt;IDirect3DDevice7_SetTexture(dev,0,bt);colorop(0,D3DTOP_BUMPENVMAP,D3DTA_TEXTURE,D3DTA_DIFFUSE);alphaop(0,D3DTOP_SELECTARG1,D3DTA_DIFFUSE,D3DTA_TEXTURE);
+  tex1=env;IDirect3DDevice7_SetTexture(dev,1,env);colorop(1,D3DTOP_SELECTARG1,D3DTA_TEXTURE,D3DTA_CURRENT);alphaop(1,D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_CURRENT);}
+ ts(b,D3DTSS_TEXCOORDINDEX,0);ts(e,D3DTSS_TEXCOORDINDEX,three?1:0);
+ ts(b,D3DTSS_BUMPENVMAT00,f2dw(m00));ts(b,D3DTSS_BUMPENVMAT01,f2dw(m01));ts(b,D3DTSS_BUMPENVMAT10,f2dw(m10));ts(b,D3DTSS_BUMPENVMAT11,f2dw(m11));
+ ts(b,D3DTSS_BUMPENVLSCALE,f2dw(1.f));ts(b,D3DTSS_BUMPENVLOFFSET,f2dw(0.f));pr_point(e);pr_point(b);
+ corner(&v[0],32,32,.5f,1,0xFFFFFFFFUL,.25f,.25f);corner(&v[1],160,32,.5f,1,0xFFFFFFFFUL,.75f,.25f);corner(&v[2],32,160,.5f,1,0xFFFFFFFFUL,.25f,.75f);
+ v[3]=v[1];corner(&v[4],160,160,.5f,1,0xFFFFFFFFUL,.75f,.75f);v[5]=v[2];
+ r=draw(v,6);
+ pr_eu=(m00*du+m10*dv)/128.0f;pr_ev=(m01*du+m11*dv)/128.0f;pr_on=1;pr_three=three;
+ if(three){ts(2,D3DTSS_COLOROP,D3DTOP_DISABLE);ts(2,D3DTSS_ALPHAOP,D3DTOP_DISABLE);ts(2,D3DTSS_TEXCOORDINDEX,2);IDirect3DDevice7_SetTexture(dev,2,0);IDirectDrawSurface7_Release(tex2);tex2=0;}
+ return r;}
+#define PRC(name,t,du,dv,a,b2,c,d) static int name(void){return probe_case(t,du,dv,a,b2,c,d);}
+PRC(pr2_zero,0,0,0,1,0,0,1) PRC(pr2_du,0,32,0,1,0,0,1) PRC(pr2_dv,0,0,32,1,0,0,1) PRC(pr2_ndu,0,-32,0,1,0,0,1) PRC(pr2_ndv,0,0,-32,1,0,0,1)
+PRC(pr2_half,0,32,0,.5f,0,0,.5f) PRC(pr2_swap,0,32,0,0,1,1,0) PRC(pr2_both,0,48,16,1,0,0,1)
+PRC(pr3_zero,1,0,0,1,0,0,1) PRC(pr3_du,1,32,0,1,0,0,1) PRC(pr3_dv,1,0,32,1,0,0,1) PRC(pr3_ndu,1,-32,0,1,0,0,1) PRC(pr3_ndv,1,0,-32,1,0,0,1)
+PRC(pr3_half,1,32,0,.5f,0,0,.5f) PRC(pr3_swap,1,32,0,0,1,1,0) PRC(pr3_both,1,48,16,1,0,0,1)
+
 /* v2.9 (driver .668): three coordinate sets on three stages */
 typedef struct vtx3s {float x,y,z,rhw;DWORD diffuse,specular;float u0,v0,u1,v1,u2,v2;} vtx3s;
 #define FVF3S (D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX3)
@@ -740,6 +784,15 @@ static const tcase cases[]={
  {"v2.8 3DMark's layout, stages 1 and 2 passing the alpha",c_bump3b_pass},
  {"v2.9 three stages on three coordinate sets (set 1 doubled, set 2 mirrored)",c_sets3},
  {"v2.9 the same, stage 2 on set 1",c_sets3_two},
+ {"v2.10 3DMark's layout, stage 2 on TEXCOORDINDEX 2 with two sets in the vertices (3DMark with three sets offered): T157's picture",c_bump3c_mod},
+ {"v2.11 bump probe, two stages: du 0, dv 0, matrix 1",pr2_zero},{"v2.11 bump probe, two stages: du +32, matrix 1",pr2_du},
+ {"v2.11 bump probe, two stages: dv +32, matrix 1",pr2_dv},{"v2.11 bump probe, two stages: du -32, matrix 1",pr2_ndu},
+ {"v2.11 bump probe, two stages: dv -32, matrix 1",pr2_ndv},{"v2.11 bump probe, two stages: du +32, matrix 0.5",pr2_half},
+ {"v2.11 bump probe, two stages: du +32, matrix swap (M01 = M10 = 1)",pr2_swap},{"v2.11 bump probe, two stages: du +48 dv +16, matrix 1",pr2_both},
+ {"v2.11 bump probe, 3DMark's three stages: du 0, dv 0, matrix 1",pr3_zero},{"v2.11 bump probe, three stages: du +32, matrix 1",pr3_du},
+ {"v2.11 bump probe, three stages: dv +32, matrix 1",pr3_dv},{"v2.11 bump probe, three stages: du -32, matrix 1",pr3_ndu},
+ {"v2.11 bump probe, three stages: dv -32, matrix 1",pr3_ndv},{"v2.11 bump probe, three stages: du +32, matrix 0.5",pr3_half},
+ {"v2.11 bump probe, three stages: du +32, matrix swap (M01 = M10 = 1)",pr3_swap},{"v2.11 bump probe, three stages: du +48 dv +16, matrix 1",pr3_both},
 };
 #define NCASES ((int)(sizeof(cases)/sizeof(cases[0])))
 
@@ -956,6 +1009,16 @@ static int flush(int n) {
    (unsigned long)unpack_rt(&s,(BYTE*)s.lpSurface+128*s.lPitch+128*(s.ddpfPixelFormat.dwRGBBitCount/8)),
    (unsigned long)unpack_rt(&s,(BYTE*)s.lpSurface+90*s.lPitch+150*(s.ddpfPixelFormat.dwRGBBitCount/8)),
    (unsigned long)unpack_rt(&s,(BYTE*)s.lpSurface+170*s.lPitch+220*(s.ddpfPixelFormat.dwRGBBitCount/8)));
+  /* v2.12 (driver .738, T738: the centre pixel reads texel (132, 130) with no bump, not 128: v2.11 judged every case DIFFERENT): each case
+   * against its own form's no-bump texel (the first case of each form), and the three-stage no-bump texel against the two-stage one */
+  if(pr_on){DWORD c=unpack_rt(&s,(BYTE*)s.lpSurface+96*s.lPitch+96*(s.ddpfPixelFormat.dwRGBBitCount/8)),cu=(c>>16)&255,cv=(c>>8)&255;int f3=pr_three!=0,good;float mu,mv;
+   if(pr_eu==0.0f&&pr_ev==0.0f&&!pr_have[f3]){pr_base[f3][0]=cu;pr_base[f3][1]=cv;pr_have[f3]=1;
+    good=!f3||(pr_have[0]&&cu==pr_base[0][0]&&cv==pr_base[0][1]);
+    fprintf(logf,"   bump probe: no bump reads texel (%lu, %lu)%s\n",(unsigned long)cu,(unsigned long)cv,f3?(good?": the two-stage form's, the same":": not the two-stage form's: DIFFERENT"):" (the base the cases below are measured from)");}
+   else{mu=pr_have[f3]?((float)cu-(float)pr_base[f3][0])/256.0f:0;mv=pr_have[f3]?((float)cv-(float)pr_base[f3][1])/256.0f:0;
+    good=pr_have[f3]&&mu-pr_eu<.05f&&pr_eu-mu<.05f&&mv-pr_ev<.05f&&pr_ev-mv<.05f;
+    fprintf(logf,"   bump probe: texel (%lu, %lu), a shift of u %+.3f v %+.3f from no bump; Direct3D's %+.3f %+.3f: %s\n",(unsigned long)cu,(unsigned long)cv,mu,mv,pr_eu,pr_ev,good?"the same":"DIFFERENT");}
+   pr_on=0;}
   if(row)free(row);if(f)fclose(f);
  }
  IDirectDrawSurface7_Unlock(rt,0);return 1;
@@ -1027,7 +1090,7 @@ int main(int argc,char **argv) {
  if(argc>=3){if(!strcmp(argv[2],"pause"))pause_mode=1;else if(!strcmp(argv[2],"nocapture"))nocap=1;else hook=argv[2];}
  if(only>=NCASES){printf("no case %d (CLXP3D list)\n",only);return 1;}
  logf=fopen(only>=0?"CLXP3D_1.TXT":"CLXP3D.TXT","w");if(!logf)return 1;
- fprintf(logf,"CLXP3D v2.9: XP Direct3D 7 capture cases, target %dx%d; %s\n",W,H,pause_mode?"pausing for PRE/END snapshots":hook?"running the capture hook":"built-in ring capture");
+ fprintf(logf,"CLXP3D v2.12: XP Direct3D 7 capture cases, target %dx%d; %s\n",W,H,pause_mode?"pausing for PRE/END snapshots":hook?"running the capture hook":"built-in ring capture");
  if(!nocap)capture_init();
  if(!setup()){cx_stop();fclose(logf);printf("setup failed, see the TXT\n");return 1;}
  if(capture_on){DWORD i;pre_regs[0]=0;capture_pre();Sleep(200);capture_end(999,"IDLE");(void)i;} /* 200 ms with nothing drawn: the driver's own background traffic */

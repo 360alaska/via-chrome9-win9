@@ -225,6 +225,7 @@ LONG WINAPI __loadds Control(LPVOID lpDevice, UINT function,
     case QUERYESCSUPPORT:
     {
       WORD function_code = 0;
+      rc = 0; /* .728 (Fable's check of Gemini's review, #1): an unknown escape or no input answers 0, not supported (rc stayed -1: non-zero reads as supported) */
       if(!lpInput) break; /* v10.309 (review): as the other cases check it */
       function_code =  *((LPWORD)lpInput);
       switch(function_code)
@@ -297,7 +298,7 @@ LONG WINAPI __loadds Control(LPVOID lpDevice, UINT function,
               break;
             case DDGET32BITDRIVERNAME:
               dbg_printf("DDGET32BITDRIVERNAME: ");
-              if(DDGet32BitDriverName(lpOutput))
+              if(lpOutput && DDGet32BitDriverName(lpOutput)) /* .737 (review P24): lpOutput checked */
               {
                 dbg_printf("success\n");
                 rc = 1;
@@ -323,8 +324,7 @@ LONG WINAPI __loadds Control(LPVOID lpDevice, UINT function,
               break;
             case DDVERSIONINFO:
               dbg_printf("DDGetVersion\n");
-              DDGetVersion(lpOutput);
-              rc = 1;
+              if(lpOutput) {DDGetVersion(lpOutput); rc = 1;} else rc = 0; /* .737 (review P24) */
               break;
             default:
               dbg_printf("UNK DD code: %lX\n", lpDCICMD->dwCommand);

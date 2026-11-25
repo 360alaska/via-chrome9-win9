@@ -252,6 +252,7 @@ UINT WINAPI __loadds ValidateMode( DISPVALMODE FAR *lpValMode )
 {
     UINT        rc = VALMODE_YES;
 
+    if( !lpValMode ) return( VALMODE_NO_UNKNOWN ); /* E776 (outside audit, DRV-18) */
     //dbg_printf( "ValidateMode: X=%u Y=%u bpp=%u\n", lpValMode->dvmXRes, lpValMode->dvmYRes, lpValMode->dvmBpp );
     do {
 

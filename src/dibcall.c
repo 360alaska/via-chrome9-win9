@@ -55,6 +55,12 @@ BOOL mouse_vxd = FALSE;
  */
 
 #pragma code_seg( _TEXT )
+/* .728 (Fable's check of Gemini's review, #4): _TEXT's selector for DriverInit's page lock. MoveCursor, CheckCursor and the screen-switch
+ * hook (sswhook.asm) run at interrupt time from this segment; DriverInit (in _INIT) locked only its own. A real function here, so CS is
+ * _TEXT's (an inline read in DriverInit gives _INIT's). */
+static WORD vx_cs_read(void);
+#pragma aux vx_cs_read = "mov ax,cs" value [ax] modify exact [ax];
+WORD FAR vx_text_selector(void) {return vx_cs_read();}
 
 void WINAPI __loadds MoveCursor(int absX, int absY)
 {	
@@ -355,7 +361,9 @@ static WORD vx_try_memblit(LPDIBENGINE dst,WORD dx,WORD dy,LPPDEVICE src,WORD sx
  if(clip) {if(clip->left>l) l=clip->left; if(clip->top>t) t=clip->top; if(clip->right<r) r=clip->right; if(clip->bottom<b) b=clip->bottom;}
  if(l<0) l=0; if(t<0) t=0; if(r>(int)wScreenX) r=(int)wScreenX; if(b>(int)wScreenY) b=(int)wScreenY;
  if(r<=l||b<=t) return clip?VX2D_DONE:VX2D_SKIP;
- sx=(WORD)(sx+(l-(int)(short)dx)); sy=(WORD)(sy+(t-(int)(short)dy)); w=(WORD)(r-l); h=(WORD)(b-t);
+ {long nsx=(long)sx+((long)l-(long)(short)dx),nsy=(long)sy+((long)t-(long)(short)dy); /* E776 (outside audit, DRV-13): in 32 bits first (a sum past 65535 wrapped to a small source position and passed the test below) */
+  if(nsx<0||nsy<0||nsx>=(long)W||nsy>=(long)H) return vx_mb_skip(18);
+  sx=(WORD)nsx; sy=(WORD)nsy;} w=(WORD)(r-l); h=(WORD)(b-t);
  if(sx>=W||sy>=H||w>W-sx||h>H-sy) return vx_mb_skip(18);
  base=DPMI_GetSegBase(sel); if(!base||base==0xFFFFFFFFUL) return vx_mb_skip(19);
  mask=wBpp==8?0xFFUL:wBpp==16?0xFFFFUL:0xFFFFFFFFUL;
@@ -582,7 +590,7 @@ WORD WINAPI __loadds SaveScreenBitmap(LPRECT lpRect,WORD wCommand) {
 BOOL WINAPI __loadds BitBlt(LPDIBENGINE dst,WORD dx,WORD dy,LPPDEVICE src,
  WORD sx,WORD sy,WORD w,WORD h,DWORD rop,LPBRUSH brush,LPDRAWMODE dm) {
  WORD r,tried=0xFFFF; BOOL ok;
- if((dst->deFlags&VRAM)&&!(dst->deFlags&BUSY)) {
+ if((LPVOID)dst==(LPVOID)lpDriverPDevice&&(dst->deFlags&VRAM)&&!(dst->deFlags&BUSY)) { /* .728 (Gemini review #13): our device before its deFlags (both helpers require it; a 14-byte BITMAP has no deFlags) */
   if(src&&(LPVOID)src!=(LPVOID)dst) {r=vx_try_memblit(dst,dx,dy,src,sx,sy,w,h,rop,brush,dm,NULL); tried=r; if(r!=VX2D_SKIP) {vxb_mem(VXH_TAG_BBLT,dst,(short)dx,(short)dy,w,h,src,sx,sy,rop,NULL,0,r,0xFFFFFFFFUL); return vx_result(r,dst);}} /* v10.116 */
   r=vx_try_blit(dst,dx,dy,src,sx,sy,w,h,rop,brush,dm,NULL);
   if(r!=VX2D_SKIP) return vx_result(r,dst);
@@ -596,7 +604,7 @@ BOOL WINAPI __loadds StretchBlt(LPPDEVICE dst,WORD dx,WORD dy,WORD dw,WORD dh,
  LPPDEVICE src,WORD sx,WORD sy,WORD sw,WORD sh,DWORD rop,LPBRUSH brush,
  LPDRAWMODE dm,LPRECT clip) {
  WORD r,tried=0xFFFF; LPDIBENGINE d=(LPDIBENGINE)dst; BOOL ok;
- if(dw==sw&&dh==sh&&(d->deFlags&VRAM)&&!(d->deFlags&BUSY)) {
+ if(dw==sw&&dh==sh&&d==lpDriverPDevice&&(d->deFlags&VRAM)&&!(d->deFlags&BUSY)) { /* .728: as BitBlt */
   if(src&&(LPVOID)src!=(LPVOID)dst) {r=vx_try_memblit(d,dx,dy,src,sx,sy,dw,dh,rop,brush,dm,clip); tried=r; if(r!=VX2D_SKIP) {vxb_mem(VXH_TAG_SBLT,d,(short)dx,(short)dy,dw,dh,src,sx,sy,rop,clip,(DWORD)sw|((DWORD)sh<<16),r,0xFFFFFFFFUL); return vx_result(r,d);}} /* v10.116 */
   r=vx_try_blit(d,dx,dy,src,sx,sy,dw,dh,rop,brush,dm,clip);
   if(r!=VX2D_SKIP) return vx_result(r,d);
@@ -622,7 +630,7 @@ static WORD vx_dib_draw(LPPDEVICE dst,long dx,long dy,WORD kx,WORD ky,WORD sx,WO
  if(!bits||!info||!wEnabled||dst!=lpDriverPDevice||(wBpp!=16&&wBpp!=32)) return VX2D_SKIP;
  if((d->deFlags&(VRAM|BUSY))!=VRAM) return VX2D_SKIP;
  h=(LPBITMAPINFOHEADER)info;
- if(h->biSize<40||h->biPlanes!=1) return VX2D_SKIP;
+ if(h->biSize<40||h->biSize>256||h->biPlanes!=1) return VX2D_SKIP; /* E776 (outside audit, DRV-8): a header size with a bound (the colour table's address is the header's plus it, in 16 bits) */
  bt=h->biBitCount; if(bt!=1&&bt!=4&&bt!=8&&bt!=16&&bt!=24&&bt!=32) return VX2D_SKIP;
  if(bt==32&&wBpp==32) {vxgt_cnt[13]++; return VX2D_SKIP;} /* v10.509: the VxD has no class for 32-bit sources onto the 32bpp screen (DIBENG is as fast): no call (VXGTUNE v1.1: 2 us of 36 at 64x64) */
  /* v10.104: 1-bit, 4-bit and 8-bit (palette) sources go to the VxD only for the 32bpp screen (DIBENG's own palette path is as fast into 16bpp and rounds the colours its own way); the colour table is the one in the header. A translation table means index colours, left to DIBENG. */
@@ -660,6 +668,7 @@ static WORD vx_dib_draw(LPPDEVICE dst,long dx,long dy,WORD kx,WORD ky,WORD sx,WO
  vx_sq.left=(DWORD)vl; vx_sq.top=(DWORD)vt; vx_sq.right=(DWORD)vr; vx_sq.bottom=(DWORD)vb;
  if(bt<=8) { /* the colour table: biClrUsed entries (0 = all 2^bits) of RGBQUAD, the rest stays zero */
   WORD n=h->biClrUsed?(WORD)h->biClrUsed:(WORD)(1<<bt);
+  if(n>256||(((DWORD)info&0xFFFFUL)+h->biSize+(DWORD)n*4UL)>65536UL) return VX2D_SKIP; /* E776 (DRV-8): the table inside the segment, and inside vx_sq.pal */
   _fmemcpy(vx_sq.pal,(BYTE far *)info+h->biSize,(size_t)n*4); vx_sq.pal_n=n;
  }
  vx_sq.src_lin=base+(((DWORD)bits)&0xFFFFUL); vx_sq.src_stride=(DWORD)stride; vx_sq.src_bits=bt; vx_sq.src_height=H; vx_sq.src_topdown=Hh<0?1:0; vx_sq.src_bytes=(DWORD)stride*H;
@@ -720,6 +729,7 @@ int WINAPI __loadds StretchDIBits(LPPDEVICE dst,WORD fGet,WORD dx,WORD dy,WORD d
     if(tried==VX2D_DONE||tried==VX2D_LOST) {vxb_dib(VXH_TAG_XDIB,dst,(short)dx,(short)dy,dw,dh,sx,sy,rop,clip,bits,info,(DWORD)sw|((DWORD)sh<<16),(DWORD)dw|((DWORD)dh<<16),tried,0xFFFFFFFFUL); return tried==VX2D_DONE?(int)sh:0;}} /* v10.330 (review #73): LOST (engine gone, the device marked BUSY) is not handed to DIBENG; FAILED (the engine timed out and was reset, idle again) is: a copy drawn again over itself is the same picture */
   }
  }
+ VX_SETTLE(); /* .729 (review of .723, #7): as every other forward to DIBENG (v10.425) */
  n=StretchDIBits_fwd(dst,fGet,dx,dy,dw,dh,sx,sy,sw,sh,bits,info,trans,rop,brush,dm,clip);
  if(!fGet) vxb_dib(VXH_TAG_XDIB,dst,(short)dx,(short)dy,dw,dh,sx,sy,rop,clip,bits,info,(DWORD)sw|((DWORD)sh<<16),(DWORD)dw|((DWORD)dh<<16),tried,(DWORD)(long)n); /* v10.321 */
  return n;
@@ -731,6 +741,7 @@ WORD WINAPI __loadds DibToDevice(LPPDEVICE dst,WORD x,WORD y,WORD iScan,WORD cSc
   if(hh>0&&hh<=4096L&&ww>0&&ww<=4096L&&(long)cScans==hh){tried=vx_dib_draw(dst,(long)(short)x,(long)(short)y,1,1,0,0,(WORD)ww,cScans,bits,info,trans,clip,1);
    if(tried==VX2D_DONE||tried==VX2D_LOST) {vxb_dib(VXH_TAG_XDTD,dst,(short)x,(short)y,0,cScans,0,0,VX_ROP_SRCCOPY,clip,bits,info,(DWORD)iScan|((DWORD)cScans<<16),0,tried,0xFFFFFFFFUL); return tried==VX2D_DONE?cScans:0;}} /* v10.330 (review #74): as StretchDIBits (LOST not to DIBENG; FAILED, a copy, drawn again by it) */
  }
+ VX_SETTLE(); /* .729: as above */
  n=DibToDevice_fwd(dst,x,y,iScan,cScans,clip,dm,bits,info,trans);
  vxb_dib(VXH_TAG_XDTD,dst,(short)x,(short)y,0,cScans,0,0,VX_ROP_SRCCOPY,clip,bits,info,(DWORD)iScan|((DWORD)cScans<<16),0,tried,(DWORD)n); /* v10.321 */
  return n;
@@ -752,8 +763,8 @@ DWORD WINAPI __loadds ExtTextOut( LPDIBENGINE lpDestDev, WORD wDestXOrg, WORD wD
 	if(lpDrawMode) tcond|=4;
 	if(wEnabled) tcond|=8;
 	if(lpDestDev==(LPDIBENGINE)lpDriverPDevice) tcond|=16;
-	if(lpDestDev->deFlags&VRAM) tcond|=32;
-	if(!(lpDestDev->deFlags&BUSY)) tcond|=64;
+	if(lpDestDev==(LPDIBENGINE)lpDriverPDevice&&lpDestDev&&(lpDestDev->deFlags&VRAM)) tcond|=32; /* .726 (outside review of .723): the device checked before it is read; .729 (#4): our device (a memory bitmap has no deFlags) */
+	if(lpDestDev==(LPDIBENGINE)lpDriverPDevice&&lpDestDev&&!(lpDestDev->deFlags&BUSY)) tcond|=64;
 	if(wBpp==8||wBpp==16||wBpp==32) tcond|=128;
 	/* v10.83: the opaque rectangle (ETO_OPAQUE: filled with the draw mode's background colour before the text is drawn) is a plain fill; large ones go to the engine, then the
 	 * text is drawn by DIBENG without the opaque flag. A rectangle the engine declines (small, engine off, ...) stays with DIBENG as before. */
@@ -1324,7 +1335,7 @@ static int vx_cpu_lines(LPDIBENGINE dev,WORD wCount,PTTYPE __far *pt,LPPPEN lpPP
 #define VXO_PRE 8
 WORD WINAPI __loadds Output( LPDIBENGINE lpDestDev, WORD wStyle, WORD wCount, LPPOINT lpPoints, LPPPEN lpPPen, LPPBRUSH lpPBrush, LPDRAWMODE lpDrawMode, LPRECT lpClipRect )
 {
-	if(wStyle==OS_POLYLINE&&wCount>=2&&wCount<=16384&&lpPoints&& /* v10.309 (review): a segment holds 16384 points; (int)wCount past 0x7FFF skipped both loops */
+	if(wStyle==OS_POLYLINE&&wCount>=2&&wCount<=16384&&lpPoints&&(((DWORD)lpPoints&0xFFFFUL)+(DWORD)wCount*4UL)<=65536UL&& /* E776 (outside audit, DRV-2): the points inside their 64 KB segment from where they start, not only by count */ /* v10.309 (review): a segment holds 16384 points; (int)wCount past 0x7FFF skipped both loops */
 	   lpPPen&&lpDrawMode&&wEnabled&&lpDestDev==(LPDIBENGINE)lpDriverPDevice&&(lpDestDev->deFlags&VRAM)&&!(lpDestDev->deFlags&BUSY)&&(wBpp==8||wBpp==16||wBpp==32))
 	{
 		DIB_Pen __far *pen=(DIB_Pen __far *)lpPPen;
@@ -1397,6 +1408,7 @@ WORD WINAPI __loadds Output( LPDIBENGINE lpDestDev, WORD wStyle, WORD wCount, LP
 BOOL WINAPI __loadds DDIGammaRamp(LPDIBENGINE lpDev, BOOL fGetSet, LPARAM lpGammaRamp)
 {
 	BOOL rc;
+	if(!lpGammaRamp) return FALSE; /* .729 (review of .723, #6): no ramp to read or fill */
 	if(fGetSet)
 	{
 		rc = FBHDA_gamma_set((VOID FBPTR)lpGammaRamp, sizeof(WORD)*256*3);

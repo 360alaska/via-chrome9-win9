@@ -1237,6 +1237,20 @@ static void s_glclamp3(void) {
 /* .639 (Flocks.scr): many small lit draws from a display list, each with its own matrix and colour (GL_COLOR_MATERIAL), one directional
  * light and no local viewer: Mesa's fast lighting, in object space while the modelview keeps lengths. A third of them with
  * GL_NORMALIZE, a third under a scale that does not keep lengths (lit in eye space). 363 draws of one triangle. */
+/* .736: glTexSubImage2D rectangles between draws of the whole texture (the driver writes a rectangle into the copy, not the whole texture):
+ * a 64x64 RGB texture, twelve 8x8 rectangles of their own colour (two between some draws), each draw texel for pixel (NEAREST) */
+static void s_texsub(void) {
+ static GLubyte px[64*64*3],sp[8*8*3];GLuint tx;int i,k;
+ reset();glGenTextures(1,&tx);glBindTexture(GL_TEXTURE_2D,tx);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+ for(i=0;i<64*64*3;i++)px[i]=(GLubyte)(i*7);glPixelStorei(GL_UNPACK_ALIGNMENT,1);glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,64,64,0,GL_RGB,GL_UNSIGNED_BYTE,px);
+ glEnable(GL_TEXTURE_2D);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
+ for(i=0;i<12;i++){float x=(float)((i%4)*64),y=(float)((i/4)*64);
+  for(k=0;k<64;k++){sp[k*3]=(GLubyte)(20*i);sp[k*3+1]=(GLubyte)(250-17*i);sp[k*3+2]=(GLubyte)(i*3);}
+  glTexSubImage2D(GL_TEXTURE_2D,0,(i*13)%56,(i*29)%56,8,8,GL_RGB,GL_UNSIGNED_BYTE,sp);
+  if(i%3==2)glTexSubImage2D(GL_TEXTURE_2D,0,(i*7)%56,(i*11)%56,8,8,GL_RGB,GL_UNSIGNED_BYTE,sp);
+  glBegin(GL_QUADS);glTexCoord2f(0,0);glVertex2f(x,y);glTexCoord2f(1,0);glVertex2f(x+64,y);glTexCoord2f(1,1);glVertex2f(x+64,y+64);glTexCoord2f(0,1);glVertex2f(x,y+64);glEnd();}
+ glDisable(GL_TEXTURE_2D);glDeleteTextures(1,&tx);glPixelStorei(GL_UNPACK_ALIGNMENT,4);
+}
 static void s_flock(void) {
  float pos[4]={0.3f,0.5f,1.0f,0},dif[4]={1,1,1,1},amb[4]={0.15f,0.15f,0.15f,1};GLuint l;int i;
  reset();persp();glEnable(GL_DEPTH_TEST);glEnable(GL_LIGHTING);glEnable(GL_LIGHT0);
@@ -1275,6 +1289,7 @@ static const struct {const char *name;scene_fn f;int info;} scenes[]={
  {"smooth lines, blending off",s_aaflat,1}, /* .636: info: each line is one quad by the engine's rule, swrast takes any pixel a sample of 16 touches: under 1% of the pixels, on the lines' edges */
  {"GL_CLAMP mipmapped, in and out of 0..1",s_glclampmip,1},
  {"GL_CLAMP linear: cube map, rectangle, 3D texture",s_glclamp3},
+ {"glTexSubImage2D rectangles between draws (.736)",s_texsub},
  {"small lit list draws, a directional light (Flocks)",s_flock},
  {"speed: lit sphere, 12288 triangles",s_speed}};
 #define NS ((int)(sizeof(scenes)/sizeof(scenes[0])))

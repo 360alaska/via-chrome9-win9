@@ -275,7 +275,7 @@ static void buildDDHALInfo(VMDAHAL_t __far *hal, int modeidx)
 	stride = hda->stride;
 
 	/* VESA driver need round system surface on pages */
-	if(hda->flags & FB_VESA_MODES)
+	if((hda->flags & FB_VESA_MODES) && hda->pitch) /* E775 (outside audit, DRV-6): a pitch of 0 divided below */
 	{
 		DWORD m;
 		stride = (hda->stride + 0x00000FFFUL) & 0xFFFFF000UL; /* v10.302 (review): the mask was 28 bits */
@@ -510,6 +510,7 @@ BOOL DDCreateDriverObject(int bReset)
 		hal->modes_count = 1;
 		syn_valid = 1; syn_w = hda->width; syn_h = hda->height; syn_bpp = hda->bpp;
 	}
+	if(hal->modes_count > DISP_MODES_MAX) hal->modes_count = DISP_MODES_MAX; /* E776 (outside audit, DRV-18): never past the table */
 	for(modeidx = 0; modeidx < hal->modes_count; modeidx++)
 	{
 		if((hal->modes[modeidx].dwWidth == hda->width) &&

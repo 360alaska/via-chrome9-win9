@@ -31,7 +31,7 @@ typedef struct _VIDEOPARAMETERS {
     DWORD dwCPCommand;
     DWORD dwCPStandard;
     DWORD dwCPKey;
-    BYTE  bCP_APSTriggerBits;
+    DWORD bCP_APSTriggerBits; /* E776 (outside audit, DRV-14): four bytes, as Windows declares it (one byte put the field after it three bytes early) */
     BYTE  bOEMCopyProtection[256];
 } VIDEOPARAMETERS_t;
 

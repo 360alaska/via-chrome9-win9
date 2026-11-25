@@ -19,7 +19,7 @@
 /* v10.182: see follow() for the reason codes */
 static volatile DWORD lost_why,lost_value,lost_count;
 static void note_lost(DWORD why,DWORD value){lost_why=why;lost_value=value;lost_count++;}
-typedef struct context_slot {uint32_t handle,owner,local,target_key,depth_key;vx_d3d_context core;uint32_t rt_prev[64],rt_ok,rt_tex;} context_slot; /* v10.456: rt_tex = the bound render target is a texture (ACCEL_D3D_RTTEX) */ /* v10.428: rt_prev = the runtime's state array at the end of the last call */
+typedef struct context_slot {uint32_t handle,owner,local,target_key,depth_key;vx_d3d_context core;uint32_t rt_prev[172],rt_ok,rt_tex,th_sync,dh_sync;vx3dn_surface td_sync,dd_sync;} context_slot; /* v10.456: rt_tex = the bound render target is a texture (ACCEL_D3D_RTTEX) */ /* v10.428: rt_prev = the runtime's state array at the end of the last call */
 typedef struct surface_slot {uint32_t handle,native_key;vx3dn_surface desc;} surface_slot;
 typedef struct surface_table {uint32_t owner,local,blocks;uint8_t block[SURFACE_BLOCKS];} surface_table;
 static VMDAHAL_t *shared_hal;
@@ -59,13 +59,25 @@ static int attach_token(LONG me) {
 }
 static void reclaim_pid(uint32_t pid);
 static int cb_enter(void);
+static int hold_is_me(void); /* .754: used before its definition */
+#ifndef VX_CG
+#define VX_CG 4 /* .758: build.py gives 6 to the -6s -fp6 variant (tools/P6) */
+#endif
+uint32_t rs_probe[2]; /* .755: the render-state array's probes (rs_resync) */
 static void cb_leave(void);
+static void dx8_buf_forget(uintptr_t,uint32_t,uint32_t); /* DX8 DDI (vx_d3d_dx8.inc) */
+static void dx8_buf_dead(void); /* E775: the entries of processes that are gone */
+static void dx8_sys_forget(uint32_t,uint32_t,uint32_t); /* E788 */
+static void txk_forget(uint32_t,uint32_t,uint32_t); /* E791 */
+static void dx8_ctx_gone(uint32_t handle); /* E776: a destroyed context's declarations */
 void vxr_detach(void); /* .518 (vx_d3d_rec.inc) */
 void VX_D3D_attach(int attach) {
  LONG me=(LONG)GetCurrentProcessId(),k;
  if(!attach) {
   vxr_detach(); /* .518 (audit): a recording of this process given up */
-  if(vx_d3d_held()&&hold_pid==(DWORD)me){vx_d3d_hold_drop();hold_why[6]++;} /* .550: its held packets (a draw of an ending process) */
+  {const int got=cb_enter(); /* E775 (outside audit of E768, HAL-1): under the callback lock when it can be had (the queue is shared: another process's call could be in it) */
+  if(vx_d3d_held()&&hold_is_me()){vx_d3d_hold_drop();hold_why[6]++;} /* .550: its held packets (a draw of an ending process) */
+  if(got)cb_leave();}
   for(k=0;k<TOKENS;k++)if(tok_pid[k]==me){if(tok_val[k]&&vx_cas(&callback_owner,0,tok_val[k])==tok_val[k])cb_takeovers++;tok_val[k]=0;tok_pid[k]=0;}
   return;
  }
@@ -83,15 +95,63 @@ static LONG my_token(void) {LONG me=(LONG)GetCurrentProcessId(),k;for(k=0;k<TOKE
 /* .659: this process's token for vx_ddraw.c's per-process slots (2 and up: given at this process's attach, so a process that got an ended
  * one's ID has another; 1: this DLL never attached in the process) */
 LONG VX_D3D_proc_token(void) {return my_token();}
+/* .737 (review audit #12, fourth review #2): the held packets' owner is its process and its token (hold_tok), set by hold_mark() from the
+ * calling thread itself: dp2_pid, a shared variable written before the lock was taken, could be another process's by then (a call refused
+ * at cb_enter wrote it), and a process given a dead one's ID took the dead one's packets as its own and sent them. hold_is_me: this
+ * process (and attach); hold_dead: an ended process's (another ID not running, or this ID under another token) */
+static volatile LONG hold_tok;
+static void hold_mark(void) {hold_pid=GetCurrentProcessId();hold_tok=my_token();}
+/* a token of 1 on either side (a process drawing through the HAL before the DLL attached in it, v10.470) cannot be told from its later
+ * attached self: then the process ID alone decides (as before .737) */
+static int hold_same_tok(void) {LONG t=my_token();return hold_tok==t||hold_tok==1||t==1;}
+static int hold_is_me(void) {return hold_pid==GetCurrentProcessId()&&hold_same_tok();}
+static int hold_dead(void) {if(!vx_d3d_held()||!hold_pid)return 0;if(hold_pid==GetCurrentProcessId())return !hold_same_tok();return !owner_alive(hold_pid);}
 static int token_alive(LONG t) {LONG k;if(t==1)return 1;for(k=0;k<TOKENS;k++)if(tok_val[k]==t)return owner_alive((uint32_t)tok_pid[k]);return 0;}
 static void forget_drain(void);
+/* .736 (the crash write-up of .733, fixes 1, 4 and 5: no full-screen program after GTA3 crashed): the holder's process, thread and the tick
+ * it took the lock (cb_hpid, cb_htid, cb_hsince; not static: VX_D3D_CrashStats and the linked checks read them). A holder is taken over
+ * only when it is dead, decided by its process for every holder: token 1 (a process the DLL never attached in, or the token table full)
+ * was never taken over, and a token-1 caller could not take over a token-1 holder (o != t). A live holder is waited for as before
+ * (WASSTILLDRAWING: a slow game is not a failing one). Every refusal is counted (cb_refusals) and logged as HAL event 7 (the holder's
+ * token, process, thread, ms held) when the holder changes and then once in 256. */
+volatile LONG cb_hpid,cb_htid,cb_hsince;uint32_t cb_refusals;static LONG cb_logged_h;
+static void event(DWORD cb,DWORD hr,DWORD why,DWORD a,DWORD b,DWORD c);
+/* .737 (review audit #1): a process the DLL never attached in (token 1) takes the lock under a value of its own for each acquisition
+ * (0x80000000 | a serial): two such processes could both take over one dead token-1 holder (swapping 1 for 1 succeeds for both). Such a
+ * holder (or a bare 1) is judged by its process; one killed between the swap and cb_took (cb_hpid still 0) is dead once 0 has been seen
+ * for 1 s (cb_took follows the swap by a few instructions in a live one). */
+#define CB_UNATT(o) ((o)==1||((o)&0x80000000L))
+static volatile LONG cb_zero_since,cb_zero_owner;
+/* its own serial (not tok_next: tokens stay small, below 0x40000000, for the destroy queue's reservations): 0x80000001 to 0xFFFFFFFF */
+static volatile LONG cb_userial;
+static LONG cb_unatt_value(void) {LONG o,n;do{o=cb_userial;n=(LONG)(((DWORD)o+1UL)&0x7FFFFFFFUL);if(!n)n=1;}while(vx_cas(&cb_userial,n,o)!=o);return (LONG)(0x80000000UL|(DWORD)n);}
+static int holder_dead(LONG o,LONG t) {
+ DWORD me=GetCurrentProcessId(),pid=(DWORD)cb_hpid;
+ if(CB_UNATT(o)){
+  if(!pid){DWORD now=GetTickCount();if(cb_zero_owner!=o){cb_zero_owner=o;cb_zero_since=(LONG)now;return 0;}return now-(DWORD)cb_zero_since>1000;}
+  /* under this caller's own ID: a dead program's ID given again, or this process's own thread that took the lock before the DLL attached
+   * in it (v10.470: the HAL used before the attach). They cannot be told apart, so it is taken over only after 5 s held (no live callback
+   * holds the lock that long); a token-1 caller waits */
+  return pid==me?(t!=1&&GetTickCount()-(DWORD)cb_hsince>5000):!owner_alive(pid);}
+ return o!=t&&!token_alive(o);
+}
+static void cb_took(void) {InterlockedExchange(&cb_hpid,(LONG)GetCurrentProcessId());InterlockedExchange(&cb_htid,(LONG)GetCurrentThreadId());InterlockedExchange(&cb_hsince,(LONG)GetTickCount());}
 static int cb_enter(void) {
- LONG t=my_token(),o=vx_cas(&callback_owner,t,0);
- if(!o){forget_drain();return 1;}
- if(o!=t&&!token_alive(o)&&vx_cas(&callback_owner,t,o)==o){cb_takeovers++;reclaim_dead();forget_drain();return 1;}
+ LONG t=my_token(),a=t!=1?t:cb_unatt_value(),o=vx_cas(&callback_owner,a,0);
+ if(!o){cb_took();forget_drain();return 1;}
+ if(holder_dead(o,t)&&vx_cas(&callback_owner,a,o)==o){cb_took();cb_takeovers++;reclaim_dead();forget_drain();return 1;}
+ cb_refusals++;
+ if(o!=cb_logged_h||!(cb_refusals&255)){cb_logged_h=o;event(7,DDERR_WASSTILLDRAWING,(DWORD)o,(DWORD)cb_hpid,(DWORD)cb_htid,GetTickCount()-(DWORD)cb_hsince);}
  return 0;
 }
-static void cb_leave(void) {InterlockedExchange(&callback_owner,0);}
+static void cb_leave(void) {InterlockedExchange(&cb_hpid,0);InterlockedExchange(&callback_owner,0);}
+/* E771: the source line that holds the callback lock and the line last turned away (VXHANG, QueryPhases 638-639; lines of this file or
+ * of an .inc it includes) */
+static volatile uint32_t cb_line_h,cb_line_r,cb_line_last,cb_line_n; /* (cb_line_last, cb_line_n: the last line that took it, and how many have: 644-645) */
+static int cb_enter_l(uint32_t l) {int r=cb_enter();if(r){cb_line_h=l;cb_line_last=l;cb_line_n++;}else cb_line_r=l;return r;}
+static void cb_leave_l(void) {cb_line_h=0;cb_leave();}
+#define cb_enter() cb_enter_l(__LINE__)
+#define cb_leave() cb_leave_l()
 /* v10.466 (review): the runtime's D3DParseUnknownCommand callback is an address in the asking process; the DLL's data is shared by
  * every process, so it is kept per process (16 slots by process id; a slot of a process that ended is taken over) */
 typedef HRESULT (WINAPI *parse_fn)(LPVOID,LPVOID *);
@@ -153,7 +213,6 @@ static volatile DWORD ev_count,ev_ring[16][6];
  * Events are rare (context creation and failures only), so the file write stays out of the per-frame path. */
 /* v10.202: only with HKLM\Software\VX85598 ACCEL_D3D_LOG = 1 (read through the VxD at DriverInit); the event ring is always kept */
 static DWORD event_log_file;
-DWORD vx_d3d_sample_on; /* .511: ACCEL_D3D_SAMPLE (vx_ddraw.c samples the flipping thread) */
 static void event_file(DWORD n,DWORD cb,DWORD hr,DWORD why,DWORD a,DWORD b,DWORD c) {
  char line[160];DWORD w=0;int k;HANDLE f;
  if(!event_log_file)return;
@@ -250,12 +309,16 @@ static uint32_t reclaimed;
 static void reclaim_pid(uint32_t pid) {
  uint32_t j;
  for(j=0;j<TABLES;j++)if(tables[j].local&&tables[j].owner==pid){table_release(&tables[j]);reclaimed++;}
- for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&contexts[j].owner==pid){memset(&contexts[j],0,sizeof(contexts[j]));reclaimed++;}
+ for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&contexts[j].owner==pid){dx8_ctx_gone(contexts[j].handle);memset(&contexts[j],0,sizeof(contexts[j]));reclaimed++;}
+ if(vx_d3d_held()&&(hold_pid==pid?(pid!=GetCurrentProcessId()||!hold_same_tok()):0)){vx_d3d_hold_drop();hold_why[6]++;} /* .737 (audit #12): its held packets too */
+ txk_forget(pid,0,0);dx8_sys_forget(pid,0,0);dx8_buf_forget(0,0,pid); /* E775 (outside audits, HAL-11): its DirectX 8 buffer handles too (only the destroy callbacks forgot them: a program that ended without them left its entries for good) */
 }
 static void reclaim_dead(void) {
  uint32_t j;
  for(j=0;j<TABLES;j++)if(tables[j].local&&!owner_alive(tables[j].owner)){table_release(&tables[j]);reclaimed++;}
- for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&!owner_alive(contexts[j].owner)){memset(&contexts[j],0,sizeof(contexts[j]));reclaimed++;}
+ for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&!owner_alive(contexts[j].owner)){dx8_ctx_gone(contexts[j].handle);memset(&contexts[j],0,sizeof(contexts[j]));reclaimed++;}
+ if(hold_dead()){vx_d3d_hold_drop();hold_why[6]++;} /* .737 (audit #12): a dead holder's packets too */
+ dx8_buf_dead(); /* E775 (HAL-11) */
 }
 static surface_table *table_find(uint32_t owner,uint32_t local,int create) {
  uint32_t j,pass;surface_table *free_slot=0;
@@ -302,9 +365,11 @@ static surface_slot *surface_find(surface_table *t,uint32_t h) {
  * again): no depth surface draws without depth; no target leaves the draws out (why_states) and the clears too, until the next
  * SETRENDERTARGET (the DP2 command or the callback) binds live surfaces. vx_d3d_rt_unbound counts them (QueryPhases 394). */
 uint32_t vx_d3d_rt_unbound;
+/* .737 (review audit #15): the handle and its sync copies go with the description: a new surface given the same handle was bound by
+ * sync_target_keys to the zeroed description (handle unchanged, description equal to the copy), and the next CreateSurfaceEx lost the context */
 static void unbind_surface(context_slot *c,uint32_t key) {
- if(c->target_key==key){memset(&c->core.target,0,sizeof(c->core.target));c->target_key=0;vx_d3d_rt_unbound++;}
- if(c->depth_key==key){memset(&c->core.depth,0,sizeof(c->core.depth));c->depth_key=0;vx_d3d_rt_unbound++;}
+ if(c->target_key==key){memset(&c->core.target,0,sizeof(c->core.target));c->target_key=0;c->core.target_handle=0;c->th_sync=0;memset(&c->td_sync,0,sizeof(c->td_sync));vx_d3d_rt_unbound++;}
+ if(c->depth_key==key){memset(&c->core.depth,0,sizeof(c->core.depth));c->depth_key=0;c->core.depth_handle=0;c->dh_sync=0;memset(&c->dd_sync,0,sizeof(c->dd_sync));vx_d3d_rt_unbound++;}
 }
 static void invalidate_surface(surface_table *t,surface_slot *s,uint32_t why) {
  uint32_t j;
@@ -349,6 +414,7 @@ uint32_t VX_D3D_texture_format(uint32_t f) {
   case VX_RAW_V8U8:return VX3DN_TEX_V8U8;case VX_RAW_L6V5U5:return VX3DN_TEX_L6V5U5;case VX_RAW_X8L8V8U8:return VX3DN_TEX_X8L8V8U8;}
  return 0;
 }
+typedef char vx_raw_formats_apart[(VX_RAW_L8!=VX3DN_ARGB8888&&VX_RAW_DXT1!=VX3DN_ARGB8888&&VX_RAW_1555!=VX3DN_D16&&VX_RAW_4444!=VX3DN_D24S8)?1:-1]; /* .754: the HAL's own format numbers never one of the VxD's (VX_RAW_L8 was 30, VX3DN_ARGB8888) */
 uint32_t VX_D3D_format_bytes(uint32_t f) {return f==VX_RAW_L8?1:(f==VX3DN_RGB565||f==VX3DN_D16||f==VX_RAW_1555||f==VX_RAW_4444||f==VX_RAW_555||f==VX_RAW_V8U8||f==VX_RAW_L6V5U5)?2:4;}
 /* v10.199: a texture's row (of texels, or of 4x4 blocks for DXT: 8 bytes a block for DXT1, 16 for DXT3/5) and number of rows.
  * v10.200: the sampler steps rows at least 32 bytes apart (board, v10.199: an 8x8 L8 texture read black, an 8x8 DXT1 lost its second block
@@ -506,7 +572,7 @@ static void draw_record(const vx3dn_packet *p) {
   r[28]=0xFFFFFFFFUL;for(k=0;k<8;k++)r[32+k]=sig[16+k];}
  r[1]++;r[2]+=p->op==VX3DN_DRAW?packet_triangles(p):0;
  if(r[1]>8)return; /* v10.222: the colour range from a state's first 64 packets (the scan cost a twentieth of the HAL's time); v10.236: 8 (192-vertex packets) */
- for(v=0;v<p->vertex_count;v++){uint32_t c=p->vertices[v].color,s=p->shader.spec[v],sh;
+ for(v=0;v<p->vertex_count&&v<VX3DN_MAX_VERTICES;v++){uint32_t c=p->vertices[v].color,s=p->shader.spec[v],sh; /* .737 (review audit #37): an indexed packet's vertex_count may pass the 192 the arrays hold */
   for(sh=0;sh<32;sh+=8){uint32_t m=0xFFUL<<sh;if((c&m)<(r[28]&m))r[28]=(r[28]&~m)|(c&m);if((c&m)>(r[29]&m))r[29]=(r[29]&~m)|(c&m);if((s&m)>(r[30]&m))r[30]=(r[30]&~m)|(s&m);}}
  (void)w;
 }
@@ -587,6 +653,11 @@ DWORD WINAPI VX_D3D_QuerySlowIo(DWORD *out,DWORD n) { /* v10.414: [0..63] sl_io 
  if(n&0x80000000UL)for(k=0;k<8;k++)for(j=0;j<8;j++)sl_iow[k][j]=0;
  return 64;
 }
+/* .743: CPUID leaf 1's EAX (family, model, stepping) and leaf 0's EBX (the vendor's first four letters) */
+static DWORD hal_cpu1(void);
+#pragma aux hal_cpu1 = 0xB8 0x01 0x00 0x00 0x00 0x0F 0xA2 value [eax] modify exact [eax ebx ecx edx];
+static DWORD hal_cpu0(void);
+#pragma aux hal_cpu0 = 0x33 0xC0 0x0F 0xA2 0x8B 0xC3 value [eax] modify exact [eax ebx ecx edx];
 static uint32_t hal_clock(void);
 /* v10.431: DrawPrimitives2's time in exclusive phases (vx_d3d_core.h VX_PH_*), on while a tool asked for it (VX_D3D_QueryPhases with
  * n | 0x80000000 clears and turns it on, n | 0x40000000 turns it off; off, nothing is read). Per phase: the sum, the switches into it, the
@@ -618,9 +689,27 @@ static void ph_account(uint32_t run0,uint32_t run1) {
 /* .533: VX_D3D_Switch (v10.446-.532: the HAL's switches for an A/B inside one run) removed: no switch is left; a feature under test
  * brings its own back */
 /* .720: VXTLP 6Q's test switches in its own process (vx_d3d_test_set, vx_d3d_core.c) */
-DWORD WINAPI VX_D3D_TestSet(DWORD id,DWORD v) {extern uint32_t vx_d3d_test_set(uint32_t,uint32_t);return vx_d3d_test_set(id,v);}
+/* .736: what a crashed program may leave behind, for VXCRASH (the crash write-up of .733): out[0] the lock's holder token, [1] its process,
+ * [2] its thread, [3] ms held (0 free), [4] refusals, [5] takeovers, [6] the held draws' process (0 none), [7-9] Destroy, DestroyAll and
+ * DestroyDDLocal calls, [10-12] destroys queued, done from the queue, refused (queue full), [13] contexts and tables reclaimed, [14] live
+ * contexts, [15] live surface tables, [16-18] exclusive-mode enters, leaves, leftovers given back, [19-20] the last enter's and leave's
+ * process, [21] the display start's owner (flip_pid). Returns the words written. */
+DWORD WINAPI VX_D3D_CrashStats(DWORD *out,DWORD n) {
+ extern DWORD vx_dd_excl[3],vx_dd_excl_pid[2],VX_DD_flip_pid(void);extern uint32_t vx_d3d_destroys[3],vx_d3d_dq[4];DWORD w[22],k,c=0,t=0;LONG o=callback_owner;
+ if(!out)return 0;
+ for(k=0;k<CONTEXTS;k++)if(contexts[k].handle)c++;for(k=0;k<TABLES;k++)if(tables[k].local)t++;
+ w[0]=(DWORD)o;w[1]=o?(DWORD)cb_hpid:0;w[2]=o?(DWORD)cb_htid:0;w[3]=o?GetTickCount()-(DWORD)cb_hsince:0;w[4]=cb_refusals;w[5]=cb_takeovers;w[6]=vx_d3d_held()?hold_pid:0;
+ w[7]=vx_d3d_destroys[0];w[8]=vx_d3d_destroys[1];w[9]=vx_d3d_destroys[2];w[10]=vx_d3d_dq[0];w[11]=vx_d3d_dq[1];w[12]=vx_d3d_dq[2];w[13]=reclaimed;w[14]=c;w[15]=t;
+ w[16]=vx_dd_excl[0];w[17]=vx_dd_excl[1];w[18]=vx_dd_excl[2];w[19]=vx_dd_excl_pid[0];w[20]=vx_dd_excl_pid[1];w[21]=VX_DD_flip_pid();
+ for(k=0;k<n&&k<22;k++)out[k]=w[k];return k;
+}
+/* .736: VX_D3D_TestSet 0x100 makes the calling process token 1 (its entry in the token table cleared: as a process the DLL never attached in),
+ * for VXCRASH case d (a token-1 holder that dies holding the lock); only that process, until it ends */
+DWORD WINAPI VX_D3D_TestSet(DWORD id,DWORD v) {extern uint32_t vx_d3d_test_set(uint32_t,uint32_t);
+ if(id==0x100){LONG me=(LONG)GetCurrentProcessId(),k;DWORD n=0;for(k=0;k<TOKENS;k++)if(tok_pid[k]==me){tok_val[k]=0;tok_pid[k]=0;n++;}return n;}
+ return vx_d3d_test_set(id,v);}
 DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
- DWORD k,i,reset=n&0x80000000UL,stop=n&0x40000000UL,w[460];extern DWORD vx_lock_result[4];extern DWORD vx_flip_seen[7];extern DWORD vx_init_seen[3];
+ DWORD k,i,reset=n&0x80000000UL,stop=n&0x40000000UL,w[646];extern DWORD vx_lock_result[4];extern DWORD vx_flip_seen[7];extern DWORD vx_init_seen[3];
  /* .572: bit 29 (the test switch of .555-.557, .559-.563 and .567-.569) does nothing: no switch is left; word 343 reads 0. 350-355: the culled pass-through's counters (vx_d3d_core.c vx_d3d_cp) */
  n&=0x00FFFFFFUL;if(!out||!n)return 0; /* .561: the count is the low 24 bits (.559-.560 kept flag bits 24-27 in it: a count of 1 with bit 24 set was answered with every word, over the caller's one-word buffer) */
  w[0]=0x431;w[1]=VX_dd_cpms()/1000UL;w[2]=pc_n;w[270]=vx_d3d_tnl;for(k=0;k<18;k++)w[271+k]=vx_d3d_tlp[k];w[289]=0; /* .534: the T&L probe (vx_d3d_core.c) */{extern uint32_t vx_d3d_tn[12];for(k=0;k<12;k++)w[290+k]=vx_d3d_tn[k];} /* .536: the driver's T&L (vx_d3d_tnl.inc) */
@@ -651,6 +740,9 @@ DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
  for(k=0;k<7;k++)w[356+k]=vx_flip_seen[k]; /* .575: 356-361 the Flip callback's requests (vx_ddraw.c vx_flip_seen: VXFLIPF); .576: 362 refused */
  for(k=0;k<3;k++)w[363+k]=vx_init_seen[k]; /* .581: 363-365 DriverInit (vx_ddraw.c vx_init_seen: VXREG) */
  {extern uint32_t vx_d3d_bad_rec[18];for(k=0;k<18;k++)w[366+k]=vx_d3d_bad_rec[k];} /* .641: 366-383 who made the primitives left out for a bad vertex (vx_d3d_core.c) */
+ {for(k=472;k<=500;k++)w[k]=0;{extern volatile uint32_t vx_d3d_bd[16];for(k=0;k<16;k++)w[472+k]=vx_d3d_bd[k];{extern uint32_t vx_d3d_dx8_tb[8];for(k=0;k<8;k++)w[488+k]=vx_d3d_dx8_tb[k];}} /* E786; E788: 488-495 TEXBLT */ /* E776: free (.752's cached boxes, the HAL's own vertex buffers and the execute-buffer lock count, deleted) */{extern uint32_t vx_d3d_tn_why2[15],vx_d3d_tn_seq[4];for(k=0;k<15;k++)w[501+k]=vx_d3d_tn_why2[k];for(k=0;k<4;k++)w[516+k]=vx_d3d_tn_seq[k];w[520]=rs_probe[0];w[521]=rs_probe[1];{extern uint32_t vx_d3d_tn_matonly[2],vx_d3d_tn_matonly_on;w[522]=vx_d3d_tn_matonly[0];w[523]=vx_d3d_tn_matonly[1];w[524]=vx_d3d_tn_matonly_on;}w[525]=VX_CG;{extern uint32_t vx_d3d_tn_why3[24],vx_d3d_tn_hist[8];for(k=0;k<24;k++)w[526+k]=vx_d3d_tn_why3[k];for(k=0;k<6;k++)w[550+k]=vx_d3d_tn_hist[k];}{w[556]=w[557]=w[558]=w[559]=0;} /* E774: 556-557 were .767's guard band offered to the runtime (gone) */}}
+ {extern uint32_t vx_d3d_dx8_on,vx_d3d_dx8_stat[40];w[560]=vx_d3d_dx8_on;for(k=0;k<40;k++)w[561+k]=vx_d3d_dx8_stat[k];} /* .768 (DX8 DDI): 560 the DirectX 8 DDI as this HAL was built, 561-600 vx_d3d_dx8.inc's counters (DX8S_*) */
+ {extern uint32_t vx_d3d_tn_range[9],vx_d3d_tn_range_on,vx_d3d_tn_qlit_on;for(k=0;k<9;k++)w[601+k]=vx_d3d_tn_range[k];w[610]=vx_d3d_tn_range_on;w[611]=vx_d3d_tn_qlit_on;for(k=612;k<620;k++)w[k]=0;} /* .768 (R1, the T&L reworked): 601-609 the range path's counts (vx_d3d_tnl.inc vx_d3d_tn_range), 610 the path on, 611 tnq_lit on (VXREG RANGE) */ /* .762: 526-549 the full set-ups by the state that differed, 550-555 the T&L's draws by size */ /* .758: 525 the code generation this DLL's core and HAL were compiled for (4 or 6) */ /* .756: 522-524 the material-only set-up */ /* .755: 501-515 why a set-up was a full one, 516-519 how triangles come, 520-521 the render-state array's probes */
  {extern uint32_t vx_d3d_zinf_prims,vx_d3d_tn_dense[4];w[384]=vx_d3d_zinf_prims;for(k=0;k<4;k++)w[385+k]=vx_d3d_tn_dense[k];} /* .642: 384 primitives drawn with an infinite z held to the range; 385-388 the T&L's draws taken in order */
  {extern uint32_t vx_d3d_tn_one;w[389]=vx_d3d_tn_one;} /* .643 */
  {extern uint32_t vx_d3d_tn_setup[3],vx_d3d_tn_plg;for(k=0;k<3;k++)w[390+k]=vx_d3d_tn_setup[k];w[393]=vx_d3d_tn_plg;w[394]=vx_d3d_rt_unbound;}
@@ -658,13 +750,16 @@ DWORD WINAPI VX_D3D_QueryPhases(DWORD *out,DWORD n) {
  {extern uint32_t vx_d3d_drop_st12[10];for(k=0;k<10;k++)w[414+k]=vx_d3d_drop_st12[k];} /* .661: stages 1 and 2 of the last primitive left out */
  {extern uint32_t vx_d3d_tn_nd[4];extern DWORD blt_3d_clip;for(k=0;k<4;k++)w[424+k]=vx_d3d_tn_nd[k];w[428]=blt_3d_clip;{extern uint32_t vx_d3d_tnl_blk_over,vx_d3d_set3_alias;w[429]=vx_d3d_tnl_blk_over;w[430]=vx_d3d_set3_alias;}{extern DWORD blt_3d,blt_3d_rects,blt_sw_n;w[431]=blt_3d;w[432]=blt_3d_rects;w[433]=blt_sw_n;}{extern uint32_t vx_d3d_tn_pre[2],vx_d3d_tn_pcull[3];w[434]=vx_d3d_tn_pre[0];w[435]=vx_d3d_tn_pre[1];w[436]=15; /* .682: the four always on */w[437]=vx_d3d_tn_pcull[0];w[438]=vx_d3d_tn_pcull[1];w[439]=vx_d3d_tn_pcull[2];}} /* .675: 434-435 the corners of clipped triangles lit in groups (draws, corners); .676: 436 ACCEL_D3D_PRECULL (bit 0) and ACCEL_D3D_IXSKIP (bit 1), 437-439 draws culled before lighting, triangles culled there, triangles the packets took without their tests */ /* .670: 431 the stretches by the engine, 432 their clip rectangles, 433 the CPU's blits; .671: 433 a running count (.670 gave the last Blt's flag, blt_sw is cleared at each Blt) */ /* .667: the states not done by cause; the clipped stretches by the engine */
  w[440]=w[441]=w[442]=0; /* .680's engine cull (removed .682) */
- {extern uint32_t vx_d3d_tn_fastix,vx_d3d_tn_fastix_stat[4];w[443]=vx_d3d_tn_fastix;for(k=0;k<4;k++)w[444+k]=vx_d3d_tn_fastix_stat[k];}
+ {extern uint32_t vx_d3d_tn_fastix_stat[4];w[443]=1;{extern uint32_t vx_d3d_tfog,vx_d3d_tfog_n;w[461]=vx_d3d_tfog;w[462]=vx_d3d_tfog_n;w[463]=0;} /* .736: 463 free (ACCEL_D3D_LCULL removed) */ /* .733: 461-462 ACCEL_D3D_TFOG and its set-ups (461-463 free from .729) */for(k=0;k<4;k++)w[444+k]=vx_d3d_tn_fastix_stat[k];}
  {extern uint32_t vx_d3d_gband,vx_d3d_gbs[2],vx_d3d_vcd[3];w[448]=vx_d3d_gband;w[449]=vx_d3d_gbs[0];w[450]=vx_d3d_gbs[1];w[451]=vx_d3d_vcd[0];w[452]=vx_d3d_vcd[1];w[453]=vx_d3d_vcd[2];} /* .703: 453 those draws sent through the triangle pass */ /* .702: 451-452 the band's draws without and with a vertex past the viewport (codes made only then) */ /* .701: 449-450 the T&L's set-ups with and without the band */ /* .698: 448 the guard band (ACCEL_D3D_GUARDBAND, this process); 449-451 (.681's prefetch switch, removed .682) */
- {extern uint32_t vx_d3d_tn_dfr[4];for(k=0;k<4;k++)w[454+k]=vx_d3d_tn_dfr[k];} {extern uint32_t vx_d3d_q1[2];w[458]=vx_d3d_q1[0];w[459]=vx_d3d_q1[1];} /* .723: projected packets with q = 1 sent plain, projected packets left projected */ /* .718: 454-457 the T&L's deferred side planes: draws (triangles, lines), new vertices beyond an x / y edge there */
- if(n>460)n=460;for(k=0;k<n;k++)out[k]=w[k]; /* .534: 270-289 the T&L probe; .536: 290-301 the driver's T&L */ /* .533: 270-273 (.531's kept answers) removed with them */
+ {extern uint32_t vx_d3d_tn_dfr[4];for(k=0;k<4;k++)w[454+k]=vx_d3d_tn_dfr[k];} {extern uint32_t vx_d3d_q1[3];w[458]=vx_d3d_q1[0];w[459]=vx_d3d_q1[1];w[460]=vx_d3d_q1[2];} /* .723: projected packets with q = 1 sent plain, projected packets left projected */ /* .718: 454-457 the T&L's deferred side planes: draws (triangles, lines), new vertices beyond an x / y edge there */
+ {extern uint32_t vx_d3d_tn_cmd_same,vx_d3d_tn_pos_old,vx_d3d_tn_tile[3],vx_d3d_tn_tile_all;w[463]=vx_d3d_tn_cmd_same;w[464]=vx_d3d_tn_pos_old;w[465]=hal_cpu1();w[466]=hal_cpu0();w[467]=0; /* .743: 464-466 which tnk_pos, CPUID 1 EAX, CPUID 0 EBX (.742's culled-span counter removed) */for(k=0;k<3;k++)w[468+k]=vx_d3d_tn_tile[k];w[471]=vx_d3d_tn_tile_all;} /* .742: T&L commands that changed nothing; culled draws' block-path spans; the tile light test */
+ {extern volatile uint32_t vx_d3d_bc[24];for(k=0;k<24;k++)w[620+k]=vx_d3d_bc[k];}
+ {extern volatile DWORD vx_dd_cbid,vx_dd_cbn;w[636]=(DWORD)callback_owner;w[637]=(DWORD)cb_refusals;w[638]=cb_line_h;w[639]=cb_line_r;w[640]=(DWORD)cb_htid;w[641]=(DWORD)cb_hsince;w[642]=vx_dd_cbid;w[643]=vx_dd_cbn;w[644]=cb_line_last;w[645]=cb_line_n;} /* E771: 636 the callback lock's holder, 637 calls turned away, 638-639 the lines, 640-641 the holder's thread and since when, 642-643 the DirectDraw callback entered and the entries */ /* E770: 620-643 where a DrawPrimitives2 call is (vx_d3d_core.c vx_d3d_bc; VXHANG) */
+ if(n>646)n=646;for(k=0;k<n;k++)out[k]=w[k]; /* E771: 646 */ /* E770: 644 */ /* .768: 620 */ /* .763: 556 (.762 grew w[] but left this at 526: VXD3DMON's .762 lines never printed, T762B) */ /* .534: 270-289 the T&L probe; .536: 290-301 the driver's T&L */ /* .533: 270-273 (.531's kept answers) removed with them */
  if(stop){ph_on=0;vx_d3d_geo_on=0;vx_d3d_ftprof=0;}else if(reset){ph_on=1;vx_d3d_geo_on=1;vx_d3d_ftprof=1;vv_fast_n=0;for(k=0;k<32;k++)vx_d3d_ft[k]=0;for(k=0;k<8;k++)vx_d3d_tprof[k]=0;for(k=0;k<24;k++)vx_d3d_geo[k]=0;for(k=0;k<16;k++)vx_d3d_tk[k]=0;{extern uint32_t vx_d3d_px[6];for(k=0;k<6;k++)vx_d3d_px[k]=0;}vx_d3d_pre_stat[0]=vx_d3d_pre_stat[1]=0;
   for(k=0;k<VX_PH_N;k++){ph_sum[k]=ph_cnt[k]=ph_max[k]=ph_calls[k]=0;for(i=0;i<6;i++)ph_h[k][i]=0;}
-  for(k=0;k<6;k++)pc_h[k]=pc_wall[k]=pc_run[k]=pc_runok[k]=pc_pf[k]=pc_pi[k]=0;for(k=0;k<5;k++)pc_sl[k]=0;pc_n=pv_n=pv_in=pv_run=0;for(k=0;k<4;k++)vx_d3d_bad_why[k]=0;vx_d3d_rhw0_prims=0;{extern uint32_t vx_d3d_bad_rec[18],vx_d3d_zinf_prims,vx_d3d_tn_dense[4];for(k=0;k<18;k++)vx_d3d_bad_rec[k]=0;vx_d3d_zinf_prims=0;for(k=0;k<4;k++)vx_d3d_tn_dense[k]=0;{extern uint32_t vx_d3d_tn_one,vx_d3d_tn_setup[3],vx_d3d_tn_plg;vx_d3d_tn_one=0;vx_d3d_tn_setup[0]=vx_d3d_tn_setup[1]=vx_d3d_tn_setup[2]=0;vx_d3d_tn_plg=0;{extern uint32_t vx_d3d_tnp[8],vx_d3d_tn_why[10];for(k=0;k<8;k++)vx_d3d_tnp[k]=0;for(k=0;k<10;k++)vx_d3d_tn_why[k]=0;{extern uint32_t vx_d3d_tn_cdrop;vx_d3d_tn_cdrop=0;}};}}}
+  for(k=0;k<6;k++)pc_h[k]=pc_wall[k]=pc_run[k]=pc_runok[k]=pc_pf[k]=pc_pi[k]=0;for(k=0;k<5;k++)pc_sl[k]=0;pc_n=pv_n=pv_in=pv_run=0;for(k=0;k<4;k++)vx_d3d_bad_why[k]=0;vx_d3d_rhw0_prims=0;{extern uint32_t vx_d3d_bad_rec[18],vx_d3d_zinf_prims,vx_d3d_tn_dense[4];for(k=0;k<18;k++)vx_d3d_bad_rec[k]=0;vx_d3d_zinf_prims=0;for(k=0;k<4;k++)vx_d3d_tn_dense[k]=0;{extern uint32_t vx_d3d_tn_range[9];for(k=0;k<9;k++)vx_d3d_tn_range[k]=0;} /* .768 (R1) */{{extern uint32_t vx_d3d_tn_why2[15],vx_d3d_tn_seq[4];for(k=0;k<15;k++)vx_d3d_tn_why2[k]=0;for(k=0;k<4;k++)vx_d3d_tn_seq[k]=0;rs_probe[0]=rs_probe[1]=0;{extern uint32_t vx_d3d_tn_matonly[2];vx_d3d_tn_matonly[0]=vx_d3d_tn_matonly[1]=0;}}} /* .752 (the bytes held and the on mark stay) */{extern uint32_t vx_d3d_tn_one,vx_d3d_tn_setup[3],vx_d3d_tn_plg;vx_d3d_tn_one=0;vx_d3d_tn_setup[0]=vx_d3d_tn_setup[1]=vx_d3d_tn_setup[2]=0;vx_d3d_tn_plg=0;{extern uint32_t vx_d3d_tnp[8],vx_d3d_tn_why[10];for(k=0;k<8;k++)vx_d3d_tnp[k]=0;for(k=0;k<10;k++)vx_d3d_tn_why[k]=0;{extern uint32_t vx_d3d_tn_cdrop;vx_d3d_tn_cdrop=0;}};}}}
  return n;
 }
 static void busy_wait(uint32_t tries) {
@@ -688,7 +783,7 @@ DWORD WINAPI VX_D3D_QuerySlow(DWORD *out,DWORD n) { /* [0] calls of 10 ms and mo
 }
 static uint32_t native_submit(void *ctx,const vx3dn_packet *p) {
  (void)ctx;tr_packets(p,1); /* v10.420 */if(draw_capture||event_log_file)draw_record(p); /* v10.217; v10.321: only while capture is on */
- return submit_one(p);
+ {extern volatile uint32_t vx_d3d_bc[24];uint32_t r;vx_d3d_bc[2]=50;r=submit_one(p);vx_d3d_bc[14]=r;vx_d3d_bc[2]=51;return r;} /* E770 */
 }
 static uint32_t submit_one(const vx3dn_packet *p) {
  uint32_t rc=VX3DN_LOST,ok,tries=0,start=0,why0=0;
@@ -727,8 +822,8 @@ static uint32_t submit_one(const vx3dn_packet *p) {
  * without the call (the DeviceIoControl fails): the packets one at a time. */
 static int submitn_missing,submitn_worked,submitn_fails;
 static uint32_t native_submit_n(void *ctx,const vx3dn_packet *p,uint32_t n,uint32_t *done) {
- uint32_t out[6],ok,tries=0,start=0,k,rc;
- *done=0;
+ uint32_t out[6],ok,tries=0,start=0,k,rc;extern volatile uint32_t vx_d3d_bc[24];
+ *done=0;vx_d3d_bc[2]=50; /* E770: in the VxD (the core marks its next place when this returns) */
  if(!submitn_missing) {
   if(draw_capture||event_log_file)for(k=0;k<n;k++)draw_record(p+k); /* v10.321: only while capture is on */
   tr_packets(p,n); /* v10.420 */
@@ -782,9 +877,9 @@ static uint32_t hold_send_here(void) {vx_d3d_services s;uint32_t fp[27],rc;memse
 int VX_D3D_hold_sync(DWORD why) {
  DWORD me,t0;const DWORD lim=why<=2?100UL:2000UL;
  if(!vx_d3d_held())return 0;
- me=GetCurrentProcessId();if(hold_pid!=me||hold_tid==GetCurrentThreadId())return 0;
+ me=GetCurrentProcessId();if(!hold_is_me()||hold_tid==GetCurrentThreadId())return 0;
  for(t0=GetTickCount();!cb_enter();){if(GetTickCount()-t0>lim){hold_why[7]++;if(why==3&&vx_d3d_held()&&hold_pid==me)InterlockedExchange(&hold_drop_pid,(LONG)me);return vx_d3d_held()&&hold_pid==me;}Sleep(0);} /* another thread of this process in a callback */
- if(vx_d3d_held()&&hold_pid==me){if(why<8)hold_why[why]++;vx_d3d_hold_stat[4]++;(void)hold_send_here();}
+ if(vx_d3d_held()&&hold_is_me()){if(why<8)hold_why[why]++;vx_d3d_hold_stat[4]++;(void)hold_send_here();}
  cb_leave();
  return 0;
 }
@@ -807,7 +902,7 @@ int VX_D3D_stretch_n(const vx3dn_surface *dst,const RECT *dr,const vx3dn_surface
  if(!dst||!src||!dr||!sr||!shared_hal)return VX2D_SKIP;
  t=*src;by=t.format==VX3DN_RGB565?2:4;
  t.format=src->format==VX3DN_RGB565?VX3DN_TEX_RGB565:src->format==VX3DN_XRGB8888?VX3DN_TEX_XRGB8888:0;
- if(!t.format||dst->format!=src->format||!t.width||!t.height||t.width>2048||t.height>2048||t.pitch!=t.width*by||t.pitch<32||(t.offset&255))return VX2D_SKIP;
+ if(!t.format||dst->format!=src->format||!t.width||!t.height||t.width>2048||t.height>2048||t.pitch!=((t.width*by<32?32UL:t.width*by)+31UL&~31UL)||(t.offset&255))return VX2D_SKIP; /* .726 (outside review of .723): the sampler's own row step, the width's bytes rounded up to 32 (tex_pitch); the width's bytes exactly refused a 39-pixel source of pitch 160 and would have misread one of 156 */
  if(!dst->width||!dst->height||dst->width>2048||dst->height>2048||(dst->pitch&31)||dst->pitch>0x7FE0UL||(dst->offset&255)||dst->width>dst->pitch/by)return VX2D_SKIP;
  if(dr->left<0||dr->top<0||dr->right>(LONG)dst->width||dr->bottom>(LONG)dst->height||dr->right<=dr->left||dr->bottom<=dr->top)return VX2D_SKIP;
  if(sr->left<0||sr->top<0||sr->right>(LONG)t.width||sr->bottom>(LONG)t.height||sr->right<=sr->left||sr->bottom<=sr->top)return VX2D_SKIP;
@@ -874,9 +969,34 @@ static void follow_targets(context_slot *c) {
 }
 /* v10.185: a texture is re-read from its surface object at each use. Its memory can arrive after CreateSurfaceEx (DDSCAPS_ALLOCONLOAD, the
  * DirectX 3/5 IDirect3DTexture::Load path: the DirectX 5 SDK's Tunnel) and the recorded description was then empty or stale. */
+/* E791 (board, E790 on the VX855 and VX900: with the DirectX 8 interface on, the textured draws were left out, reason 400 "texture not
+ * samplable", with the texture's handle bound and its CreateSurfaceEx accepted): what Direct3D 8 passes to CreateSurfaceEx is only good
+ * during that call for a video-memory texture too, as for the buffers (vx_d3d_dx8.inc), and every later use read the surface again
+ * through the kept pointer (resolve, the mip levels, the cube faces, the render-target form, the colour key). For a DirectX 8 context's
+ * call (dx8_live) nothing is read through that pointer any more: the description CreateSurfaceEx stored is used, and what else the draws
+ * need is kept here from that call: the mip levels' places, a cube map's faces, the render-target form, the raw format. */
+#define TXK 512
+typedef struct {uint32_t owner,local,handle,flags,raw,nm,moff[12],nf,foff[6];vx3dn_surface td;} txk_t; /* flags: 1 kept, 2 a render-target texture, 4 a cube map */
+static txk_t txk[TXK];
+static int dx8_live; /* E788: the DrawPrimitives2 call being worked on is a DirectX 8 context's (set around dx8_dp2, under the callback lock) */
+static txk_t *txk_find(uint32_t owner,uint32_t local,uint32_t h) {uint32_t i;for(i=0;i<TXK;i++)if(txk[i].handle==h&&txk[i].owner==owner&&txk[i].local==local)return &txk[i];return 0;}
+static void txk_forget(uint32_t owner,uint32_t local,uint32_t h) {uint32_t i;for(i=0;i<TXK;i++){txk_t *e=&txk[i];if(!e->handle)continue;
+ if(h?(e->handle==h&&e->owner==owner&&e->local==local):local?(e->local==local&&(!owner||e->owner==owner)):e->owner==owner)e->handle=0;}}
+static uint32_t mips_of(DDRAWI_DDRAWSURFACE_LCL *l,uint32_t *off,uint32_t max);
+static uint32_t faces_of(DDRAWI_DDRAWSURFACE_LCL *l,uint32_t *off);
+static void txk_set(uint32_t owner,uint32_t local,DDRAWI_DDRAWSURFACE_LCL *root) {
+ const uint32_t h=root->lpSurfMore->dwSurfaceHandle;txk_t *e=txk_find(owner,local,h);uint32_t i,f=0;const DDPIXELFORMAT *pf;
+ if(!e){for(i=0;i<TXK&&txk[i].handle;i++);if(i==TXK)return;e=&txk[i];}
+ memset(e,0,sizeof(*e));e->owner=owner;e->local=local;e->handle=h;e->flags=1;
+ pf=(root->dwFlags&DDRAWISURF_HASPIXELFORMAT)?&root->lpGbl->ddpfSurface:&shared_hal->ddpf;if(VX_D3D_format(pf,&f))e->raw=f;
+ e->nm=mips_of(root,e->moff,12);
+ if(root->lpSurfMore->ddsCapsEx.dwCaps2&DDSCAPS2_CUBEMAP){e->flags|=4;e->nf=faces_of(root,e->foff);}
+ if(VX_D3D_surface_target(root,&e->td)==2)e->flags|=2;
+}
 static int resolve(void *ctx,uint32_t h,vx3dn_surface *out) {
  context_slot *c=ctx;surface_slot *s=surface_find(table_find(c->owner,c->local,0),h);vx3dn_surface d;
  if(!s)return 0;
+ if(dx8_live){if(!s->desc.format)return 0;*out=s->desc;return 1;} /* E791: as CreateSurfaceEx stored it */
  if(!s->desc.format||VX3DN_IS_TEX(s->desc.format)) { /* v10.215: every texture format (L8, DXT and bump were kept from their first use) */
   DDRAWI_DDRAWSURFACE_LCL *l=(DDRAWI_DDRAWSURFACE_LCL *)s->native_key;
   if(!l||IsBadReadPtr(l,sizeof(*l))||!l->lpGbl||IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))||!VX_D3D_surface(l,&d))return 0;
@@ -884,14 +1004,20 @@ static int resolve(void *ctx,uint32_t h,vx3dn_surface *out) {
  }
  *out=s->desc;return 1;
 }
+/* .726 (outside review of .723): the bound surfaces' identity is taken from their handles only after a bind (the handle or the bound
+ * description changed since the last call). A handle registered again for another surface while the first is still bound kept the
+ * first as the target, but this re-read the key from the handle after every call and the context then followed the new surface's key */
 static void sync_target_keys(context_slot *c) {
  surface_table *t=table_find(c->owner,c->local,0);surface_slot *s;
  if(!c->core.target_handle)return;
- s=surface_find(t,c->core.target_handle);c->target_key=s?s->native_key:0;
- s=surface_find(t,c->core.depth_handle);c->depth_key=s?s->native_key:0;
+ if(c->core.target_handle!=c->th_sync||memcmp(&c->core.target,&c->td_sync,sizeof(c->td_sync))){s=surface_find(t,c->core.target_handle);c->target_key=s?s->native_key:0;c->th_sync=c->core.target_handle;c->td_sync=c->core.target;}
+ if(c->core.depth_handle!=c->dh_sync||memcmp(&c->core.depth,&c->dd_sync,sizeof(c->dd_sync))){s=surface_find(t,c->core.depth_handle);c->depth_key=s?s->native_key:0;c->dh_sync=c->core.depth_handle;c->dd_sync=c->core.depth;}
 }
+static uint32_t dx8_texblt(void *ctx,const uint8_t *at,const uint8_t **next);
 static uint32_t unknown(void *ctx,const uint8_t *at,const uint8_t **next) {
- parse_fn f=parse_unknown_get();uint32_t r;(void)ctx;if(!f)return VX_D3D_UNPARSED;
+ parse_fn f=parse_unknown_get();uint32_t r;
+ if(dx8_live&&at[0]==38)return dx8_texblt(ctx,at,next); /* E788: D3DDP2OP_TEXBLT is the driver's with the DirectX 8 DDI (the core has sent its batch and queue before this call) */
+ if(!f)return VX_D3D_UNPARSED;
  r=(uint32_t)f((LPVOID)at,(LPVOID*)next);
  return r;
 }
@@ -954,32 +1080,79 @@ static DWORD create_impl(vx_ddi_create *p) {
 DWORD WINAPI VX_D3D_Create(vx_ddi_create *p) {
  DWORD rc;uint32_t fp[27];if(!p)return DDHAL_DRIVER_NOTHANDLED;
  if(!cb_enter()){p->dwhContext=0;p->ddrval=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
+ /* .736 (the crash write-up, fix 6): a dead program's contexts, surface tables and held draws given back before a new device is made */
+ reclaim_dead();if(hold_dead()){vx_d3d_hold_drop();hold_why[6]++;}
  save_fp(fp);rc=create_impl(p);restore_fp(fp);diagnostic.creates++;record(1,p->ddrval);cb_leave();
  {extern void VX_DD_lock_image(void);VX_DD_lock_image();} /* v10.432 */
  return rc;
 }
+/* .736 (the crash write-up of .733, fix 2): the destroy callbacks never refuse. They wait for the lock as DestroySurface does (another
+ * process's holder up to 200 ms, this process's 20 ms); if it does not come they queue the work (dq_*, done under the lock at the next
+ * cb_enter, as the surface forget queue is) and answer DD_OK: DirectDraw's clean-up of a dead program (DDHELP) is never told to retry.
+ * Contexts are never cleared without the lock (a live holder may be walking them). dq_kind: 1 a context by handle, 2 every context and
+ * table of a process, 3 a DirectDraw object's (by pDDLcl). vx_d3d_dq: [0] queued, [1] done from the queue, [2] queue full (refused) */
+#define DQ 16
+volatile LONG dq_kind[DQ],dq_a[DQ];uint32_t vx_d3d_dq[4];
+static int cb_wait(void) {uint32_t n;LONG t=my_token();for(n=0;;n++){LONG o;if(cb_enter())return 1;o=callback_owner;if(n>=(o==t?20U:200U))return 0;Sleep(1);}}
+/* .737 (fourth review #5): a slot is reserved with its producer's token (0x40000000 | token; token 1, a process the DLL never attached in,
+ * 0x7FFFFFFF with its process in dq_rpid), not a bare -1: a producer that died between reserving and filling left the slot unusable for
+ * good. The drain gives back a reservation whose producer has ended (vx_d3d_dq[3]). A full queue is no longer answered "still drawing"
+ * (DDHELP would retry for ever): dq_post waits for the lock up to 2 s more (dead holders taken over as always), then answers DD_OK and
+ * counts the destroy as lost (vx_d3d_dq[2]); a dead program's contexts and tables are still reclaimed at the next device (reclaim_dead) */
+volatile LONG dq_rpid[DQ];
+#define DQ_RES 0x40000000L
+#define DQ_RES1 0x7FFFFFFFL
+static int dq_put(LONG kind,LONG a) {uint32_t k;LONG t=my_token(),r=t!=1?(DQ_RES|(t&0x3FFFFFFFL)):DQ_RES1;
+ for(k=0;k<DQ;k++)if(vx_cas(&dq_kind[k],r,0)==0){dq_rpid[k]=(LONG)GetCurrentProcessId();dq_a[k]=a;InterlockedExchange(&dq_kind[k],kind);vx_d3d_dq[0]++;return 1;}
+ return 0;}
+static void dq_do(LONG kind,uint32_t a);
+/* the destroy callbacks' answer when the lock could not be had: queued, or after a longer wait done here, or lost; never a refusal */
+static HRESULT dq_post(LONG kind,LONG a) {uint32_t n;
+ if(dq_put(kind,a))return DD_OK;
+ for(n=0;n<2000;n++){if(cb_enter()){dq_do(kind,(uint32_t)a);cb_leave();return DD_OK;}Sleep(1);}
+ vx_d3d_dq[2]++;return DD_OK;}
+static void hold_end(context_slot *c) {if(vx_d3d_hold_is(&c->core)){hold_why[5]++;if(hold_is_me())(void)hold_send_here();else vx_d3d_hold_drop();}} /* .550 */
+static void destroy_ctx(uint32_t h) {context_slot *s=find(h);if(s){hold_end(s);dx8_ctx_gone(s->handle);memset(s,0,sizeof(*s));}}
+/* .737 (review audit #11, P8): a context destroy queued while the lock was held is done by whichever process drains the queue; find()
+ * matched the drainer's process, so the context was not found, the slot cleared anyway and the context leaked. A handle is (the global
+ * serial << 4) | its slot (create_impl), unique across processes: the drain matches on the handle alone */
+static void destroy_ctx_any(uint32_t h) {uint32_t j;for(j=0;j<CONTEXTS;j++)if(contexts[j].handle==h&&h){hold_end(&contexts[j]);dx8_ctx_gone(contexts[j].handle);memset(&contexts[j],0,sizeof(contexts[j]));return;}}
+static void destroy_pid(uint32_t pid) {uint32_t j;dx8_buf_forget(0,0,pid);dx8_sys_forget(pid,0,0);txk_forget(pid,0,0); /* DX8 DDI */
+ for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&contexts[j].owner==pid){hold_end(&contexts[j]);dx8_ctx_gone(contexts[j].handle);memset(&contexts[j],0,sizeof(contexts[j]));}
+ for(j=0;j<TABLES;j++)if(tables[j].local&&tables[j].owner==pid)table_release(&tables[j]);}
+/* .736 (fix 3): a DirectDraw object's tables and contexts by the object (pDDLcl), whatever process calls: DDHELP runs DestroyDDLocal for a
+ * dead program, and .735 matched GetCurrentProcessId() (DDHELP's), so the dead program's were never found */
+static void destroy_lcl(uint32_t lcl) {uint32_t j;dx8_buf_forget(0,lcl,0);dx8_sys_forget(0,lcl,0);txk_forget(0,lcl,0); /* DX8 DDI */
+ for(j=0;j<TABLES;j++)if(tables[j].local==lcl)table_release(&tables[j]);
+ for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&contexts[j].local==lcl){hold_end(&contexts[j]);dx8_ctx_gone(contexts[j].handle);memset(&contexts[j],0,sizeof(contexts[j]));}}
+static void dq_do(LONG kind,uint32_t a) {if(kind==1)destroy_ctx_any(a);else if(kind==2)destroy_pid(a);else if(kind==3)destroy_lcl(a);}
+static void dq_drain(void) {uint32_t k;for(k=0;k<DQ;k++){LONG kind=dq_kind[k];
+  if(kind>0&&kind<DQ_RES){dq_do(kind,(uint32_t)dq_a[k]);InterlockedExchange(&dq_rpid[k],0);InterlockedExchange(&dq_kind[k],0);vx_d3d_dq[1]++;} /* .765 (audit 11): the slot's reserving pid cleared before the slot is free (a new DQ_RES1 reservation could be taken back on the old, dead pid) */
+  else if(kind>=DQ_RES&&(kind==DQ_RES1?(dq_rpid[k]&&!owner_alive((uint32_t)dq_rpid[k])):!token_alive(kind&0x3FFFFFFFL))){if(kind==DQ_RES1)InterlockedExchange(&dq_rpid[k],0);if(vx_cas(&dq_kind[k],0,kind)==kind)vx_d3d_dq[3]++;}}} /* .765: and a dead reservation's pid cleared before its slot is given back */
+uint32_t vx_d3d_destroys[3]; /* .736: Destroy, DestroyAll, DestroyDDLocal calls (VX_D3D_CrashStats) */
 DWORD WINAPI VX_D3D_Destroy(vx_ddi_destroy *p) {
- context_slot *s;if(!p)return DDHAL_DRIVER_NOTHANDLED;
- if(!cb_enter()){p->ddrval=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
- s=find(p->dwhContext);if(s&&vx_d3d_hold_is(&s->core)){hold_why[5]++;if(hold_pid==GetCurrentProcessId())(void)hold_send_here();else vx_d3d_hold_drop();} /* .550 */
- if(s){memset(s,0,sizeof(*s));p->ddrval=DD_OK;}else p->ddrval=VX_D3D_CONTEXT_BAD;
+ if(!p)return DDHAL_DRIVER_NOTHANDLED;vx_d3d_destroys[0]++;
+ if(!cb_wait()){p->ddrval=dq_post(1,(LONG)p->dwhContext);return DDHAL_DRIVER_HANDLED;}
+ p->ddrval=find(p->dwhContext)?DD_OK:VX_D3D_CONTEXT_BAD;destroy_ctx(p->dwhContext);
  cb_leave();return DDHAL_DRIVER_HANDLED;
 }
 DWORD WINAPI VX_D3D_DestroyAll(vx_ddi_destroy_all *p) {
- uint32_t j;if(!p)return DDHAL_DRIVER_NOTHANDLED;
- if(!cb_enter()){p->ddrval=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
- for(j=0;j<CONTEXTS;j++)if(contexts[j].owner==p->dwPID){if(vx_d3d_hold_is(&contexts[j].core)){hold_why[5]++;if(hold_pid==GetCurrentProcessId())(void)hold_send_here();else vx_d3d_hold_drop();} /* .550 */
-  memset(&contexts[j],0,sizeof(contexts[j]));}
- for(j=0;j<TABLES;j++)if(tables[j].local&&tables[j].owner==p->dwPID)table_release(&tables[j]);
- p->ddrval=DD_OK;cb_leave();return DDHAL_DRIVER_HANDLED;
+ if(!p)return DDHAL_DRIVER_NOTHANDLED;vx_d3d_destroys[1]++;
+ if(!cb_wait()){p->ddrval=dq_post(2,(LONG)p->dwPID);return DDHAL_DRIVER_HANDLED;}
+ destroy_pid(p->dwPID);p->ddrval=DD_OK;cb_leave();return DDHAL_DRIVER_HANDLED;
 }
 typedef struct dp2_source {context_slot *slot;const vx_ddi_dp2 *args;const vx3dn_info *info;uint32_t stride,rt_kind,rt_lost;} dp2_source; /* v10.479: rt_kind = the colour surface dp2_target last resolved is a texture; rt_lost = its wait reported the device lost */
 /* v10.199: a texture's mip chain: level 0 and each attached DDSCAPS_MIPMAP level, read from the surface objects at each use; each level
  * must be the same format at half the size. Returns the number of levels with each level's frame-buffer offset in off[]. */
 static uint32_t dp2_mips(void *ctx,uint32_t h,uint32_t *off,uint32_t max) {
- dp2_source *src=ctx;surface_slot *s=surface_find(table_find(src->slot->owner,src->slot->local,0),h);DDRAWI_DDRAWSURFACE_LCL *l;vx3dn_surface d0,d;uint32_t n=0;
- if(!s||!max)return 0;l=(DDRAWI_DDRAWSURFACE_LCL *)s->native_key;
- if(!l||IsBadReadPtr(l,sizeof(*l))||!l->lpGbl||IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))||!VX_D3D_surface(l,&d0))return 0;
+ dp2_source *src=ctx;surface_slot *s=surface_find(table_find(src->slot->owner,src->slot->local,0),h);
+ if(!s||!max)return 0;
+ if(dx8_live){txk_t *k=txk_find(src->slot->owner,src->slot->local,h);uint32_t n=k?k->nm:0,i;if(n>max)n=max;for(i=0;i<n;i++)off[i]=k->moff[i];return n;} /* E791 */
+ return mips_of((DDRAWI_DDRAWSURFACE_LCL *)s->native_key,off,max);
+}
+static uint32_t mips_of(DDRAWI_DDRAWSURFACE_LCL *l,uint32_t *off,uint32_t max) {
+ vx3dn_surface d0,d;uint32_t n=0;
+ if(!l||!max||IsBadReadPtr(l,sizeof(*l))||!l->lpGbl||IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))||!VX_D3D_surface(l,&d0))return 0;
  off[n++]=d0.offset;d=d0;
  while(n<max) {
   LPATTACHLIST a=l->lpAttachList;DDRAWI_DDRAWSURFACE_LCL *next=0;vx3dn_surface e;uint32_t w=d.width>1?d.width/2:1,hh=d.height>1?d.height/2:1;
@@ -989,12 +1162,87 @@ static uint32_t dp2_mips(void *ctx,uint32_t h,uint32_t *off,uint32_t max) {
  }
  return n;
 }
+/* E788 (board, E787 on the VX855 and VX900, VXDX8 with the DirectX 8 interface on: every draw right but the four textured ones, which drew
+ * the texture's memory as it was allocated): with the DirectX 8 DDI Direct3D 8 loads a managed texture by D3DDP2OP_TEXBLT, from its
+ * system-memory copy (named by the handle CreateSurfaceEx gave) to the video-memory texture; with the DirectX 7 DDI it copies through
+ * DirectDraw's Blt. The system-memory surface's structures are only good inside CreateSurfaceEx (as the buffers', vx_d3d_dx8.inc), so the
+ * memory, pitch and size of each mip level and the pixel format are kept from that call. TEXBLT copies, level by level, the source
+ * rectangle (halved a level) to the destination point; the two must have one pixel format (the runtime sends no other).
+ * vx_d3d_dx8_tb (QueryPhases 488-495): [0] TEXBLT entries, [1] levels copied, [2] source not known, [3] destination not a texture of
+ * ours, [4] formats differ, [5] memory not readable or a rectangle outside, [6] system-memory textures kept now, [7] their table full. */
+#define DX8_SYS 512
+#define DX8_SYS_LV 12
+typedef struct {uint32_t owner,local,handle,n;DDPIXELFORMAT pf;struct {uintptr_t p;uint32_t pitch,w,h;} lv[DX8_SYS_LV];} dx8_sys_t;
+static dx8_sys_t dx8_sys[DX8_SYS];uint32_t vx_d3d_dx8_tb[8];
+static dx8_sys_t *dx8_sys_find(uint32_t owner,uint32_t local,uint32_t h) {uint32_t i;for(i=0;i<DX8_SYS;i++)if(dx8_sys[i].handle==h&&dx8_sys[i].owner==owner&&dx8_sys[i].local==local)return &dx8_sys[i];return 0;}
+static void dx8_sys_forget(uint32_t owner,uint32_t local,uint32_t h) { /* one handle, or all of a DirectDraw local (h 0), or all of a process (local 0 too) */
+ uint32_t i;for(i=0;i<DX8_SYS;i++){dx8_sys_t *e=&dx8_sys[i];if(!e->handle)continue;
+  if(h?(e->handle==h&&e->owner==owner&&e->local==local):local?(e->local==local&&(!owner||e->owner==owner)):e->owner==owner){e->handle=0;vx_d3d_dx8_tb[6]--;}}
+}
+static void dx8_sys_set(uint32_t owner,uint32_t local,DDRAWI_DDRAWSURFACE_LCL *root) {
+ const uint32_t h=root->lpSurfMore->dwSurfaceHandle;dx8_sys_t *e;uint32_t i;DDRAWI_DDRAWSURFACE_LCL *l=root;
+ if(!root->lpGbl->fpVidMem||!(root->ddsCaps.dwCaps&DDSCAPS_TEXTURE)){dx8_sys_forget(owner,local,h);return;}
+ e=dx8_sys_find(owner,local,h);
+ if(!e){for(i=0;i<DX8_SYS&&dx8_sys[i].handle;i++);if(i==DX8_SYS){vx_d3d_dx8_tb[7]++;return;}e=&dx8_sys[i];vx_d3d_dx8_tb[6]++;}
+ memset(e,0,sizeof(*e));e->owner=owner;e->local=local;e->handle=h;
+ e->pf=(root->dwFlags&DDRAWISURF_HASPIXELFORMAT)?root->lpGbl->ddpfSurface:shared_hal->ddpf;
+ while(e->n<DX8_SYS_LV) {
+  LPATTACHLIST a;DDRAWI_DDRAWSURFACE_LCL *next=0;int guard=0;
+  if(!l->lpGbl->fpVidMem||l->lpGbl->lPitch<=0||!l->lpGbl->wWidth||!l->lpGbl->wHeight)break;
+  e->lv[e->n].p=(uintptr_t)l->lpGbl->fpVidMem;e->lv[e->n].pitch=(uint32_t)l->lpGbl->lPitch;e->lv[e->n].w=l->lpGbl->wWidth;e->lv[e->n].h=l->lpGbl->wHeight;e->n++;
+  for(a=l->lpAttachList;a&&!IsBadReadPtr(a,sizeof(*a))&&guard++<64;a=a->lpLink)
+   if(a->lpAttached&&!IsBadReadPtr(a->lpAttached,sizeof(*a->lpAttached))&&(a->lpAttached->ddsCaps.dwCaps&DDSCAPS_MIPMAP)&&a->lpAttached->lpGbl&&!IsBadReadPtr(a->lpAttached->lpGbl,sizeof(*a->lpAttached->lpGbl))&&
+      a->lpAttached->lpGbl->wWidth<l->lpGbl->wWidth+(l->lpGbl->wWidth==1)&&a->lpAttached!=l&&a->lpAttached!=root){next=a->lpAttached;break;} /* (the next smaller level, not the way back up) */
+  if(!next||(next->lpGbl->wWidth>=l->lpGbl->wWidth&&next->lpGbl->wHeight>=l->lpGbl->wHeight))break;
+  l=next;
+ }
+ if(!e->n){e->handle=0;vx_d3d_dx8_tb[6]--;}
+}
+static uint32_t dx8_texblt(void *ctx,const uint8_t *at,const uint8_t **next) {
+ dp2_source *src=ctx;const uint32_t n=(uint32_t)at[2]|((uint32_t)at[3]<<8);uint32_t j;surface_table *t=table_find(src->slot->owner,src->slot->local,0);int waited=0;
+ *next=at+4+(size_t)n*36;
+ for(j=0;j<n;j++) {
+  const uint8_t *e=at+4+j*36;uint32_t dh,sh,lv,f,fs=0,bpp,dxt;int32_t dx,dy,rl,rt,rr,rb;surface_slot *ds;dx8_sys_t *ss;txk_t *k;
+  memcpy(&dh,e,4);memcpy(&sh,e+4,4);memcpy(&dx,e+8,4);memcpy(&dy,e+12,4);memcpy(&rl,e+16,4);memcpy(&rt,e+20,4);memcpy(&rr,e+24,4);memcpy(&rb,e+28,4);
+  vx_d3d_dx8_tb[0]++;
+  ss=dx8_sys_find(src->slot->owner,src->slot->local,sh);if(!ss){vx_d3d_dx8_tb[2]++;continue;}
+  /* E791: the destination from what CreateSurfaceEx left (its description, its levels' places, its raw format), not through its pointer */
+  ds=surface_find(t,dh);k=txk_find(src->slot->owner,src->slot->local,dh);
+  if(!ds||!k||!k->nm||!k->raw||!VX3DN_IS_TEX(ds->desc.format)){vx_d3d_dx8_tb[3]++;continue;}
+  f=k->raw;
+  if(!VX_D3D_format(&ss->pf,&fs)||f!=fs){vx_d3d_dx8_tb[4]++;continue;}
+  dxt=VX_RAW_IS_DXT(f);bpp=dxt?(f==VX_RAW_DXT1?8UL:16UL):VX_D3D_format_bytes(f);if(!bpp){vx_d3d_dx8_tb[4]++;continue;}
+  if(rl<0||rt<0||rr<=rl||rb<=rt||dx<0||dy<0){vx_d3d_dx8_tb[5]++;continue;}
+  if(!waited){uint32_t act=0,rc2=0;(void)call(VX_IOCTL_2D_ACCESS,&act,4,&rc2,4);waited=1;} /* the engine idle before the texture's memory changes (as a Lock waits) */
+  for(lv=0;lv<ss->n&&lv<k->nm;lv++) {
+   const uint32_t dw=ds->desc.width>>lv?ds->desc.width>>lv:1,dhh=ds->desc.height>>lv?ds->desc.height>>lv:1,dpitch=VX_D3D_texture_pitch(f,dw),spitch=dxt?VX_D3D_texture_packed(f,ss->lv[lv].w):ss->lv[lv].pitch;
+   uint32_t x0=(uint32_t)rl>>lv,y0=(uint32_t)rt>>lv,x1=((uint32_t)rr+(1UL<<lv)-1)>>lv,y1=((uint32_t)rb+(1UL<<lv)-1)>>lv,ox=(uint32_t)dx>>lv,oy=(uint32_t)dy>>lv,w,h,rowb,y;const uint8_t *sp;uint8_t *dp;
+   if(x1>ss->lv[lv].w)x1=ss->lv[lv].w;if(y1>ss->lv[lv].h)y1=ss->lv[lv].h;
+   if(x0>=x1||y0>=y1||ox>=dw||oy>=dhh){if(!lv)vx_d3d_dx8_tb[5]++;continue;}
+   w=x1-x0;h=y1-y0;if(w>dw-ox)w=dw-ox;if(h>dhh-oy)h=dhh-oy;
+   if(dxt){x0/=4;y0/=4;ox/=4;oy/=4;w=(w+3)/4;h=(h+3)/4;} /* blocks of 4 x 4 */
+   rowb=w*bpp;
+   if(k->moff[lv]>=src->info->fb_bytes||(size_t)(oy+h)*dpitch>src->info->fb_bytes-k->moff[lv]){vx_d3d_dx8_tb[5]++;break;}
+   sp=(const uint8_t*)ss->lv[lv].p+(size_t)y0*spitch+(size_t)x0*bpp;
+   dp=(uint8_t*)(uintptr_t)(shared_hal->vramLinear+k->moff[lv])+(size_t)oy*dpitch+(size_t)ox*bpp;
+   if(IsBadReadPtr(sp,rowb)||IsBadReadPtr(sp+(size_t)(h-1)*spitch,rowb)){vx_d3d_dx8_tb[5]++;break;}
+   for(y=0;y<h;y++)memcpy(dp+(size_t)y*dpitch,sp+(size_t)y*spitch,rowb);
+   vx_d3d_dx8_tb[1]++;
+  }
+ }
+ return 0;
+}
 /* v10.214: a cube map's faces (T150): the root (+X) and the other five faces attached to it, each the root's format and size; mip
  * sublevels are skipped. Returns 6 with the offsets in +X -X +Y -Y +Z -Z order, 0 for a texture that is not a cube map, 0xFFFFFFFF for a
  * cube map whose faces cannot be sampled together. */
 static uint32_t dp2_faces(void *ctx,uint32_t h,uint32_t *off) {
- dp2_source *src=ctx;surface_slot *s=surface_find(table_find(src->slot->owner,src->slot->local,0),h);DDRAWI_DDRAWSURFACE_LCL *l,*f[6];vx3dn_surface d0,e;uint32_t k,found=0;
- if(!s)return 0;l=(DDRAWI_DDRAWSURFACE_LCL *)s->native_key;
+ dp2_source *src=ctx;surface_slot *s=surface_find(table_find(src->slot->owner,src->slot->local,0),h);
+ if(!s)return 0;
+ if(dx8_live){txk_t *k=txk_find(src->slot->owner,src->slot->local,h);uint32_t i;if(!k||!(k->flags&4))return 0;if(k->nf!=6)return 0xFFFFFFFFUL;for(i=0;i<6;i++)off[i]=k->foff[i];return 6;} /* E791 */
+ return faces_of((DDRAWI_DDRAWSURFACE_LCL *)s->native_key,off);
+}
+static uint32_t faces_of(DDRAWI_DDRAWSURFACE_LCL *l,uint32_t *off) {
+ DDRAWI_DDRAWSURFACE_LCL *f[6];vx3dn_surface d0,e;uint32_t k,found=0;
  if(!l||IsBadReadPtr(l,sizeof(*l))||!l->lpSurfMore||IsBadReadPtr(l->lpSurfMore,sizeof(*l->lpSurfMore))||!(l->lpSurfMore->ddsCapsEx.dwCaps2&DDSCAPS2_CUBEMAP))return 0;
  if(!l->lpGbl||IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))||!VX_D3D_surface(l,&d0))return 0xFFFFFFFFUL;
  for(k=0;k<6;k++)f[k]=0;
@@ -1014,7 +1262,7 @@ static uint32_t dp2_faces(void *ctx,uint32_t h,uint32_t *off) {
 /* v10.197: a texture's source colour key (SetColorKey DDCKEY_SRCBLT), read from its surface object at each use */
 static int dp2_colorkey(void *ctx,uint32_t h,uint32_t *key) {
  dp2_source *src=ctx;surface_slot *s=surface_find(table_find(src->slot->owner,src->slot->local,0),h);DDRAWI_DDRAWSURFACE_LCL *l;
- if(!s)return 0;l=(DDRAWI_DDRAWSURFACE_LCL *)s->native_key;
+ if(!s||dx8_live)return 0;l=(DDRAWI_DDRAWSURFACE_LCL *)s->native_key; /* E791: Direct3D 8 has no colour key (and its surface pointer is not kept good) */
  if(!l||IsBadReadPtr(l,sizeof(*l))||!(l->dwFlags&DDRAWISURF_HASCKEYSRCBLT))return 0;
  *key=l->ddckCKSrcBlt.dwColorSpaceLowValue;return 1;
 }
@@ -1031,6 +1279,13 @@ static int dp2_target(void *ctx,uint32_t h,vx3dn_surface *out) {
  DDRAWI_DDRAWSURFACE_LCL *l=s?(DDRAWI_DDRAWSURFACE_LCL *)s->native_key:0;
  int resolved=0;
  src->rt_kind=0;
+ if(dx8_live) { /* E791: from what CreateSurfaceEx left */
+  txk_t *k=s?txk_find(c->owner,c->local,h):0;
+  if(k&&(k->flags&2)) {
+   *out=k->td;resolved=native_surface(out,src->info);
+   if(resolved){src->rt_kind=1;if(c->rt_tex&&h==c->core.target_handle&&!memcmp(out,&c->core.target,sizeof(*out)))return 1;}
+  } else if(s)resolved=dp2_resolve(ctx,h,out);
+ } else
  if(l&&!IsBadReadPtr(l,sizeof(*l))&&l->lpGbl&&!IsBadReadPtr(l->lpGbl,sizeof(*l->lpGbl))&&(l->ddsCaps.dwCaps&DDSCAPS_TEXTURE)) {
   resolved=VX_D3D_surface_target(l,out)==2&&native_surface(out,src->info);
   if(resolved) {
@@ -1074,16 +1329,27 @@ static uint32_t bind_vertices(void *ctx,vx_d3d_input *in) {
  * pixel-pipeline states below are taken from the array when they disagree and the array's value changed since the end of the last call
  * (a runtime that does not keep the array changes nothing then). Not for execute buffers (the HAL keeps the array itself then).
  * ACCEL_D3D_RSSYNC (default 1); cb 99 in C:\VXD3D.LOG (ACCEL_D3D_LOG): the state, the context's value, the array's. */
-static const unsigned char rs_sync_ids[]={7,8,9,14,15,19,20,22,23,24,25,26,27,29,52,53,54,55,56,57,58,59,60};
+/* .726 (outside review of .723): the fog states (FOGENABLE 28, FOGCOLOR 34, FOGTABLEMODE 35, FOGSTART / END / DENSITY 36-38) and, where the
+ * runtime's array reaches them (172 entries), FOGVERTEXMODE 140, COLORWRITEENABLE 168 and BLENDOP 171: a dropped change to them stayed out
+ * of step as the others' did */
+struct context_slot;static const void *rs_ck_c;static const DWORD *rs_ck_r;static unsigned rs_ck_lim; /* .755 */
+static const unsigned char rs_sync_ids[]={7,8,9,14,15,19,20,22,23,24,25,26,27,28,29,34,35,36,37,38,52,53,54,55,56,57,58,59,60,140,168,171};
 static void rs_resync(context_slot *c,const vx_ddi_dp2 *p) {
- const DWORD *r=(const DWORD*)p->lpdwRStates;unsigned k;
- if(!(vx_d3d_feat&VX_F_RSSYNC)||p->ddrval!=DD_OK||(p->dwFlags&2)||!r||IsBadReadPtr(r,64*4)||c->core.recording)return;
- for(k=0;k<sizeof(rs_sync_ids);k++){unsigned id=rs_sync_ids[k];DWORD v=r[id];
-  if(c->rt_ok&&v!=c->rt_prev[id]&&c->core.state.rs[id]!=v){VX_D3D_trace(99,0,id,c->core.state.rs[id],v,0);vx_d3d_state_adopt(&c->core,id,v);}
+ const DWORD *r=(const DWORD*)p->lpdwRStates;unsigned k,lim;
+ /* .755 (outside review, speed): the runtime's render-state array was probed twice (IsBadReadPtr over 64 and 172 words) in every
+  * DrawPrimitives2 call, some 720 a frame in pursuit. It is the device's own array: the same address for the life of the context. The
+  * answer is kept for (context, address) once the context has been through here (rt_ok), and asked again when either changes.
+  * rs_probe: [0] calls answered from the kept answer, [1] calls that probed. */
+ if(!(vx_d3d_feat&VX_F_RSSYNC)||p->ddrval!=DD_OK||(p->dwFlags&2)||!r||c->core.recording)return;
+ if(c->rt_ok&&rs_ck_c==c&&rs_ck_r==r){lim=rs_ck_lim;rs_probe[0]++;}
+ else{rs_ck_c=0;if(IsBadReadPtr(r,64*4))return;lim=IsBadReadPtr(r,172*4)?64U:172U;rs_ck_c=c;rs_ck_r=r;rs_ck_lim=lim;rs_probe[1]++;}
+ for(k=0;k<sizeof(rs_sync_ids);k++){unsigned id=rs_sync_ids[k];DWORD v;if(id>=lim)continue;v=r[id];
+  if(c->rt_ok&&v!=c->rt_prev[id]&&c->core.state.rs[id]!=((id==14||id==15||id==27)?(DWORD)(v!=0):v)){ /* E781 (outside audit, HAL-14): against the value as the core keeps it (a TRUE that is not 1 was adopted again, with a template reset, though nothing had changed) */VX_D3D_trace(99,0,id,c->core.state.rs[id],v,0);vx_d3d_state_adopt(&c->core,id,v);}
   c->rt_prev[id]=v;}
  c->rt_ok=1;
 }
 #include "vx_d3d_rec.inc" /* .517: the DrawPrimitives2 recorder */
+#include "vx_d3d_dx8.inc" /* DX8 DDI: the DirectX 8 DDI */
 static DWORD dp2_impl(vx_ddi_dp2 *p,uint32_t stride) {
  context_slot *c=find(p->dwhContext);vx_d3d_input in;vx_d3d_services sv;vx3dn_info info={0};dp2_source source;
  uint32_t command_size,error=0;
@@ -1107,20 +1373,23 @@ static DWORD dp2_impl(vx_ddi_dp2 *p,uint32_t stride) {
  sv.context=&source;sv.submit=native_submit;sv.resolve=dp2_resolve;sv.unknown=unknown;sv.bind_vertices=bind_vertices;sv.colorkey=dp2_colorkey;sv.mips=dp2_mips;sv.faces=dp2_faces;sv.submit_n=native_submit_n; /* v10.276 */
  sv.target=vx_d3d_rttex?dp2_target:0;sv.target_done=vx_d3d_rttex?dp2_target_done:0;source.rt_kind=source.rt_lost=0; /* v10.456; v10.479: target_done */
  sv.volume=0; /* v10.317: volume textures are the ICD's (Direct3D 7 has none) */
- if(vxr_state)(void)vxr_call(c,&in,&sv); /* .517: the recorder (VXD3DMON REC=n) */
+ {const int dx8=vx_d3d_dx8_on&&dx8_context(dx8_of(c),in.commands,in.command_bytes); /* DX8 DDI: a DirectX 8 context's call goes through vx_d3d_dx8.inc */
+ if(vxr_state&&!dx8)(void)vxr_call(c,&in,&sv); /* .517: the recorder (VXD3DMON REC=n); DX8 DDI: DirectX 7 calls only (its replay reads DirectX 7 tokens) */
  {uint32_t th=c->core.target_handle,to=c->core.target.offset;
  #define TRZ(c) ((c)->core.state.rs[7]&255|((c)->core.state.rs[14]&255)<<8|((c)->core.state.rs[23]&255)<<16)
  /* v10.421: the last detail is the runtime's render-state array (lpdwRStates) for the same three states, 0xFFFFFFFF when unreadable */
  if(event_log_file&&tr_n<3000){const DWORD *r=(const DWORD*)p->lpdwRStates;DWORD rz=r&&!IsBadReadPtr(r,24*4)?(r[7]&255)|(r[14]&255)<<8|(r[23]&255)<<16:0xFFFFFFFFUL;
   tr_zw[0]=tr_zw[1]=0;vx_d3d_rs_hook=tr_rs;VX_D3D_trace(90,0,TRZ(c),p->dwCommandLength,p->dwFlags,rz);} /* v10.420 */
  {uint32_t ln=vx_d3d_lost_n; /* .539: a submit failure that lost the context (vx_d3d_submit_result) counted: reason 26, the opcode in bits 16-23 */
- p->ddrval=(HRESULT)vx_d3d_dp2(&c->core,&in,&sv,&error);p->dwErrorOffset=p->dwCommandOffset+error;
+ {extern volatile uint32_t vx_d3d_bc[24];vx_d3d_bc[10]=GetTickCount();vx_d3d_bc[0]=1;
+ dx8_live=dx8;p->ddrval=(HRESULT)(dx8?dx8_dp2(c,p,&in,&sv,&source,&error):vx_d3d_dp2(&c->core,&in,&sv,&error));dx8_live=0;p->dwErrorOffset=p->dwCommandOffset+error;
+ vx_d3d_bc[11]=(uint32_t)p->ddrval;if(p->ddrval){vx_d3d_bc[12]++;vx_d3d_bc[13]=error;}vx_d3d_bc[0]=0;} /* E770: VXHANG's words */
  if(vx_d3d_lost_n!=ln)note_lost(0x26,(vx_d3d_lost_rc&0x8000FFFFUL)|((error<in.command_bytes?(uint32_t)in.commands[error]:0)&255)<<16);}
  if(source.rt_lost&&p->ddrval!=DD_OK)p->ddrval=DDERR_SURFACELOST; /* v10.479: dp2_target's wait reported the device lost */
  rs_resync(c,p); /* v10.428 */
  if(vx_d3d_rs_hook){vx_d3d_rs_hook=0;VX_D3D_trace(92,(DWORD)p->ddrval,TRZ(c),tr_zw[0],tr_zw[1],error);}
  if(c->core.target_handle!=th||c->core.target.offset!=to){draw_shade[4]++;draw_shade[5]=c->core.target_handle;draw_shade[6]=c->core.target.offset;} /* v10.168: render-target changes (VXDX7 --flip) */
- draw_shade[7]=c->core.target.offset;}
+ draw_shade[7]=c->core.target.offset;}}
  sync_target_keys(c);
  diagnostic.last_offset=p->dwErrorOffset;
  diagnostic.last_opcode=error<in.command_bytes?in.commands[error]:0;
@@ -1144,8 +1413,8 @@ DWORD WINAPI VX_D3D_DP2(vx_ddi_dp2 *p) {
   p->ddrval=DDERR_WASSTILLDRAWING;p->dwErrorOffset=p->dwCommandOffset;VX_frame_add(0,VX_hal_tsc()-ft);return DDHAL_DRIVER_HANDLED;}
  {uint32_t ce=VX_hal_tsc()-ft;sl_on=1;sl_ioctl=0;sl_tries=0;sl_why=0;sl_calls=0;sl_sleeps=0;sl_busy_t=ce;{int q;for(q=0;q<8;q++)sl_io[q]=0;}sl_pv=0; /* v10.387: sl_busy_t holds the cb_enter wait until the end */}
  {uint32_t ce=VX_hal_tsc()-ft;vx_d3d_phclock=ph_on?hal_clock:0;if(vx_d3d_phclock){vx_d3d_ph_begin(VX_PH_PROF);ph_r0=(pc_n&15)?0xFFFFFFFFUL:ph_run_ms(0);VX_PH(VX_PH_HAL);vx_d3d_ph_call[VX_PH_ADMIT]=ce;}} /* v10.431 */
- vx_d3d_clock=hal_clock;vx_d3d_ck_begin(); /* v10.390 */
- if(vx_d3d_held()&&hold_pid!=dp2_pid&&!owner_alive(hold_pid)){vx_d3d_hold_drop();hold_why[6]++;} /* .550: a gone process's held packets */
+ vx_d3d_clock=(ph_on||event_log_file)?hal_clock:0;vx_d3d_ck_begin(); /* v10.390; .757: only while a monitor has the phases on or the event log is on (a slow call kept without one has no per-command times) */
+ if(hold_dead()){vx_d3d_hold_drop();hold_why[6]++;} /* .550: a gone process's held packets (.737: by process and token) */
  hold_tid=GetCurrentThreadId(); /* .550 */
  {uint32_t t0=HPT(),d;save_fp(fp);rc=dp2_impl(p,stride);restore_fp(fp);vx_d3d_ck_end();d=HPT()-t0;diagnostic.dp2++;hal_prof[0]++;hal_prof[1]+=(d+128)>>8;HLAT(&hal_lat[0],d);}
  /* v10.189: D3DERR_COMMAND_UNPARSED is the protocol, not a failure: D3DIM.DLL passes a DirectX 3/5 execute buffer straight to DrawPrimitives2
@@ -1158,7 +1427,7 @@ DWORD WINAPI VX_D3D_DP2(vx_ddi_dp2 *p) {
    if(d8>sl_worst[lo][0]){sl_worst[lo][0]=d8;sl_worst[lo][1]=sl_busy_t>>8;sl_worst[lo][2]=sl_ioctl;sl_worst[lo][3]=sl_calls;sl_worst[lo][4]=sl_tries;sl_worst[lo][5]=0;sl_worst[lo][6]=sl_sleeps;sl_worst[lo][7]=sl_why;{int q;for(q=0;q<8;q++)sl_iow[lo][q]=sl_io[q];}
     {uint32_t j,q,u[3]={64,64,64};for(q=0;q<3;q++){uint32_t best=64;for(j=0;j<64;j++)if(j!=u[0]&&j!=u[1]&&vx_d3d_op_t[j]&&(best==64||vx_d3d_op_t[j]>vx_d3d_op_t[best]))best=j;u[q]=best;
      sl_ops[lo][q*2]=best==64?0xFFFFFFFFUL:best|vx_d3d_op_n[best]<<8;sl_ops[lo][q*2+1]=best==64?0:vx_d3d_op_t[best]>>8;}}}}}
- hold_tid=0;if(vx_d3d_held())hold_pid=dp2_pid; /* .550 */
+ hold_tid=0;if(vx_d3d_held())hold_mark(); /* .550; .737: from this thread, not the shared dp2_pid */
  if(vx_d3d_phclock){uint32_t r1;VX_PH(VX_PH_PROF);r1=ph_r0==0xFFFFFFFFUL?0xFFFFFFFFUL:ph_run_ms(1);vx_d3d_ph_end(); /* .524: the thread's run time read for every 16th call only (two VxD calls a call were about 13 ms of a slow frame while VXD3DMON watched) */vx_d3d_phclock=0;ph_account(ph_r0,r1);} /* v10.431 */
  cb_leave();VX_frame_add(0,VX_hal_tsc()-ft);return rc;
 }
@@ -1191,19 +1460,29 @@ static DWORD WINAPI create_surface_ex(LPDDHAL_CREATESURFACEEXDATA p) {
  LPATTACHLIST a;
  if(!p)return DDHAL_DRIVER_NOTHANDLED;p->ddRVal=DDERR_INVALIDPARAMS;
  root=p->lpDDSLcl;
- if(!p->lpDDLcl||!root||!root->lpGbl||!root->lpSurfMore||!root->lpSurfMore->dwSurfaceHandle)return DDHAL_DRIVER_HANDLED;
+ if(!p->lpDDLcl||!root||!root->lpGbl||!root->lpSurfMore||!root->lpSurfMore->dwSurfaceHandle){if(vx_d3d_dx8_on&&root&&(root->ddsCaps.dwCaps&DDSCAPS_TEXTURE))event(43,0,root->ddsCaps.dwCaps,(DWORD)root->lpGbl,(DWORD)root->lpSurfMore,0);return DDHAL_DRIVER_HANDLED;}
  if(!cb_enter()){p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
+ /* E790: with the DirectX 8 interface on, every texture announced here goes to the event ring (callback 41: caps, handle, memory; 42: pixel
+  * format flags | bits << 24, red mask or FOURCC, w << 16 | h, pitch), so VXDX8 can print what Direct3D 8 passed for its texture */
+ if(vx_d3d_dx8_on&&(root->ddsCaps.dwCaps&DDSCAPS_TEXTURE)){const DDPIXELFORMAT *f2=(root->dwFlags&DDRAWISURF_HASPIXELFORMAT)?&root->lpGbl->ddpfSurface:0;
+  event(41,0,root->ddsCaps.dwCaps,root->lpSurfMore->dwSurfaceHandle,(DWORD)root->lpGbl->fpVidMem,root->lpSurfMore->ddsCapsEx.dwCaps2);
+  event(42,0,f2?(f2->dwFlags|(f2->dwRGBBitCount<<24)):0xFFFFFFFFUL,f2?((f2->dwFlags&(DDPF_FOURCC|DDPF_D3DFORMAT))?f2->dwFourCC:f2->dwRBitMask):0,((DWORD)root->lpGbl->wWidth<<16)|root->lpGbl->wHeight,(DWORD)root->lpGbl->lPitch);}
  t=table_find(owner,(uint32_t)p->lpDDLcl,0);
  /* .536 (board, GTA3 with ACCEL_D3D_TNL: the context lost, reason 20, as gameplay began, then every DrawPrimitives2 call SURFACELOST and
   * the same frame shown over and over): a vertex buffer (an execute buffer) is not a texture or a target. Direct3D 8's hardware vertex
   * processing creates and releases them through CreateSurfaceEx with handles numbered apart from the textures' and targets', so a vertex
   * buffer's handle found the render target's slot and invalidated the context. This DirectX 7 DDI never names a vertex buffer by handle
   * (DrawPrimitives2 passes lpDDVertex): they are left out of the table. */
- if(root->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER){p->ddRVal=DD_OK;goto surface_done;}
+ /* DX8 DDI: with the DirectX 8 DDI the vertex and index buffers are named by these handles (SETSTREAMSOURCE, SETINDICES, BUFFERBLT): kept in
+  * their own table (vx_d3d_dx8.inc), read again at each use; a zero address forgets one */
+ if(root->ddsCaps.dwCaps&DDSCAPS_EXECUTEBUFFER){p->ddRVal=DD_OK;
+  if(vx_d3d_dx8_on&&!dx8_buf_set(owner,(uint32_t)p->lpDDLcl,root->lpSurfMore->dwSurfaceHandle,root->lpGbl->fpVidMem?(uintptr_t)root:0))p->ddRVal=DDERR_OUTOFMEMORY;
+  goto surface_done;}
  /* System-memory formats belong to the runtime/reference rasterizer. Do not
   * fail them. A zero fpVidMem is a disassociation only for system memory;
   * a video surface with fpVidMem==0 is not a destruction notification. */
  if(root->ddsCaps.dwCaps&DDSCAPS_SYSTEMMEMORY) {
+  if(vx_d3d_dx8_on)dx8_sys_set(owner,(uint32_t)p->lpDDLcl,root); /* E788: a texture's system-memory copy, for TEXBLT */
   s=surface_find(t,root->lpSurfMore->dwSurfaceHandle);
   if(s){invalidate_surface(t,s,1);memset(s,0,sizeof(*s));}
   p->ddRVal=DD_OK;goto surface_done;
@@ -1211,6 +1490,7 @@ static DWORD WINAPI create_surface_ex(LPDDHAL_CREATESURFACEEXDATA p) {
  /* v10.185: a texture without memory yet (DDSCAPS_ALLOCONLOAD: it is allocated by IDirect3DTexture::Load) is recorded now and described
   * at its first use (resolve). It was skipped, so its handle never resolved and every draw with it failed. */
  if(!root->lpGbl->fpVidMem) {
+  if(vx_d3d_dx8_on)txk_forget(owner,(uint32_t)p->lpDDLcl,root->lpSurfMore->dwSurfaceHandle); /* E791: what was kept for this handle is no longer its texture */
   if(!(root->ddsCaps.dwCaps&DDSCAPS_TEXTURE)){p->ddRVal=DD_OK;goto surface_done;}
   if(!t)t=table_find(owner,(uint32_t)p->lpDDLcl,1);
   if(!t){p->ddRVal=DDERR_OUTOFMEMORY;event(6,p->ddRVal,0x15,root->ddsCaps.dwCaps,used_blocks,0);goto surface_done;}
@@ -1258,7 +1538,9 @@ static DWORD WINAPI create_surface_ex(LPDDHAL_CREATESURFACEEXDATA p) {
  for(j=0;j<n;j++) {
   s=surface_find(t,handles[j]);
   if(!s)for(k=0;k<t->blocks*BLOCK_SURFACES;k++)if(!table_at(t,k)->handle){s=table_at(t,k);break;}
-  if(s->handle&&(s->native_key!=(uint32_t)nodes[j]||memcmp(&s->desc,&desc[j],sizeof(desc[j]))))invalidate_surface(t,s,3);
+  /* .726 (outside review of .723): only the same surface with other storage loses a context bound to it; a handle registered for another
+   * surface leaves the surface it named alive and bound (it is unbound when destroyed, DestroySurface; the handle's next bind takes the new one) */
+  if(s->handle&&s->native_key==(uint32_t)nodes[j]&&memcmp(&s->desc,&desc[j],sizeof(desc[j])))invalidate_surface(t,s,3);
   /* ContextCreate can precede the first CreateSurfaceEx. In that case
    * no previous table entry exists to compare with the live descriptor. */
   for(k=0;k<CONTEXTS;k++) {
@@ -1269,6 +1551,7 @@ static DWORD WINAPI create_surface_ex(LPDDHAL_CREATESURFACEEXDATA p) {
       (c->depth_key==(uint32_t)nodes[j]&&memcmp(&c->core.depth,&desc[j],sizeof(desc[j]))))){c->core.lost=1;note_lost(0x21,(DWORD)nodes[j]);}
   }
   s->handle=handles[j];s->native_key=(uint32_t)nodes[j];s->desc=desc[j];
+  if(vx_d3d_dx8_on&&!j&&(root->ddsCaps.dwCaps&DDSCAPS_TEXTURE))txk_set(owner,(uint32_t)p->lpDDLcl,root); /* E791 */
  }
  p->ddRVal=DD_OK;
 surface_done:
@@ -1283,11 +1566,9 @@ static DWORD WINAPI get_driver_state(LPDDHAL_GETDRIVERSTATEDATA p) {
  p->ddRVal=DDERR_UNSUPPORTED;return DDHAL_DRIVER_HANDLED;
 }
 static DWORD WINAPI destroy_local(LPDDHAL_DESTROYDDLOCALDATA p) {
- uint32_t j,owner=GetCurrentProcessId();surface_table *t;if(!p)return DDHAL_DRIVER_NOTHANDLED;
- if(!cb_enter()){p->ddRVal=DDERR_WASSTILLDRAWING;return DDHAL_DRIVER_HANDLED;}
- t=table_find(owner,(uint32_t)p->pDDLcl,0);if(t)table_release(t);
- for(j=0;j<CONTEXTS;j++)if(contexts[j].local==(uint32_t)p->pDDLcl&&contexts[j].owner==owner){if(vx_d3d_hold_is(&contexts[j].core)){hold_why[5]++;if(hold_pid==owner)(void)hold_send_here();else vx_d3d_hold_drop();} /* .550 */
-  memset(&contexts[j],0,sizeof(contexts[j]));}
+ if(!p)return DDHAL_DRIVER_NOTHANDLED;vx_d3d_destroys[2]++;
+ if(!cb_wait()){p->ddRVal=dq_post(3,(LONG)p->pDDLcl);return DDHAL_DRIVER_HANDLED;} /* .736: fixes 2 and 3 */
+ destroy_lcl((uint32_t)p->pDDLcl);
  p->ddRVal=DD_OK;cb_leave();return DDHAL_DRIVER_HANDLED;
 }
 /* v10.466 (review): DestroySurface answered DDERR_WASSTILLDRAWING when the callback lock was held, and DirectDraw freed the surface
@@ -1297,26 +1578,32 @@ static DWORD WINAPI destroy_local(LPDDHAL_DESTROYDDLOCALDATA p) {
 #define FQ 32
 volatile LONG fq_pid[FQ],fq_ptr[FQ];uint32_t fq_queued,fq_full; /* not static: the linked checks read them */
 static void forget_locked(DDRAWI_DDRAWSURFACE_LCL *s,uint32_t owner);
+static void dq_drain(void);
 static void forget_drain(void) {
  uint32_t k;
- {LONG d=hold_drop_pid;if(d){if(vx_d3d_held()&&hold_pid==(DWORD)d){vx_d3d_hold_drop();hold_why[6]++;}InterlockedExchange(&hold_drop_pid,0);}} /* .677: dropped before
-  * anything else is sent (they may draw into or read the memory DirectDraw has given back; issued later, into whatever surface has it now) */for(k=0;k<FQ;k++){LONG pp=fq_ptr[k],pid=fq_pid[k];if(pp&&pid){forget_locked((DDRAWI_DDRAWSURFACE_LCL*)pp,(uint32_t)pid);fq_ptr[k]=0;InterlockedExchange(&fq_pid[k],0);}}
+ dq_drain(); /* .736: the destroys queued while the lock was held */
+ {LONG d=InterlockedExchange(&hold_drop_pid,0);if(d){if(vx_d3d_held()&&hold_pid==(DWORD)d){vx_d3d_hold_drop();hold_why[6]++;}}} /* .765 (audit 11): taken and cleared at once (a value written between the read and the clear was lost) */ /* .677: dropped before
+  * anything else is sent (they may draw into or read the memory DirectDraw has given back; issued later, into whatever surface has it now) */for(k=0;k<FQ;k++){LONG pp=fq_ptr[k],pid=fq_pid[k];if(pp&&pid){forget_locked((DDRAWI_DDRAWSURFACE_LCL*)pp,(uint32_t)pid);fq_ptr[k]=0;InterlockedExchange(&fq_pid[k],0);}
+   else if(!pp&&pid&&!owner_alive((uint32_t)pid))vx_cas(&fq_pid[k],0,pid);} /* .737: a slot whose producer died before filling it given back */
 }
 int VX_D3D_forget_surface(DDRAWI_DDRAWSURFACE_LCL *s) {
  uint32_t k,n;LONG me=(LONG)GetCurrentProcessId(),t=my_token();
+ if(!s)return 1; /* .737 (review audit #14): a NULL surface queued set fq_pid with fq_ptr 0, which the drain never freed (one of 32 slots lost each time) */
  for(n=0;;n++){LONG o;
   if(cb_enter()){forget_locked(s,(uint32_t)me);cb_leave();return 1;}
   o=callback_owner;if(n>=(o==t?20U:200U))break;Sleep(1);}
  for(k=0;k<FQ;k++)if(vx_cas(&fq_pid[k],me,0)==0){fq_ptr[k]=(LONG)s;fq_queued++;return 1;}
  fq_full++;return 0;
 }
+/* .737 (review audit #14): matched on the surface (DirectDraw's shared object, one owner at a time) whatever process calls: DDHELP destroys a
+ * dead program's surfaces, and filtering on the caller's process left them bound and in the tables (owner kept for the callers) */
 static void forget_locked(DDRAWI_DDRAWSURFACE_LCL *s,uint32_t owner) {
- uint32_t i,j;surface_table *t;surface_slot *v;
+ uint32_t i,j;surface_table *t;surface_slot *v;(void)owner;
  /* ContextCreate can precede a DX6 CreateSurfaceEx notification. Its
   * direct surface identities must be invalidated even without a handle map. */
- for(j=0;j<CONTEXTS;j++)if(contexts[j].owner==owner&&contexts[j].handle&&
+ for(j=0;j<CONTEXTS;j++)if(contexts[j].handle&&
     (contexts[j].target_key==(uint32_t)s||contexts[j].depth_key==(uint32_t)s))unbind_surface(&contexts[j],(uint32_t)s); /* .649: was lost (reason 24) */
- for(i=0;i<TABLES;i++)if(tables[i].owner==owner&&tables[i].local) {
+ for(i=0;i<TABLES;i++)if(tables[i].local) {
   t=&tables[i];
   for(j=0;j<t->blocks*BLOCK_SURFACES;j++) {
    v=table_at(t,j);
@@ -1335,7 +1622,7 @@ static DWORD WINAPI setrt(vx_ddi_setrt *p) {
   /* .677 (review of .673, 5): this context's held draws (into the old target) go to the engine before the old target's wait, as the DP2
    * target command has them (the core sends its queue before it): the wait came before them, and a draw sampling the old target next read
    * it before they were drawn */
-  uint32_t hr=vx_d3d_hold_is(&c->core)&&hold_pid==GetCurrentProcessId()?hold_send_here():0;
+  uint32_t hr=vx_d3d_hold_is(&c->core)&&hold_is_me()?hold_send_here():0;
   if(hr||!rt_leave(c,&c->core.target))p->ddrval=DDERR_SURFACELOST; /* v10.479 (review): the wait's lost device answered DD_OK; the target stays */
   else {c->rt_tex=rtk==2; /* v10.456 */
   c->core.target=t;c->core.depth=z;c->core.target_handle=0;c->core.depth_handle=0;
@@ -1364,7 +1651,7 @@ static DWORD get_driver_info(LPDDHAL_GETDRIVERINFODATA p) {
   e.dwTextureOpCaps=(D3DTEXOPCAPS_DISABLE|D3DTEXOPCAPS_SELECTARG1|D3DTEXOPCAPS_SELECTARG2|D3DTEXOPCAPS_MODULATE|D3DTEXOPCAPS_MODULATE2X|D3DTEXOPCAPS_MODULATE4X|D3DTEXOPCAPS_ADD|D3DTEXOPCAPS_ADDSIGNED|D3DTEXOPCAPS_BLENDDIFFUSEALPHA|D3DTEXOPCAPS_BLENDTEXTUREALPHA|
    D3DTEXOPCAPS_ADDSIGNED2X|D3DTEXOPCAPS_SUBTRACT|D3DTEXOPCAPS_ADDSMOOTH|D3DTEXOPCAPS_BLENDFACTORALPHA|D3DTEXOPCAPS_BLENDCURRENTALPHA|
    D3DTEXOPCAPS_MODULATEALPHA_ADDCOLOR|D3DTEXOPCAPS_MODULATECOLOR_ADDALPHA|
-   D3DTEXOPCAPS_BLENDTEXTUREALPHAPM|D3DTEXOPCAPS_PREMODULATE|D3DTEXOPCAPS_MODULATEINVALPHA_ADDCOLOR|D3DTEXOPCAPS_MODULATEINVCOLOR_ADDALPHA|D3DTEXOPCAPS_DOTPRODUCT3|D3DTEXOPCAPS_BUMPENVMAP|D3DTEXOPCAPS_BUMPENVMAPLUMINANCE); /* v10.208: 0xFFFFFF (bump); v10.206: 0x9FFFFF; v10.198: + the ops vx_d3d_compose builds (0x6BFFF) */ /* v10.181: 0x18FF, the ops vx_d3d_program takes; v10.172-180 sent 0xCFF (0x400 is ADDSMOOTH, never taken, and BLENDTEXTUREALPHA 0x1000 was missing) */e.wMaxTextureBlendStages=(trace_mode&2)?1:3;e.wMaxSimultaneousTextures=(trace_mode&2)?0:3;e.dwFVFCaps=(trace_mode&2)?0:2;
+   D3DTEXOPCAPS_BLENDTEXTUREALPHAPM|D3DTEXOPCAPS_PREMODULATE|D3DTEXOPCAPS_MODULATEINVALPHA_ADDCOLOR|D3DTEXOPCAPS_MODULATEINVCOLOR_ADDALPHA|D3DTEXOPCAPS_DOTPRODUCT3|D3DTEXOPCAPS_BUMPENVMAP|D3DTEXOPCAPS_BUMPENVMAPLUMINANCE); /* v10.208: 0xFFFFFF (bump); v10.206: 0x9FFFFF; v10.198: + the ops vx_d3d_compose builds (0x6BFFF) */ /* v10.181: 0x18FF, the ops vx_d3d_program takes; v10.172-180 sent 0xCFF (0x400 is ADDSMOOTH, never taken, and BLENDTEXTUREALPHA 0x1000 was missing) */e.wMaxTextureBlendStages=3;e.wMaxSimultaneousTextures=3;e.dwFVFCaps=3; /* .737 (review audit #56): the trace_mode & 2 tests removed (mode is ACCEL_D3D & 1) */ /* .734: three coordinate sets (unit 2 on slot C, T732; the driver's T&L outputs a third set) */
   /* v10.212: switched-off features leave the caps */
   if(!(vx_d3d_feat&VX_F_NEWOPS))e.dwTextureOpCaps&=~(DWORD)(D3DTEXOPCAPS_BLENDTEXTUREALPHAPM|D3DTEXOPCAPS_PREMODULATE|D3DTEXOPCAPS_MODULATEINVALPHA_ADDCOLOR|D3DTEXOPCAPS_MODULATEINVCOLOR_ADDALPHA|D3DTEXOPCAPS_DOTPRODUCT3);
   if(!(vx_d3d_feat&VX_F_BUMP)||!(vx_d3d_feat&VX_F_STAGES))e.dwTextureOpCaps&=~(DWORD)(D3DTEXOPCAPS_BUMPENVMAP|D3DTEXOPCAPS_BUMPENVMAPLUMINANCE);
@@ -1407,8 +1694,9 @@ static DWORD get_driver_info(LPDDHAL_GETDRIVERINFODATA p) {
   else p->ddRVal=DDERR_INVALIDPARAMS;
   return DDHAL_DRIVER_HANDLED;
  }
- /* GetDriverInfo2 aliases DDStereoMode. This DX7 milestone advertises
-  * neither GetDriverInfo2 nor stereo and does not guess at their payload. */
+ /* GetDriverInfo2 aliases DDStereoMode (dwMagic 0xFFFFFFFF: GetDriverInfo2). DX8 DDI: answered while the DirectX 8 DDI is on; stereo never */
+ {static const uint8_t st[8]={0xA1,0xF2,0x00,0xA0,0xC9,0x83,0xEA,0xF6};
+  if(guid(&p->guidInfo,0xF828169CUL,0xA8E8,0x11D2,st)&&dx8_gdi2(p))return DDHAL_DRIVER_HANDLED;}
  return DDHAL_DRIVER_HANDLED;
 }
 DWORD WINAPI VX_D3D_GetDriverInfo(LPDDHAL_GETDRIVERINFODATA p) {
@@ -1443,19 +1731,23 @@ DWORD WINAPI VX_D3D_QueryTrace(DWORD *out,DWORD n) {
  for(i=0;i<32&&i<c&&k+4<=n;i++){DWORD j=(c>32?c-32+i:i)&31;out[k++]=trace_ring[j][0];out[k++]=trace_ring[j][1];out[k++]=trace_ring[j][2];out[k++]=trace_ring[j][3];}
  return k;
 }
-extern DWORD vx_heap_round;
+
 static DWORD d3d_registry(void) { /* the VxD reads the registry (ACCEL_D3D) and answers control query 0xFFFFFE50; this shared DLL imports only kernel32/user32/gdi32 */
  HANDLE h=CreateFileA("\\\\.\\VX85598",0,0,NULL,OPEN_EXISTING,0,NULL); DWORD code=0xFFFFFE50UL,o[4],got=0; DWORD on=0;
  vx_d3d_hold_on=1; /* .551: the queue held across DrawPrimitives2 calls, always (ACCEL_D3D_HOLD removed: GTA3 on .550, median 93 -> 76 ms) */
  if(h==INVALID_HANDLE_VALUE) return 0;
  memset(o,0,sizeof(o));
- if(DeviceIoControl(h,0x85500012UL,&code,4,o,16,&got,NULL)&&got==16&&o[1]==0x56584433UL) {on=o[0];if(o[2]&0x100UL)vx_heap_round=o[2]&1;if(o[2]&0x400UL){event_log_file=(o[2]>>1)&1;vx_d3d_ckey_on=(o[2]>>2)&1;vx_d3d_sample_on=(o[2]>>13)&1;} /* .511: bit 13 ACCEL_D3D_SAMPLE */if(o[2]&0x800UL){vx_d3d_rttex=(o[2]>>3)&1;vx_d3d_mipcap=(o[2]>>4)&1;vx_d3d_texhint=(o[2]>>5)&1;{extern uint32_t vx_d3d_texruns;vx_d3d_texruns=1;} /* .528; .529: always (.621-.622 had a test switch: the seam test cleared the texture change inside a packet) *//* .531: bit 6 (ACCEL_D3D_IX384) retired: 384 always */vx_d3d_indexed=(o[2]>>7)&1;vx_d3d_rtnowait=(o[2]>>12)&1;{extern uint32_t vx_d3d_ixpass;vx_d3d_ixpass=(o[2]>>16)&1;{vx_d3d_infocache=(o[2]>>17)&1;vx_d3d_delta=(o[2]>>20)&1;vx_d3d_tnl=(o[2]>>21)&1; /* .534: bit 21 ACCEL_D3D_TNL */
+ if(DeviceIoControl(h,0x85500012UL,&code,4,o,16,&got,NULL)&&got==16&&o[1]==0x56584433UL) {on=o[0];if(o[2]&0x400UL){event_log_file=(o[2]>>1)&1;vx_d3d_ckey_on=(o[2]>>2)&1;} /* .737: bit 13 (ACCEL_D3D_SAMPLE) retired */if(o[2]&0x800UL){vx_d3d_rttex=(o[2]>>3)&1;vx_d3d_mipcap=(o[2]>>4)&1;vx_d3d_texhint=(o[2]>>5)&1;{extern uint32_t vx_d3d_texruns;vx_d3d_texruns=1;} /* .528; .529: always (.621-.622 had a test switch: the seam test cleared the texture change inside a packet) *//* .531: bit 6 (ACCEL_D3D_IX384) retired: 384 always */vx_d3d_indexed=(o[2]>>7)&1;vx_d3d_rtnowait=(o[2]>>12)&1;{extern uint32_t vx_d3d_ixpass;vx_d3d_ixpass=(o[2]>>16)&1;{vx_d3d_infocache=(o[2]>>17)&1;vx_d3d_delta=(o[2]>>20)&1;vx_d3d_tnl=(o[2]>>21)&1; /* .534: bit 21 ACCEL_D3D_TNL */
   /* .543: the driver's T&L is SSE only (vx_d3d_tnl.inc): offered only when the processor has FXSR, SSE and SSE2 (CPUID 1 EDX bits 24-26)
    * and the system saves the XMM registers (CR4 OSFXSR, bit 9): the VxD's control 0xFFFFFE34, as VXGL.DLL reads it */
   /* .545: the same answer sets vx_d3d_sse2 (the indexed pass-through's span kernels, vx_d3d_span.inc), with or without the T&L */
   {extern uint32_t vx_d3d_sse2;DWORD q=0xFFFFFE34UL,x[4]={0,0,0,0},g2=0;
    vx_d3d_sse2=DeviceIoControl(h,0x85500012UL,&q,4,x,16,&g2,NULL)&&g2==16&&x[1]==0x31455353UL&&(x[2]&0x07000000UL)==0x07000000UL&&(x[0]&0x200UL);
    if(!vx_d3d_sse2)vx_d3d_tnl=0;}
+  /* .743 (T742's pursuit profiles: the merged core's rewritten tnk_pos 9% faster on the VX855's C7, 19% slower on the VX900's Nano): the
+   * rewritten kernel only on VIA's in-order family (CentaurHauls, family 6, model below 15: C7, Eden); every other processor the one of
+   * .544-.741 */
+  {extern uint32_t vx_d3d_tn_pos_old;const DWORD a=hal_cpu1();vx_d3d_tn_pos_old=!(hal_cpu0()==0x746E6543UL&&((a>>8)&15)==6&&((a>>4)&15)<15&&!((a>>16)&15));}
  {extern uint32_t vx_d3d_v8;vx_d3d_v8=(o[2]>>19)&1;}} /* .523: bit 19 ACCEL_D3D_V8 */}} /* .522: bits 17 ACCEL_D3D_INFOCACHE, 18 ACCEL_D3D_IXPF */ /* v10.456; .515: bits 14-15 ACCEL_D3D_HWCULL, 16 ACCEL_D3D_IXPASS */if(o[3]&0x80000000UL){vx_d3d_feat=o[3]&0x7FFFFFFFUL;vx_d3d_prepack=(o[3]>>26)&1;}} /* .527: bits 28-30 (FASTVV, VRECIPE, FASTMATCH) removed */ /* v10.454: bit 28 ACCEL_D3D_FASTVV */ /* v10.445: bits 29 ACCEL_D3D_VRECIPE, 30 ACCEL_D3D_FASTMATCH */ /* v10.443: bit 28 ACCEL_D3D_QDIRECT */ /* v10.442: bit 27 ACCEL_D3D_PAIRLIST */ /* v10.441: bit 26 ACCEL_D3D_PREPACK */ /* o[1] tag 'VXD3' guards against an older VxD; o[2] (v10.179) ACCEL_HEAP_ALIGN */
  CloseHandle(h); return on;
 }
@@ -1475,6 +1767,11 @@ void VX_D3D_init(void *ctx) {
  /* v10.178 (WinTune 98 "Could not find any compatible devices"): the raster caps were empty. Z test and subpixel accuracy are what the
   * hardware does (VXDX7 --draw and --raster: Z with every ZFUNC, float vertices); DX5-style device checks look for D3DPRASTERCAPS_ZTEST. */
  (void)d3d_registry(); /* v10.215: the feature switches before the caps that depend on them (the DITHER cap was set from the default) */
+ {DWORD in[2],o[8];int got;in[0]=0xBC;in[1]=0x44B;memset(o,0,sizeof(o)); /* the VxD's switches (TEXDBG BC 44B word 7) */
+  got=vx_d3d_tnl&&call(VX_IOCTL_3DN_TEXDBG,in,8,o,32);
+  /* DX8 DDI: the DirectX 8 DDI (word 7 bit 3; VXREG DX8 ON / OFF): DDHALINFO_GETDRIVERINFO2 tells DirectDraw to ask GetDriverInfo2 */
+  vx_d3d_dx8_on=got&&(o[0]&0xFF)==0xBC&&o[1]==0x44B&&((o[7]>>3)&1);
+  if(vx_d3d_dx8_on)shared_hal->cb32.flags|=DDHALINFO_GETDRIVERINFO2;else shared_hal->cb32.flags&=~(DWORD)DDHALINFO_GETDRIVERINFO2;}
  if(vx_d3d_tnl)h->dwDevCaps|=0x10000UL; /* D3DDEVCAPS_HWTRANSFORMANDLIGHT: the driver's T&L (.536); .601: on by default */
  p->dwRasterCaps=D3DPRASTERCAPS_ZTEST|D3DPRASTERCAPS_SUBPIXEL|0x80UL|0x100UL|((vx_d3d_feat&VX_F_DITHER)?0x1UL:0)|0x4000UL; /* v10.196: + FOGVERTEX, FOGTABLE (fog, v10.195); v10.201: + DITHER, ZBIAS */
  p->dwZCmpCaps=255;p->dwSrcBlendCaps=0x1FFF;p->dwDestBlendCaps=0x3FF;p->dwAlphaCmpCaps=255; /* v10.177: every blend factor (SRCALPHASAT/BOTH* as source only), alpha test */

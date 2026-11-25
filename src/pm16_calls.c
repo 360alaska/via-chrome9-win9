@@ -133,6 +133,7 @@ void FBHDA_access_begin(DWORD flags)
 	static DWORD sFlags;
 	sFlags = flags;
 	
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -155,6 +156,7 @@ void FBHDA_access_end(DWORD flags)
 	static DWORD sFlags;
 	sFlags = flags;
 	
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -184,6 +186,7 @@ void FBHDA_access_rect(DWORD left, DWORD top, DWORD right, DWORD bottom)
 	sR = right;
 	sB = bottom;
 	
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -212,6 +215,7 @@ void FBHDA_access_rect(DWORD left, DWORD top, DWORD right, DWORD bottom)
 
 void FBHDA_clean()
 {
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -234,6 +238,7 @@ void FBHDA_palette_set(unsigned char index, DWORD rgb)
 	sIndex = index;
 	sRGB = rgb;
 	
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -261,10 +266,12 @@ BOOL FBHDA_gamma_get(VOID FBPTR ramp, DWORD buffer_size)
 	static unsigned short status;
 	
 	ramp_linear = DPMI_GetSegBase(((DWORD)ramp) >> 16);
+	if(!ramp || !ramp_linear || ramp_linear == 0xFFFFFFFFUL) return FALSE; /* E776 (outside audit, DRV-4): no base for the selector: not a low linear address made of the offset alone */
 	ramp_linear += ((DWORD)ramp) & 0xFFFFUL;
 	
 	ramp_size = buffer_size;
 	
+	if(!VXD_VM) return FALSE; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -295,10 +302,12 @@ BOOL FBHDA_gamma_set(VOID FBPTR ramp, DWORD buffer_size)
 	static unsigned short status;
 	
 	ramp_linear = DPMI_GetSegBase(((DWORD)ramp) >> 16);
+	if(!ramp || !ramp_linear || ramp_linear == 0xFFFFFFFFUL) return FALSE; /* E776 (outside audit, DRV-4): no base for the selector: not a low linear address made of the offset alone */
 	ramp_linear += ((DWORD)ramp) & 0xFFFFUL;
 	
 	ramp_size = buffer_size;
 	
+	if(!VXD_VM) return FALSE; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -324,6 +333,7 @@ BOOL FBHDA_gamma_set(VOID FBPTR ramp, DWORD buffer_size)
 
 void FBHDA_refresh(DWORD refresh_rate)
 {
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -345,6 +355,7 @@ BOOL mouse_load()
 {
 	static BOOL status;
 	
+	if(!VXD_VM) return FALSE; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -377,6 +388,7 @@ void mouse_move(int x, int y)
 	sx = x;
 	sy = y;
 	
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -399,6 +411,7 @@ void mouse_move(int x, int y)
 
 void mouse_hide()
 {
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -422,6 +435,7 @@ BOOL VESA_valid()
 	static BOOL status;
 	status = FALSE;
 	
+	if(!VXD_VM) return FALSE; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -451,6 +465,7 @@ BOOL VESA_setmode(DWORD w, DWORD h, DWORD bpp, DWORD rr_min, DWORD rr_max)
 	sbpp = bpp;
 	s_rr = (rr_min << 16) | rr_max;
 	
+	if(!VXD_VM) return FALSE; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -483,6 +498,7 @@ static void VESA_HIRES(DWORD hires_on)
 
 	s_hires_on = hires_on;
 
+	if(!VXD_VM) return; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386
@@ -520,6 +536,7 @@ BOOL VESA_validmode(DWORD w, DWORD h, DWORD bpp)
 	sh = h;
 	sbpp = bpp;
 	
+	if(!VXD_VM) return FALSE; /* .765 (audit DRV-H1): not connected yet (ValidateMode can come before Enable): no far call to 0000:0000 */
 	_asm
 	{
 		.386

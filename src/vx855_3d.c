@@ -206,7 +206,7 @@ static unsigned long prepare(vx3d_report *r,uint32_t probe) {
   r->result=VX3D_BAD_BAR; return 0;
  }
  if(!mmio_linear) {
-  mmio_linear=_MapPhysToLinear(base,0x400000UL,0);
+  {const uint32_t m_=_MapPhysToLinear(base,0x400000UL,0);if(m_&&m_!=0xFFFFFFFFUL)mmio_linear=m_;} /* E776 (outside audit, VXD-8): never a failed mapping in the shared word, not for a moment */
   if(!mmio_linear || mmio_linear==0xFFFFFFFFUL) {
    mmio_linear=0; r->result=VX3D_NO_MMIO; return 0;
   }
@@ -252,6 +252,9 @@ static void recover_engine(void) {
   recover_info[3]=2;
  }
  flags=VX_irq_save(); seq_write(0x10,unlock); outp(0x3C4,old); VX_irq_restore(flags);
+ /* .728 (Fable's check of Gemini's review, #5): as engine_reset (vx_native3d_vxd.c): after the pulses the cursor is programmed again at
+  * its next show and the 2D side sets the engine up (and proves it) before its next operation */
+ {extern volatile uint32_t vx2d_reset_epoch;extern void VX2D_3d_reset(void);vx2d_reset_epoch++;VX2D_3d_reset();}
  start=Get_System_Time();
  do {st=read_mmio(NULL,0x400);} while((st&VX3D_BUSY_MASK) && st!=0xFFFFFFFFUL && (uint32_t)(Get_System_Time()-start)<250);
  recover_info[1]=st;
@@ -525,14 +528,15 @@ static void vx_iga2_apply(vx3d_report *r,const vx3d_request *q) {
    }
    (void)p[0]; i2_pat_var=var; i2_pat_base=base;
   }
+  {const unsigned char s10=rt_sr_get(0x10); /* E775 (outside audit, VXD-10): SR10 as it was, read before its lock bit is set (the copy taken after it always had the bit, so the put-back never locked the extended registers again) */
   rt_sr_mask(0x10,0x01,0x01);
   if(!i2_have) {
-   i2_sr10=rt_sr_get(0x10);
+   i2_sr10=s10;
    for(k=0;k<35;k++) i2_crv[k]=rt_cr_get(cb,i2_crl[k]);
    for(k=0;k<8;k++) i2_srv[k]=rt_sr_get(i2_srl[k]);
    i2_sr31=rt_sr_get(0x31); i2_txok=0;
    i2_have=1;
-  }
+  }}
   for(k=0;k<35;k++) im[100+k]=i2_crv[k];
   for(k=0;k<8;k++) im[140+k]=i2_srv[k];
  } else rt_sr_mask(0x10,0x01,0x01);
@@ -601,14 +605,20 @@ static void vx_iga2_apply(vx3d_report *r,const vx3d_request *q) {
  rt_sr_mask(0x10,0x01,(unsigned char)(i2_sr10&1));
  im[0]=1;
 }
-unsigned long VX3D_test(const vx3d_request *request,vx3d_report *r) {
+/* .765 (outside audit of .757, VXD3D-C1): the request copied into the VxD once, under the lock, and only the copy read: the caller's
+ * buffer was read again after its checks (raw lab words checked in one pass and written in another), so another thread of the caller
+ * could change a checked word before it was written */
+static vx3d_request vx3d_rq;
+unsigned long VX3D_test(const vx3d_request *user_request,vx3d_report *r) {
  vx3d_io io;
  vx3d_sf_io sf;
  uint32_t final_status;
  int ready;
- if(request->cb!=sizeof(*request) || request->version!=VX3D_VERSION ||
-    request->arm!=VX3D_ARM || (request->reserved&0xFF)>28 || request->probe>=VX3D_PROBES) return 87;
+ const vx3d_request *request=&vx3d_rq;
  vx_lock();
+ memcpy(&vx3d_rq,user_request,sizeof(vx3d_rq));
+ if(request->cb!=sizeof(*request) || request->version!=VX3D_VERSION ||
+    request->arm!=VX3D_ARM || (request->reserved&0xFF)>28 || request->probe>=VX3D_PROBES ) {vx_unlock(); return 87;}
  recover_info[3]=0;
  if(fault_latched && !running && !VX2D_busy() && (request->reserved&0x100) && mmio_linear) recover_engine();
  ready=prepare(r,request->probe); r->probe_id=request->probe;

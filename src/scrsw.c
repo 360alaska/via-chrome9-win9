@@ -88,6 +88,7 @@ BOOL HookInt2Fh( void )
     WORD                selAlias;
     void __far * __far  *OldInt2FhAlias;    /* This is fun! */
 
+    if( SwitchFlags & INT_2F_HOOKED ) return( TRUE ); /* E775 (outside audit, DRV-16): hooked twice, the saved vector was this hook itself (the next INT 2Fh never ended) */
     /* If not already set, get repaing callback from USER. */
     if( !RepaintFunc ) {
         HMODULE hMod;
@@ -168,7 +169,7 @@ void SwitchToBgnd( void )
 
 		VESA_HIRES_disable();
 
-    lpDriverPDevice->deFlags |= BUSY;   /// @todo Does this need to be a locked op?
+    if( lpDriverPDevice ) lpDriverPDevice->deFlags |= BUSY;   /* .729 (review of .723, #5): no device yet (SwitchToFgnd checks it too) */
     wEnabled = 0;
 }
 

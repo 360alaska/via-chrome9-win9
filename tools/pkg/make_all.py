@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ALL.BAT for a build: .682 form (no A/B sweeps; 3DMark between two engine checks) (HarborBench one scene a launch, every step written to STEPS.TXT first). usage: make_all.py BUILD OUT"""
-import sys
+import sys,re
 B=sys.argv[1];T='T'+B;OUT=sys.argv[2];MARK='NO3DMARK' not in sys.argv[3:] # .707: 3DMark every 4-5 builds or when a change calls for it (the owner, 2026-11-20); NO3DMARK leaves out steps 6-7
 SCENES=['downtown','drive','pedestrians','rain','pursuit','industrial','arena','draw100','draw500','draw1000','draw2000','lights1','lights2','lights4','lights8','specular','spotlights','particles500','particles2000','particles8000','stages3']
 L=[]
@@ -23,55 +23,49 @@ a('@echo off')
 a(('rem Driver .%s: one boot, '+('about 70 minutes with 3DMark' if MARK else 'about 60 minutes, no 3DMark this build')+'. Every step is written to %s\\STEPS.TXT before it starts (the last line is the')%(B,T))
 a('rem step that was running if the machine stops); after the main steps VXREG CURSOR writes the cursor\'s state to %s\\VXCUR.LOG.'%T)
 a('rem 1. VXTLP: the picture checks (2-3 minutes; 6l, back faces culled, against its own frame drawn with nothing culled). 2. VXTLP GRID (4-5 minutes).')
-a('rem 3. Profiles under VXD3DMON: 6K, 6E, 6L, 6I with the guard band on and off, 6K and 6I timed A-B-A-B (on, off, on, off), then HarborBench arena and pursuit (hardware T&L), pursuit with ACCEL_D3D_GUARDBAND 0 and 2 (no viewport codes), pursuit again with ACCEL_D3D_TNFASTIX 0 (does')
-a('rem HarborBench take the switch?). 4. HarborBench, one launch a scene, Direct3D (software and hardware T&L) and OpenGL (about 25 minutes).')
+a('rem 3. Profiles under VXD3DMON: 6K, 6E, 6L, 6I, then HarborBench arena and pursuit (hardware T&L).')
+a('rem 4. HarborBench, one launch a scene, Direct3D (software and hardware T&L) and OpenGL (about 25 minutes).')
 a('rem 5. VXNOSYNC and CLXP3D T153-T162 (two minutes). '+('6. 3DMark 2001, the full benchmark. 7. VXNOSYNC and CLXP3D again: after T681\'s 3DMark' if MARK else '6-7. no 3DMark this build (every 4-5 builds, or when a change calls for it)'))
 a('rem the engine drew nothing and the desktop broke; they say whether this build still does it.')
 a('rem Install .%s (CHROME9.INF) and restart first. Send the folder %s%s'%(B,T,' and the 3DMark photos.' if MARK else '.'))
-for f in ['VXD3DMON.EXE','VXREG.EXE','VXTLP.EXE','CLXP3D.EXE','VXNOSYNC.EXE','VXREUSE.EXE','HB\\HarborBench.exe','HB\\HarborBench.ini','HB\\HB_HW.INI','TNF0.REG','GB0.REG','GB2.REG','ALLON.REG']:a('if not exist %s goto nofiles'%f)
+for f in ['VXD3DMON.EXE','VXREG.EXE','VXTLP.EXE','CLXP3D.EXE','VXNOSYNC.EXE','VXREUSE.EXE','VXRHW.EXE','VXDX7.EXE','VXCLIP.EXE','FEAT0.REG','HB\\HarborBench.exe','HB\\HarborBench.ini','HB\\HB_HW.INI','ALLON.REG']:a('if not exist %s goto nofiles'%f)
 a('if not exist %windir%\\SYSTEM\\D3D8.DLL goto nodx') # .715: a fresh Windows 98 (DirectX 6.1) skips every Direct3D 7/8 test and HarborBench scene
-a('start /w VXREG.EXE');a('find "build: .%s" VXREG.LOG >nul'%B);a('if errorlevel 1 goto wrongbuild')
+a('start /w VXREG.EXE');a('find "build: .%s" VXREG.LOG >nul'%re.sub(r'[^0-9]','',B));a('if errorlevel 1 goto wrongbuild') # .768: the jump is a statement again (since .737B it stood inside this comment: QUICK.BAT and ALL.BAT ran on whatever driver was installed) # .737B: a letter for a changed build (the owner, 2026-11-22); VXREG's number is plain
 a('if not exist %s\\nul md %s'%(T,T));a('if exist %s\\STEPS.TXT del %s\\STEPS.TXT'%(T,T));a('regedit /s ALLON.REG')
 a('if exist VXCUR.LOG del VXCUR.LOG');a('start /w VXREG.EXE CURSOR start')
-for g in ['VXT?_?.BMP','VXT??_?.BMP','VXTL7*.BMP','VXTL1?A.BMP','VXTL1?B.BMP','VXTLC_?.BMP','6M*.BMP','6P*.BMP','6N*.BMP','6Q*.BMP','6W*.BMP']:a('if exist %s del %s'%(g,g))
+for g in ['VXT?_?.BMP','VXT??_?.BMP','VXTL7*.BMP','VXTL1?A.BMP','VXTL1?B.BMP','VXTLC_?.BMP','VXTLF??.BMP','6M*.BMP','6P*.BMP','6N*.BMP','6Q*.BMP','6W*.BMP']:a('if exist %s del %s'%(g,g))
+# .725 (the owner: every feature on every chip): the guard band and the tear flip are on for the VX800 and VX900 too; their proofs come
+# first, while someone is at the machine: VXCLIP (the engine's own clipping; the VX900 skips it, other vertex words) and the tear flip by eye
+a('echo 0. The guard band and the tear flip are on for every chip in this build. If this board misbehaves in any step, run FEAT0.REG')
+a('echo    (the tear flip off), restart, and run ALL.BAT again; send both result folders.')
+step('0 VXCLIP');a('echo 0a. VXCLIP: the engine clipping probe, about 15 seconds; the screen is not touched.')
+a('if exist VXCLIP.LOG del VXCLIP.LOG');a('start /w VXCLIP.EXE');a('if exist VXCLIP.LOG copy VXCLIP.LOG %s\\VXCLIP.LOG >nul'%T);a('if exist VXCLIP.LOG del VXCLIP.LOG')
 step('1 VXTLP');a('echo 1. VXTLP: one window, 2-3 minutes; wait for it to close.');a('start /w VXTLP.EXE')
 a('copy VXTLP.LOG %s\\VXTLP.LOG >nul'%T);a('del VXTLP.LOG');a('start /w VXREG.EXE CURSOR after-VXTLP')
-for g in ['VXTL7*.BMP','VXTL1?A.BMP','VXTL1?B.BMP','VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP','6M*.BMP','6P*.BMP','6N*.BMP','6Q*.BMP','6W*.BMP']:a('if exist %s copy %s %s >nul'%(g,g,T));a('if exist %s del %s'%(g,g))
+for g in ['VXTL7*.BMP','VXTL1?A.BMP','VXTL1?B.BMP','VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP','VXTLF??.BMP','6M*.BMP','6P*.BMP','6N*.BMP','6Q*.BMP','6W*.BMP']:a('if exist %s copy %s %s >nul'%(g,g,T));a('if exist %s del %s'%(g,g))
 a('echo.')
 step('2 GRID');a('echo 2. VXTLP GRID: 4-5 minutes; leave the machine alone until the window closes.')
 a('start /w VXTLP.EXE GRID');a('copy VXTLP.LOG %s\\GRID.LOG >nul'%T);a('del VXTLP.LOG')
 a('if exist VX?_??.CSV copy VX?_??.CSV %s >nul'%T);a('if exist VX?_??.CSV del VX?_??.CSV')
 for g in ['VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP']:a('if exist %s copy %s %s >nul'%(g,g,T));a('if exist %s del %s'%(g,g))
 a('start /w VXREG.EXE CURSOR after-GRID');a('echo.')
-step('2b GRID GB0');a('echo 2b. VXTLP GRID again with the guard band off (ACCEL_D3D_GUARDBAND 0): 4-5 minutes, the A/B.')
-a('regedit /s GB0.REG');a('start /w VXTLP.EXE GRID');a('regedit /s ALLON.REG');a('copy VXTLP.LOG %s\\GRIDGB0.LOG >nul'%T);a('del VXTLP.LOG')
-a('if exist VX?_??.CSV del VX?_??.CSV')
-for g in ['VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP']:a('if exist %s del %s'%(g,g))
-a('echo.')
+# .739: 2b (GRID with the guard band off) gone: ACCEL_D3D_GUARDBAND is no longer read
 step('2c GRID VP');a('echo 2c. VXTLP GRID VP: every GRID scene through a viewport at (40, 40), both devices (the guard band across a clip edge that is not 0), about 5 minutes.')
 a('start /w VXTLP.EXE GRID VP');a('copy VXTLP.LOG %s\\GRIDVP.LOG >nul'%T);a('del VXTLP.LOG') # .706: the .704 fix's check in the full run too
 a('if exist VX?_??.CSV del VX?_??.CSV')
 for g in ['VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP']:a('if exist %s copy %s %s >nul'%(g,g,T));a('if exist %s del %s'%(g,g))
 a('echo.')
 a('echo 3. Profiles: VXD3DMON starts each program and closes when it ends; about 20 minutes.')
-for sc,tag,secs,reg in [('6K','6K',120,''),('6E','HW',90,''),('6L','6L',120,''),('6I','6I',90,''),('6I','6IG',90,'GB0.REG'),('6K','6KG',120,'GB0.REG')]: # .700: 6I with and without the guard band (T699: 98.7 against 88.4 ms, unchanged by .699)
+for sc,tag,secs,reg in [('6K','6K',120,''),('6E','HW',90,''),('6L','6L',120,''),('6I','6I',90,'')]: # .700: 6I with and without the guard band (T699: 98.7 against 88.4 ms, unchanged by .699)
  step('3 profile GRID %s%s'%(sc,' '+reg if reg else ''))
  if reg:a('regedit /s %s'%reg)
  a('start /w VXD3DMON.EXE %d RUN VXTLP.EXE GRID HW %s'%(secs,sc))
  if reg:a('regedit /s ALLON.REG')
  a('copy VXD3DMON.TXT %s\\PROF_%s.TXT >nul'%(T,tag));a('del VXD3DMON.TXT');a('copy VXTLP.LOG %s\\PROF_%s.LOG >nul'%(T,tag));a('del VXTLP.LOG')
  for g in ['VX?_??.CSV','VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP']:a('if exist %s del %s'%(g,g))
-# .702 (reviews of T700): 6K and 6I timed four times each, the guard band on, off, on, off, in one session (A-B-A-B): is 6k's +10 ms real?
-for sc in ['6K','6I']:
- for k,reg in enumerate(['','GB0.REG','','GB0.REG']):
-  step('3b A-B-A-B GRID %s %d%s'%(sc,k+1,' '+reg if reg else ''))
-  if reg:a('regedit /s %s'%reg)
-  a('start /w VXTLP.EXE GRID HW %s'%sc)
-  if reg:a('regedit /s ALLON.REG')
-  a('copy VXTLP.LOG %s\\AB_%s_%d.LOG >nul'%(T,sc,k+1));a('del VXTLP.LOG')
-  for g in ['VX?_??.CSV','VXT?_?.BMP','VXT??_?.BMP','VXTLC_?.BMP']:a('if exist %s del %s'%(g,g))
+# .739: 3b (6K and 6I A-B-A-B, the guard band on and off) gone with the switch
 a('copy HB\\HarborBench.ini HB\\HB_MAIN.INI >nul');a('copy HB\\HB_HW.INI HB\\HarborBench.ini >nul')
-for sc,tag,reg in [('arena','ARE',''),('pursuit','PUR',''),('pursuit','PURT','TNF0.REG'),('pursuit','PURG','GB0.REG'),('pursuit','PURC','GB2.REG')]: # .698: PURG, the guard band off; .702: PURC, the band without its viewport codes
+for sc,tag,reg in [('arena','ARE',''),('pursuit','PUR','')]: # .698: PURG, the guard band off; .702: PURC, the band without its viewport codes
  step('3 profile HarborBench %s%s'%(sc,' '+reg if reg else ''))
  if reg:a('regedit /s %s'%reg)
  a('if exist HB\\results.txt del HB\\results.txt');a('cd HB');a('start /w ..\\VXD3DMON.EXE 120 RUN HarborBench.exe /fullscreen /ram /scene=%s'%sc);a('cd ..')
@@ -93,20 +87,27 @@ def checks(tag,n):
  a('if exist CLXP3D1??.BIN del CLXP3D1??.BIN')
  a('start /w VXD3DMON.EXE 3');a('copy VXD3DMON.TXT %s\\CLXPMON%s.TXT >nul'%(T,tag));a('del VXD3DMON.TXT');a('echo.')
 checks('',5)
+# .724: the shared changes since .715 that VXTLP does not cover: rhw NaN / infinity drawn as rhw 0 is, and FOGFLAT (.722)
+step('5 VXRHW');a('echo    VXRHW: rhw 0, NaN and infinite primitives against rhw 1, under a minute (a small window).')
+a('if exist VXRHW.LOG del VXRHW.LOG');a('start /w VXRHW.EXE');a('if exist VXRHW.LOG copy VXRHW.LOG %s\\RHW.LOG >nul'%T);a('if exist VXRHW.LOG del VXRHW.LOG')
+a('if exist VXRHW_?.BMP copy VXRHW_?.BMP %s >nul'%T);a('if exist VXRHW_?.BMP del VXRHW_?.BMP')
+step('5 VXDX7 --enum');a('echo    VXDX7 --enum: the devices and their caps, a few seconds.')
+a('if exist VXDX7.TXT del VXDX7.TXT');a('start /w VXDX7.EXE --enum');a('if exist VXDX7.TXT copy VXDX7.TXT %s\\ENUM.TXT >nul'%T);a('if exist VXDX7.TXT del VXDX7.TXT')
 if MARK:
  step('6 3DMark')
  a('echo 6. 3DMark 2001: VXD3DMON watches until 3DMark closes. Start 3DMark now, run the full benchmark (default tests); photograph the results.')
  a('echo    When 3DMark is closed, photograph the desktop if it is garbled (do not drag windows), then press a key.')
- a('if exist VXD3DMON.TXT del VXD3DMON.TXT');a('start VXD3DMON.EXE 1200');a('echo Press a key when 3DMark is closed and VXD3DMON has finished.');a('pause')
+ a('if exist VXD3DMON.TXT del VXD3DMON.TXT');a('start VXD3DMON.EXE 1500 HOLD');a('echo When 3DMark is closed, click the VXD3DMON window and press a key there (it watches every program until then),');a('echo then press a key here.');a('pause') # .737: HOLD (3DMark's first short Direct3D program ended the watch)
  a('copy VXD3DMON.TXT %s\\3DMMON.TXT >nul'%T);a('del VXD3DMON.TXT');a('start /w VXREG.EXE CURSOR after-3DMark');a('echo.')
  checks('A',7)
 step('7b VXREUSE') # .707: after 3DMark, where VXNOSYNC lost its log (T700, T702, T706)
 a('echo 7b. VXREUSE: 24 copies of a small Direct3D program one after another, each keeping a file of its own open, under a minute.')
 a('if exist VXREUSE.LOG del VXREUSE.LOG');a('start /w VXREUSE.EXE');a('if exist VXREUSE.LOG copy VXREUSE.LOG %s\\REUSE.LOG >nul'%T);a('if exist VXREUSE.LOG del VXREUSE.LOG')
 a('start /w VXREG.EXE');a('copy VXREG.LOG %s\\REG.LOG >nul'%T);a('del VXREG.LOG');a('copy VXCUR.LOG %s\\VXCUR.LOG >nul'%T);a('del VXCUR.LOG')
+# E777 (the owner): VXNOSYNC TEAR ASK is no longer part of ALL.BAT (right on all three chips at T730 and T-E775, the tear flip unchanged since; it is the one step that needs someone at the machine). TEAR.BAT runs it when the flip code changes.
 step('done');a('echo Done. Send the folder %s%s'%(T,' and the photos.' if MARK else '.'));a('goto end')
 a(':wrongbuild');a('echo The driver that is running is not .%s (see VXREG.LOG). Install CHROME9.INF from this package, restart, and run this again.'%B);a('goto end')
-a(':nofiles');a('echo VXD3DMON.EXE, VXREG.EXE, VXTLP.EXE, CLXP3D.EXE, VXNOSYNC.EXE, TNF0.REG, ALLON.REG and the HB folder (HarborBench.exe, HarborBench.ini, HB_HW.INI) must be in the current folder.')
+a(':nofiles');a('echo VXD3DMON.EXE, VXREG.EXE, VXTLP.EXE, CLXP3D.EXE, VXNOSYNC.EXE, ALLON.REG and the HB folder (HarborBench.exe, HarborBench.ini, HB_HW.INI) must be in the current folder.')
 a(':nodx');a('echo DirectX 8.1 or later is not installed (no D3D8.DLL in the SYSTEM folder): the Direct3D tests and HarborBench would be skipped.');a('echo Install DirectX 9.0c, restart, and run this again.');a('goto end')
 a(':end');a('pause')
 open(OUT,'wb').write(('\r\n'.join(L)+'\r\n').encode('latin-1'))

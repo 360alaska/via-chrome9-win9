@@ -12,6 +12,14 @@ extern uint32_t vxs_check_asm(const vxs_frame *f) __asm__("_vxs_check");
 extern void vxs_conv_asm(const vxs_frame *f) __asm__("_vxs_conv");
 extern uint32_t vxs_max16_asm(const uint8_t *p,uint32_t n) __asm__("_vxs_max16");
 extern void vxs_cmm16_asm(const uint8_t *p,uint16_t *dst,uint32_t n,uint32_t *mm) __asm__("_vxs_cmm16"); /* .645 */
+/* .767: vxs_check is the per-lane form (the frame's k1, rb1, rb2, ng: set below as vxs_tc sets them); vxs_conv8 against vxs_conv_c for
+ * its layout (the records' 8 words; nothing written past the last record); vxs_mm16 and vxs_add16 against their C; vxs_eqw against a loop */
+extern void vxs_conv8_asm(const vxs_frame *f) __asm__("_vxs_conv8");
+extern void vxs_mm16_asm(const uint8_t *p,uint32_t n,uint32_t *mm) __asm__("_vxs_mm16");
+extern void vxs_add16_asm(uint16_t *dst,const uint8_t *src,uint32_t n,uint32_t gain) __asm__("_vxs_add16");
+extern int vxs_eqw_asm(const uint32_t *a,const uint32_t *b,uint32_t n) __asm__("_vxs_eqw");
+extern void vxs_convg_asm(const vxs_frame *f) __asm__("_vxs_convg"); /* .767: vxs_convg against vxs_convg_c: every layout the conv cases draw, x and y from the pair array */
+static uint32_t ea[80],eb[80];
 static uint16_t da[1800+16],db[1800+16];
 static uint8_t ib[1800*2+32];
 static uint32_t seed=545;
@@ -34,6 +42,9 @@ __attribute__((force_align_arg_pointer)) void _start(void){
   {uint32_t xl=(rnd()&1)?0:0x3F800000u+rnd()%0x01000000u,xh=0x43000000u+rnd()%0x02000000u,yl=(rnd()&1)?0:0x3F000000u+rnd()%0x01000000u,yh=0x43000000u+rnd()%0x02000000u,g=rnd()&1;
    f.xlo=xl;f.xrange=xh-xl;f.ylo=yl;f.yrange=yh-yl;f.xg=g&&!xl?0xFFFFFFFFu:0;f.yg=g&&!yl?0xFFFFFFFFu:0;
    k4(f.kxlo,f.xlo);k4(f.kxr,f.xrange^0x80000000u);k4(f.kylo,f.ylo);k4(f.kyr,f.yrange^0x80000000u);k4(f.kxg,f.xg);k4(f.kyg,f.yg);
+   f.k1[0]=0x80000000u-f.xlo;f.k1[1]=0x80000000u-f.ylo;f.k1[2]=0x80000000u;f.k1[3]=0x80000000u-1u; /* .767 */
+   f.rb1[0]=f.xrange^0x80000000u;f.rb1[1]=f.yrange^0x80000000u;f.rb1[2]=0x3F800000u^0x80000000u;f.rb1[3]=0x7F7FFFFEu^0x80000000u;
+   k4(f.rb2,0xBF000000u);f.ng[0]=~f.xg;f.ng[1]=~f.yg;f.ng[2]=f.ng[3]=0xFFFFFFFFu;
    for(i=0;i<n;i++){uint8_t *p=vb+i*st;uint32_t w[16];
     w[0]=pick(xl,xh);w[1]=pick(yl,yh);w[2]=(rnd()%4)?(rnd()%0x3F800001u):pick(0,0x3F800000u);w[3]=(rnd()%8)?0x3E000000u+rnd()%0x02000000u:pick(0,0x7F7FFFFFu);
     if((t&3)==0&&(rnd()%3)==0){w[0]=xl+rnd()%(f.xrange+1);w[1]=yl+rnd()%(f.yrange+1);} /* mostly inside */
@@ -52,7 +63,20 @@ __attribute__((force_align_arg_pointer)) void _start(void){
    f.wstride=(rnd()&1)?32:40;
    for(i=0;i<sizeof(wa)/4;i++)wa[i]=wb[i]=0xA5A5A5A5u;
    f.w=wa;vxs_conv_c(&f);f.w=wb;vxs_conv_asm(&f);cases++;
-   for(i=0;i<sizeof(wa)/4;i++)if(wa[i]!=wb[i]){out("conv differs, case ");outn(t);out(" word ");outn(i);out("\n");bad++;break;}}
+   for(i=0;i<sizeof(wa)/4;i++)if(wa[i]!=wb[i]){out("conv differs, case ");outn(t);out(" word ");outn(i);out("\n");bad++;break;}
+   {static uint32_t gxy[2*64+2];const uint32_t *keep; /* the same layout through vxs_convg: the pairs random words, the frame's pointer left as it was */
+    for(i=0;i<2*64+2;i++)gxy[i]=rnd();
+    f.xy=gxy+(rnd()&1);keep=f.xy;
+    for(i=0;i<sizeof(wa)/4;i++)wa[i]=wb[i]=0xA5A5A5A5u;
+    f.w=wa;vxs_convg_c(&f);f.w=wb;vxs_convg_asm(&f);cases++;
+    for(i=0;i<sizeof(wa)/4;i++)if(wa[i]!=wb[i]){out("convg differs, case ");outn(t);out(" word ");outn(i);out("\n");bad++;break;}
+    if(f.xy!=keep){out("convg moved the frame's pointer, case ");outn(t);out("\n");bad++;}}}
+  if(st>=32){ /* .767: vxs_conv8: its layout from the same vertices (every stride from 32), 8-word records */
+   f.coff=16;f.smode=2;f.soff=20;f.t0=24;f.v0on=1;f.two=0;f.t1=0;f.v1on=rnd()&1;f.wstride=32;
+   for(i=0;i<sizeof(wa)/4;i++)wa[i]=wb[i]=0xA5A5A5A5u;
+   f.w=wa;vxs_conv_c(&f);f.w=wb;vxs_conv8_asm(&f);cases++;
+   for(i=0;i<n*8;i++)if(wa[i]!=wb[i]){out("conv8 differs, case ");outn(t);out(" word ");outn(i);out("\n");bad++;break;}
+   for(i=n*8;i<sizeof(wb)/4;i++)if(wb[i]!=0xA5A5A5A5u){out("conv8 wrote past its records, case ");outn(t);out("\n");bad++;break;}}
  }
  for(t=0;t<20000;t++){uint32_t n=rnd()%1800,o=rnd()&1,i,lim=(rnd()&1)?0x10000:(1+rnd()%4000),ra,rb; /* vxs_max16: odd addresses, every length */
   for(i=0;i<n;i++){uint32_t a=rnd()%lim;if((rnd()%97)==0)a=0xFFFF-(rnd()&3);ib[o+i*2]=(uint8_t)a;ib[o+i*2+1]=(uint8_t)(a>>8);}
@@ -61,7 +85,19 @@ __attribute__((force_align_arg_pointer)) void _start(void){
    for(q=0;q<1800+16;q++)da[q]=db[q]=0x5AA5;
    vxs_cmm16_c(ib+o,da+o2,n,ma);vxs_cmm16_asm(ib+o,db+o2,n,mb);cases++;
    if(ma[0]!=mb[0]||ma[1]!=mb[1]){out("cmm16 range differs, case ");outn(t);out("\n");bad++;}
-   else for(q=0;q<1800+16;q++)if(da[q]!=db[q]){out("cmm16 copy differs, case ");outn(t);out("\n");bad++;break;}}}
+   else for(q=0;q<1800+16;q++)if(da[q]!=db[q]){out("cmm16 copy differs, case ");outn(t);out("\n");bad++;break;}}
+  {uint32_t ma[2],mb[2],q,o2=rnd()&7,gain=(rnd()&1)?rnd()%600:0u-(rnd()%600); /* .767: vxs_mm16; vxs_add16 with gains of either sign */
+   vxs_mm16_c(ib+o,n,ma);vxs_mm16_asm(ib+o,n,mb);cases++;
+   if(ma[0]!=mb[0]||ma[1]!=mb[1]){out("mm16 differs, case ");outn(t);out("\n");bad++;}
+   for(q=0;q<1800+16;q++)da[q]=db[q]=0x5AA5;
+   vxs_add16_c(da+o2,ib+o,n,gain);vxs_add16_asm(db+o2,ib+o,n,gain);cases++;
+   for(q=0;q<1800+16;q++)if(da[q]!=db[q]){out("add16 differs, case ");outn(t);out("\n");bad++;break;}}}
+ for(t=0;t<40000;t++){uint32_t n=rnd()%73,o1=rnd()%5,o2=rnd()%5,i,ra=1,rb; /* .767: vxs_eqw: equal, and one word different at every place */
+  for(i=0;i<80;i++){ea[i]=rnd()*8;eb[i]=rnd()*8;}
+  for(i=0;i<n;i++)eb[o2+i]=ea[o1+i];
+  if(n&&(rnd()&3)){uint32_t k=rnd()%n;eb[o2+k]^=1u<<(rnd()%32);}
+  for(i=0;i<n;i++)if(ea[o1+i]!=eb[o2+i]){ra=0;break;}
+  rb=(uint32_t)vxs_eqw_asm(ea+o1,eb+o2,n);cases++;if(ra!=rb){out("eqw differs, case ");outn(t);out("\n");bad++;}}
  out("hal span kernels against the C: ");outn(cases);out(" cases, ");outn(bad);out(" differ (");outn(passed);out(" vertices passed the check)\n");
  sys_exit(bad?1:0);
 }

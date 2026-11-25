@@ -33,6 +33,8 @@ class D3D(HAL):
   elif name=='CloseHandle' and self.arg(0)==0x88:argc=1
   elif name=='InterlockedExchange':
    argc=2;p=self.arg(0);ret=self.word(p);u.mem_write(p,pack([self.arg(1)]))
+  elif name in ('InterlockedIncrement','InterlockedDecrement'): # .737
+   argc=1;p=self.arg(0);ret=(self.word(p)+(1 if name=='InterlockedIncrement' else -1))&0xFFFFFFFF;u.mem_write(p,pack([ret]))
   elif name=='DeviceIoControl' and self.arg(1) in (0x85500020,0x85500021,0x85500024):
    argc=8
    if self.arg(1)==0x85500024: # v10.276: n packets in one call; each taken until one's result is not 0
@@ -255,7 +257,7 @@ def audit_checks():
   h.call('_VX_D3D_GetDriverInfo@4',(gi,));assert h.word(gi+36)==0
   return bytes(u.mem_read(out,size))
  ext=query(0x7de41f80,0x9d93,0x11d0,[0x89,0xab,0,0xa0,0xc9,5,0x41,0x29])
- assert u32(ext,44)==16 and u32(ext,72)==2 and u32(ext,76)==0xFFFFFF and u32(ext,88)==0 # v10.206: two coordinate sets, + PM, PREMODULATE, the MODULATEINV ops, DOT3
+ assert u32(ext,44)==16 and u32(ext,72)==3 and u32(ext,76)==0xFFFFFF and u32(ext,88)==0 # v10.206 (.734: three coordinate sets), + PM, PREMODULATE, the MODULATEINV ops, DOT3
  assert struct.unpack_from('<4I',ext,4)==(1,2048,1,2048) and u32(ext,36)==2048 and u32(ext,40)==2048 # v10.199: 2048
  assert struct.unpack_from('<HH',ext,80)==(3,3) and u32(ext,84)==8 and u32(ext,96)==0x3F and ext[100:]==bytes(16) # v10.206: three stages and textures; .601: the driver's T&L is offered by default (8 lights, the six vertex processing caps)
  cases.append('v10.169 extended caps: one texture stage and sampler, one coordinate set, 1..1024 textures, op caps DISABLE, SELECTARG1/2, MODULATE/2X/4X, ADD, ADDSIGNED, BLENDDIFFUSEALPHA, BLENDTEXTUREALPHA (v10.172), anisotropy one, no W range, zero reserved fields')
@@ -326,6 +328,15 @@ def audit_checks():
  # Destruction in another DDLocal with an aliased offset must not lose this context.
  u.mem_write(ex,pack([0,second[0],0,0]));h.call('_VXDestroySurface@4',(ex,));assert alive()==0
  cases.append('surface destruction respects DDLocal identity rather than matching framebuffer offsets alone')
+ # .726 (outside review of .723): the handle of the bound target registered again for another surface in the same DDLocal: the bound
+ # surface is still alive and stays the target (the context was marked lost: SURFACELOST on the next call); the handle's next bind takes
+ # the new surface
+ assert target(1129)==0 and dp2(clear)[0]==0 and u32(h.native[-1],20)==0x20000
+ other=resource(131,1129,0xb0000);assert register(other[0])==0
+ assert alive()==0 and dp2(clear)[0]==0 and u32(h.native[-1],20)==0x20000,'the bound surface stays the target'
+ assert target(1129)==0 and dp2(clear)[0]==0 and u32(h.native[-1],20)==0xb0000,'a new bind of the handle takes the new surface'
+ assert register(surfaces[-1][0])==0 and alive()==0 and target(1129)==0 and dp2(clear)[0]==0 and u32(h.native[-1],20)==0x20000
+ cases.append('.726: a handle registered again for another surface leaves the bound target alive and bound until the handle is bound again')
  current=surfaces[-1];u.mem_write(current[1]+20,pack([0]))
  assert register(current[0])==0 and alive()==0
  cases.append('video fpVidMem zero is not treated as a system-memory deletion notification')
@@ -408,6 +419,22 @@ def audit_checks():
  u.mem_write(ow,pack([0]));assert tex4001(0)!=(1,0xf0000) and all(h.word(h.sym['fq_ptr']+4*k)==0 for k in range(32)) and h.word(ow)==0
  assert register(tex[0],local2)==0 and tex4001(0xf0000)==(1,0xf0000)
  cases.append('v10.466: DestroySurface with the callback lock held queues the surface; the next callback forgets it before drawing (its handle no longer draws)')
+ # .736 (the crash write-up, fixes 2 and 3): DestroyDDLocal with the lock held waits a bounded time, then queues and answers DD_OK (it
+ # answered WASSTILLDRAWING, and DDHELP's clean-up of a crashed program could not finish); the next callback does it. It matches on the
+ # DDLocal, not the calling process (DDHELP calls it for a dead program).
+ dq=h.sym['vx_d3d_dq'];lx=ARENA+0x18000;assert register(second[0],lx)==0
+ q0,d0=h.word(dq),h.word(dq+4);u.mem_write(ow,pack([me]))
+ u.mem_write(destroy,pack([0,lx,0xFFFFFFFF]));h.call('audit_destroy_local',(destroy,));assert h.word(destroy+8)==0 and h.word(ow)==me,hex(h.word(destroy+8))
+ assert h.word(dq)==q0+1 and h.word(dq+4)==d0
+ u.mem_write(ow,pack([0]));tex4001(0);assert h.word(dq+4)==d0+1 and h.word(ow)==0
+ cases.append('.736 (crash write-up fixes 2, 3): DestroyDDLocal with the lock held queues and answers DD_OK; the next callback destroys that DDLocal')
+ # .737 (fourth review #5): a queue slot reserved by a producer that died before filling it (0x40000000 | its token) is given back by the
+ # next drain; one reserved by a running producer is left
+ dk,dr=h.sym['dq_kind'],h.sym['dq_rpid'];r3=h.word(dq+12)
+ u.mem_write(dk+4*14,pack([0x40000000|0x5001]));u.mem_write(dk+4*15,pack([0x40000000|me]))
+ tex4001(0);assert h.word(dk+4*14)==0 and h.word(dk+4*15)==(0x40000000|me) and h.word(dq+12)==r3+1,(hex(h.word(dk+4*14)),hex(h.word(dk+4*15)))
+ u.mem_write(dk+4*15,pack([0]))
+ cases.append('.737: a destroy-queue slot reserved by a dead producer is given back by the next drain; a live producer\'s reservation is kept')
  # v10.470 (board, VXFETCH v2.1): a process that used the HAL without this DLL being attached in it (DirectDraw maps it in the shared arena),
  # then loads it (DllMain attach): its contexts and surface tables are its own, live: kept (they were reclaimed and every draw refused)
  tp,tv=h.sym['tok_pid'],h.sym['tok_val']
@@ -786,6 +813,7 @@ class D3DFail(D3D):
   elif name=='GetLastError':
    sp=u.reg_read(UC_X86_REG_ESP);u.reg_write(UC_X86_REG_EAX,50);u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,self.word(sp));return
   elif name=='DeviceIoControl' and self.arg(1)==0x85500012 and self.arg(0) in getattr(self,'foreign',()): # .707: a value that is not this driver's handle (another program's file)
+   self.foreign_ioctl=getattr(self,'foreign_ioctl',0)+1 # .724: must stay 0 (no request to a handle that may be another driver's)
    sp=u.reg_read(UC_X86_REG_ESP);u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+4+32);u.reg_write(UC_X86_REG_EIP,self.word(sp));return
   elif name=='DeviceIoControl' and self.arg(1)==0x85500017 and self.fail:
    self.fail-=1;sp=u.reg_read(UC_X86_REG_ESP);u.reg_write(UC_X86_REG_EAX,0);u.reg_write(UC_X86_REG_ESP,sp+4+32);u.reg_write(UC_X86_REG_EIP,self.word(sp));return
@@ -808,17 +836,19 @@ def audit319_checks():
  assert h.opened-o0==5,'the slot handle was kept: no new open'
  cases.append('v10.319 (audit H3): an IOCTL that fails on the slot handle and on a fresh one closes the fresh one and keeps the slot (no handle leaked a call)')
  slot=h.handles[0]
- for k in range(5): # v10.322 (review: five retries, six opens and no close): each successful retry closes the handle it replaces
+ for k in range(5): # .725 (review of .723): a successful retry replaces the slot's handle and leaves the old one open (nothing tells this
+  # process's own handles apart in the shared data; Windows closes them when the process ends). v10.322 closed it, .707 after an IOCTL to it
   h.fail=1;assert h.call('_VXLock@4',(lock,))==0 and h.word(lock+32)==0;h.call('_VXUnlock@4',(unlock,))
-  assert h.closed_h[-1]==slot,(hex(h.closed_h[-1]),hex(slot));slot=h.handles[-1]
- assert h.opened-o0==10 and h.closed-c0==10,(h.opened-o0,h.closed-c0)
+  assert slot not in h.closed_h,(hex(slot));slot=h.handles[-1]
+ assert h.opened-o0==10 and h.closed-c0==5,(h.opened-o0,h.closed-c0)
  h.fail=0;n0=h.opened;assert h.call('_VXLock@4',(lock,))==0;h.call('_VXUnlock@4',(unlock,));assert h.opened==n0,'the last fresh handle is the slot\'s now'
- cases.append('v10.322 (review): a call that fails only on the slot handle: the fresh one replaces it and the replaced one is closed (5 retries: 5 opens, 5 closes)')
+ cases.append('.725 (review): a call that fails only on the slot handle: the fresh one replaces it and the replaced one is left open (5 retries: 5 opens, no close)')
  # .707 (board, T700/T702/T706: VXNOSYNC's log closed under it): a slot value that does not answer as this driver (an ended process's
  # number, in this process another program handle) is replaced but never closed
  slot=h.handles[-1];h.foreign={slot};c2=h.closed;o2=h.opened
  h.fail=1;assert h.call('_VXLock@4',(lock,))==0 and h.word(lock+32)==0;h.call('_VXUnlock@4',(unlock,))
  assert h.opened==o2+1 and h.closed==c2 and slot not in h.closed_h[-3:],(h.opened-o2,h.closed-c2)
+ assert getattr(h,'foreign_ioctl',0)==0,'.725: no request sent to a slot value that may not be ours'
  h.foreign=set();h.fail=0;n0=h.opened;assert h.call('_VXLock@4',(lock,))==0;h.call('_VXUnlock@4',(unlock,));assert h.opened==n0,'the fresh handle kept in the slot'
  cases.append('.707: a slot value that does not answer as this driver (another program\'s handle under a reused process ID) is replaced and left open')
  # a slot left under this process's ID by an ended process (Windows 98 gives the ID again) is forgotten at attach, not closed
@@ -856,6 +886,20 @@ def audit319_checks():
  # a process detaching while it holds the lock lets it go
  u.mem_write(ow,pack([new[0]]));h.call('_DllMain@12',(h.base,0,0));assert h.word(ow)==0
  cases.append('v10.319 (audit H2): the HAL callback lock held by an ended process (or by this ID before it attached again) is taken over and released; held by a running process or this one it is not; a process detaching lets it go')
+ # .736 (the crash write-up, fix 1): a token-1 holder (a process the DLL never attached in) is decided by its process: an ended one is
+ # taken over, a running one waited for; under this caller's own ID (Windows 98 gave it again) it is an ended process's, since an
+ # attached caller never holds the lock as 1. Every refusal is counted (fix 5).
+ hp=h.sym['cb_hpid'];rf=h.sym['cb_refusals']
+ u.mem_write(ow,pack([1]));u.mem_write(hp,pack([h.pid]));assert query()==0 # unattached (token 1) itself: its own other thread, or not: waits
+ u.mem_write(ow,pack([0]));h.call('_DllMain@12',(h.base,1,0))
+ hs=h.sym['cb_hsince']
+ # under the caller's own ID (attached caller): taken over only after 5 s held (its own thread from before the attach cannot be told from
+ # a dead predecessor, .737); GetTickCount is 1234 here: hsince 1234 is just taken, a wrapped -10000 is 11 s ago
+ for pid,since,taken in ((0x555,1234,True),(0x777,1234,False),(h.pid,(1234-10000)&0xFFFFFFFF,True),(h.pid,1234,False),(0,1234,False)):
+  r0=h.word(rf);u.mem_write(ow,pack([1]));u.mem_write(hp,pack([pid]));u.mem_write(hs,pack([since]));r=query();assert (r>=1)==taken,(hex(pid),r)
+  assert h.word(ow)==(0 if taken else 1) and h.word(rf)==r0+(0 if taken else 1),(hex(pid),h.word(rf),r0)
+ u.mem_write(ow,pack([0]));u.mem_write(hp,pack([0]))
+ cases.append('.736 (crash write-up fix 1): a token-1 lock holder is taken over when its process ended (or the caller has its ID again), waited for while it runs; refusals counted')
  # H1: a DXT1 texture Blt honours the clip list: none touches nothing, a partial list is refused untouched, the whole surface copies
  h=D3D();u=h.u;dx7(h);u.mem_write(h.context+28,pack([32,0x40,0,32,0xff0000,0xff00,255,0]))
  # Watcom's memmove (dxt_spread) saves ES with push/pop es, which Unicorn's flat model does not keep: done here, the caller pops the arguments

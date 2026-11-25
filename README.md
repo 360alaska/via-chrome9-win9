@@ -2,9 +2,9 @@
 
 A from-scratch Windows 98 display driver for the VIA VX800, VX855 and VX900 integrated graphics: accelerated 2D, DirectDraw, Direct3D and OpenGL from one set of files. VIA never shipped a Windows 9x driver for these chips.
 
-Current build: **.723**: tested on the VX800, VX855 and VX900 up to build .715 (full test runs on each board); builds .716-.723, including the 3DMark 2001 Dragothic water fix and the Hellbender fog fix, on the VX855 (see [Checking an install](#checking-an-install)).
+Current release: **0.800** (the files report build .793): full test runs on a VX800, a VX855 and a VX900 board on 2026-11-24, 3DMark 2001 SE included (see [Checking an install](#checking-an-install)).
 
-**Download:** [`VIA_Chrome9_723.zip`](downloads/VIA_Chrome9_723.zip) (the driver) and [`VIA_Chrome9_723_tools.zip`](downloads/VIA_Chrome9_723_tools.zip) (optional test tools), also on the [releases page](https://github.com/360alaska/via-chrome9-win9/releases) with the source and the changes since .637.
+**Download:** [`VIA_Chrome9_800.zip`](downloads/VIA_Chrome9_800.zip) (the driver) and [`VIA_Chrome9_800_tools.zip`](downloads/VIA_Chrome9_800_tools.zip) (optional test tools), also on the [releases page](https://github.com/360alaska/via-chrome9-win9/releases) with the source and the changes since .723.
 
 **Support the project:** if this driver is useful to you, you can [donate through PayPal](https://www.paypal.com/donate/?hosted_button_id=45HAEA4K4KTXU).
 
@@ -102,36 +102,40 @@ To update an existing install, replace the same five files and restart. All five
 
 ## Checking an install
 
-The test set is a separate download (`downloads/VIA_Chrome9_723_tools.zip`) and needs no games. Unpack it and double-click `RUNALL.BAT`; it runs the tests in order in a minimised window and gathers their reports in `tools\LOGS`. Do not move the mouse while it runs. VX2FLIP ends with a message box: press Enter.
+The test set is a separate download (`downloads/VIA_Chrome9_800_tools.zip`) and needs no games. Unpack it next to the driver files and run one of two batch files from the `tools` folder. Each first checks that the installed driver is the build the tools belong to, then runs its tests in order and gathers their reports in a results folder (`tools\T793`). Do not move the mouse while one runs.
+
+- `QUICK.BAT`: about 10 minutes. The build check, the transform-and-lighting pictures, the clipping checks and a benchmark scene.
+- `ALL.BAT`: about an hour. Everything in QUICK, the full picture grids, every HarborBench scene, the flip and engine-capture tests, and 3DMark 2001 SE if it is installed.
 
 | Tool | What it checks |
 |---|---|
-| VXREG | The build that is loaded, the chip found, DirectX version, whether DirectDraw uses the hardware |
-| VX2GDI | 2D drawing against Windows' own, pixel for pixel, at 16, 32 and 8 bits |
-| VXGTUNE | Lines, fills, text and bitmap blits: pixels and speed |
-| VX2FLIP, VXFLIPF | DirectDraw blits, colour keys, page flips and their timing |
-| VXDX7 | Direct3D |
-| VXGL, VXSTEN, VXTEX | OpenGL scenes, stencil and textures, with the engine against software |
-| VX2OVL | The video overlay (run by hand) |
-| VXLEG | Direct3D as DirectX 5 programs use it; run it after an old game to list the settings that game sent (run by hand) |
-| VXHOLLOW | Drawing with the hollow brush, as installers' banners use it (run by hand, at 16 and 32 bits) |
-| VXPANEL | A laptop panel: which display unit drives it, the mode list, the pointer and page flips (run by hand) |
+| VXREG | The build that is loaded, the chip found, DirectX version, whether DirectDraw uses the hardware, the registry values the driver reads |
+| VXTLP | The driver's transform and lighting: pictures compared pixel for pixel with Direct3D's own |
+| VXCLIP, VXRHW | Clipping at the screen edges and the near plane; vertices with unusual rhw values |
+| VXDX7 | Direct3D as DirectX 7 programs use it |
+| VXGL | OpenGL scenes, with the engine against software |
+| VX2GDI | 2D drawing against Windows' own, pixel for pixel |
+| VXNOSYNC, VXREUSE | Page flips and their timing; Direct3D handles reused by many programs |
+| VXTIME | The driver's own mode timings on your monitor, one size and refresh rate at a time (`TIME.BAT`, run by hand) |
+| VXD3DMON, VXHANG | Watchers: what a running game asks of the driver, and where a program that stops is stopped |
+| VXCRASH | Programs that crash on purpose while full screen (`CRASH.BAT`, run by hand, never inside the other two) |
 
-A report that ends in PASS or `failures=0` is good. `LOGS\RUNALL.TXT` names the last test started if one hangs.
+A report that ends in `PASSED: 0 wrong` is good. `STEPS.TXT` in the results folder names the last step started if one hangs.
 
-`REGRESS.TXT` in the tools lists every change since build .694 with the test that checks it; builds .716-.723 have so far run only on VX855 boards. VX800 and VX900 owners: a `RUNALL.BAT` report from your board is welcome.
+`REGRESS.TXT` in the tools lists every change since build .694 with the test that checks it. VX800, VX855 and VX900 owners: a results folder from your board is welcome.
 
 ## Settings
 
 The driver needs none. These registry values exist under `HKEY_LOCAL_MACHINE\Software\VX85598`:
 
-- logging switches for the OpenGL and Direct3D parts (`VXGL_LOG`, `ACCEL_D3D_LOG` and their sample-rate values), off by default
-- `NOEDIDHIGHRES`, for monitors whose EDID should not limit the mode list, and `EDID_MODES` (0 only what the EDID lists, 1 the default, 2 every mode the BIOS has)
+- logging switches for the OpenGL and Direct3D parts (`VXGL_LOG`, `ACCEL_D3D_LOG`, `ACCEL_DEBUG_LOG`, `ACCEL_PROFILE` and their sample-rate values), off by default
+- `NOEDIDHIGHRES`, for a monitor with no readable EDID: 1 offers the sizes above 1024x768 anyway; and `EDID_MODES` (0 only what the EDID lists, 1 the default, 2 every mode the BIOS has)
+- `CUSTOM_TIMING`: 1 the driver programs the mode timing itself above 1024x768 (the default on the VX800 and VX855), 0 the BIOS's timing (the default on the VX900); `TIMING_1152_CVT`: 1152x864 at 60 Hz (default 1) or the 75 Hz standard timing (0)
 - `ACCEL_D3D_TNL`: 0 turns the driver's transform and lighting off, so Direct3D does it for every program (default 1)
-- features still under test, all on by default: `ACCEL_D3D_GUARDBAND` (the guard band, VX855 / VX875 only; 0 off), `ACCEL_FLIP_TEAR` (a flip without vertical sync shown from the next scan line, VX855 / VX875 only; 0 waits for the next frame), `ACCEL_3D_RINGFLIP` (page flips through the 3D command ring; 0 the processor) and `ACCEL_D3D_TNFASTIX` (meshes wholly on screen sent to the engine in one block)
-- tuning values: `ACCEL_D3D_RINGKB` (the 3D command buffer's size; default 256 KB on the VX800, 512 on the VX855, 1024 on the VX900), `ACCEL_STRETCH3D` (stretched blits: 0 the processor, 1 the 3D engine, 2 the 3D engine with bilinear filtering; default 1) and `ACCEL_D3D_SEAM` (a second, shifted draw that covers one-pixel gaps between meshes; default off)
+- features still under test, on by default: `ACCEL_FLIP_TEAR` (a flip without vertical sync shown from the next scan line; 0 waits for the next frame) and `ACCEL_3D_RINGFLIP` (page flips through the 3D command ring; 0 the processor)
+- tuning values: `ACCEL_D3D_RINGKB` (the 3D command buffer's size; default 256 KB on the VX800, 512 on the VX855, 1024 on the VX900) and `VIDMEM_MB` (a cap, in megabytes, on the video memory the driver uses; 8 or more)
 
-`VXREG` lists what the loaded driver reads.
+`VXREG` lists what the loaded driver reads. Switches that earlier builds had for finished features (the guard band, the stretch path, the seam cover and others) are gone: those features are always on.
 
 ## Benchmarks
 
@@ -150,7 +154,21 @@ The VIA rows run from the oldest Chrome9 chip to the newest; the Intel machine i
 
 How to read this: these are four different computers with different processors, and WinTune's video scores depend on the processor as well as the graphics chip and driver. Against VIA's own driver on the older CN896, both boards on this driver are ahead in all three tests. The Intel machine has the highest 2D score. In Direct3D both boards on this driver are well ahead of it. In OpenGL the VX855 is ahead of it and the VX800 behind. So the table shows roughly where this driver stands beside the chip makers' own Windows 98 drivers for neighbouring hardware; it is not a controlled comparison, and there is no vendor driver for the VX800 or VX855 to compare against directly. The VX900 has not been run through WinTune yet; its Quake II demo figure is in the comparison table above.
 
+**Direct3D and OpenGL speed.** HarborBench, the "pursuit" scene (a heavy city scene of about 713 draw packets a frame), hardware transform and lighting, in milliseconds a frame (lower is better):
+
+| Chip | .723 | 0.800 | Less time |
+|---|---|---|---|
+| VX855 | 268.6 | 193.9 | 27.8% |
+| VX900 | 125.3 | 95.6 | 23.7% |
+| VX800 | not measured | 211.9 | |
+
+3DMark 2001 SE, default settings, release 0.800: VX800 665, VX855 786, VX900 1819. It runs to the end on all three.
+
 ## Known limits
+
+- The driver's DirectX 8 interface is switched off in this release: DirectX 8 and 9 programs run through the DirectX 7 interface, as before. No pixel shaders.
+- Sizes above 1024x768 need a monitor whose EDID can be read at boot, or `NOEDIDHIGHRES`.
+- A monitor on VGA that takes 1280x960 for 1600x900 (the two share one standard timing) shows it cut off; pick another size on such a monitor.
 
 - DirectX 6.1 and earlier: no hardware DirectDraw or Direct3D (see Requirements).
 - Blits from an 8-bit DIB section with a ROP are drawn by Windows, not the engine.

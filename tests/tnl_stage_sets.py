@@ -34,10 +34,10 @@ def run(stages):
 bad=0
 S=lambda tci:(7,4,2,0,2,2,0,tci)
 for name,st,want_extra,want_sets in [("stages 0 and 1 both read set 0",[S(0),S(0)],0,2),
- ("base, light map, detail (sets 0, 1, 0)",[S(0),S(1),S(0)],0,2),("sets 0, 1, 1",[S(0),S(1),S(1)],0,2),("three different sets: the third counted",[S(0),S(1),(7,4,2,0,2,2,0,0x10000)],1,2)]:
+ ("base, light map, detail (sets 0, 1, 0)",[S(0),S(1),S(0)],0,2),("sets 0, 1, 1",[S(0),S(1),S(1)],0,2),("three different sets: the third its own (.734: the T&L's third output set, slot C)",[S(0),S(1),(7,4,2,0,2,2,0,0x10000)],0,3)]:
  rc,extra,after,uv=run(st)
  units,sets,words=uv
- want=list(range(len(st)))if len(st)<3 else[0,1,0 if st[2][7]==st[0][7] else 1] # stages 0 and 1 their own sets; stage 2 the one that matches it (else the second, counted)
+ want=list(range(len(st)))if len(st)<3 else[0,1,0 if st[2][7]==st[0][7] else 1 if st[2][7]==st[1][7] else 2] # stages 0 and 1 their own sets; stage 2 the one that matches it (.734: else its own, the third)
  ok=rc==(0,0)and extra==want_extra and after==[x[7] for x in st]+[0,1,2][len(st):]and sets[:len(st)]==want # the packet's coordinate set by unit; the stages put back after the draw
  print(('ok  ' if ok else 'FAIL'),name,'rc',rc,'counted',extra,'stage TEXCOORDINDEX after the draw',after,'units',units,'sets',sets[:len(st)])
  bad+=not ok

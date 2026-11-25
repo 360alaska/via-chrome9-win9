@@ -11,7 +11,7 @@ static void out(const char *fmt,...) {
  fputs(t,stdout); if(lf) fputs(t,lf);
 }
 static const char *verdict(unsigned v) {
- static const char *n[11]={"base mode (always offered)","ADDED (monitor can show it)","BIOS mode query failed","not a linear direct-colour graphics mode","not 16 or 32 bits per pixel","size outside 640x480..1920x1200","layout, pitch or memory check failed","same size and depth already present","monitor does not list this size","no EDID, larger than 1280x1024","mode table full"};
+ static const char *n[11]={"base mode (always offered)","ADDED (monitor can show it)","BIOS mode query failed","not a linear direct-colour graphics mode","not 16 or 32 bits per pixel","size outside 640x480..1920x1200","layout, pitch or memory check failed","same size and depth already present","monitor does not list this size","(not used: .765)","mode table full"};
  return v<11?n[v]:"?";
 }
 int main(void) {
@@ -43,7 +43,7 @@ int main(void) {
  }
  e=(const unsigned char*)r.edid;
  if(r.edid_valid==2) out("NOTE: the EDID below was readable now but not when the driver started, so the driver is not using it yet.\n");
- if(!r.edid_valid) out("EDID: none could be read on any DDC bus (bus 2 = SR31, bus 1 = SR26, bus 3 = SR2C).\n  Without an EDID modes up to 1280x1024 are offered\n  (registry EDID_MODES=2 offers every BIOS mode up to 1920x1200).\n");
+ if(!r.edid_valid) out("EDID: none could be read on any DDC bus (bus 2 = SR31, bus 1 = SR26, bus 3 = SR2C).\n  Without an EDID modes up to 1024x768 are offered\n  (registry NOEDIDHIGHRES=1 or EDID_MODES=2 offers every BIOS mode up to 1920x1200).\n");
  else {
   unsigned dd; char name[16]="";
   out("EDID read OK via %s %lu. Manufacturer %c%c%c, product %04X, EDID %u.%u, %s input.\n",r.edid_bus==4?"the BIOS (VBE/DDC), code":"DDC bus",(unsigned long)r.edid_bus,

@@ -241,6 +241,55 @@ def keep_case(name,lit,cv,point,seed):
  KO.value=1;a,b=out
  ok=a[0]==(0,0)==b[0] and a[1]==b[1] and b[2][1]>0
  print(('ok   ' if ok else 'FAIL ')+name,'bytes',len(a[1]),len(b[1]),'set-ups built, matrices again, kept',b[2]);fails+=not ok
+# .740 (speed list O; T740's pursuit profile: the set-up built for 84% of the draws): a T&L command that sets the value already there (the
+# same material, the same world matrix, the same depth range) keeps the set-up. Draws each preceded by a material (the same one, every
+# fifth a different one) and a world matrix (the same as before half the time): keeping must give the same bytes as building every draw,
+# and with it the set-ups built are only the changes.
+def same_case(name,lit,cv,seed):
+ global fails
+ RR=random.Random(seed);vs,ix=mesh(10,10,-1.2,-1.2,2.4,2.4,.2,.9)
+ vb=b''.join(struct.pack('<6fI2f',*v,RR.uniform(-1,1),RR.uniform(-1,1),-1.0,RR.getrandbits(32),RR.random(),RR.random()) for v in vs)
+ mats=[struct.pack('<17f',.9,.8,.7,1,.3,.3,.3,1,0,0,0,0,.05,.05,.05,0,0),struct.pack('<17f',.2,.8,.4,1,.5,.1,.3,1,0,0,0,0,.1,0,.05,0,0)]
+ lt=cmd(34,2,struct.pack('<II',0,2)+struct.pack('<I',3)+struct.pack('<25f',1,1,1,1,0,0,0,0,.1,.1,.1,1,0,0,0,.3,-1,.5,5,0,1,.2,0,0,0)+struct.pack('<II',0,0))
+ pre=cmd(28,1,struct.pack('<4I',0,0,64,64))+cmd(36,2,struct.pack('<I',2)+ID+struct.pack('<I',3)+ID)+cmd(33,1,mats[0])+lt
+ pre+=rs((22,1),(136,1),(137,lit),(139,0xFF202020),(141,cv),(145,1 if cv else 0),(28,1),(140,3),(36,f2u(.1)),(37,f2u(.9)),(35,0))
+ draw=cmd(26,len(ix),struct.pack('<H',0)+b''.join(struct.pack('<3H',*x) for x in ix))
+ body=b'';w=struct.pack('<16f',1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1);mi=0;changes=0
+ for d in range(40):
+  if d%5==4:mi^=1;changes+=1
+  body+=cmd(33,1,mats[mi])+lt # .741: the same light again (its definition and its enable)
+  if RR.random()<.5:w=struct.pack('<16f',1,0,0,0,0,1,0,0,0,0,1,0,RR.uniform(-.5,.5),RR.uniform(-.5,.5),0,1)
+  body+=cmd(36,1,struct.pack('<I',1)+w)+cmd(32,1,struct.pack('<2f',0,1))+draw
+ out=[]
+ for on in (0,0,1): # each compared run follows the same run (the HAL's state from the run before shapes a call's first packet)
+  KO.value=on;ST3[0]=ST3[1]=ST3[2]=0;t=ctx(1);rr=t.run_dp2(pre+body,vb,stride=36,fvf=0x152);out.append((rr,stream(t),list(ST3)))
+ out=out[1:]
+ KO.value=1;a,b=out
+ ok=a[0]==(0,0)==b[0] and a[1]==b[1] and b[2][0]<=changes+2
+ print(('ok   ' if ok else 'FAIL ')+name,'bytes',len(a[1]),len(b[1]),'set-ups built, matrices again, kept',b[2],'material changes',changes);fails+=not ok
+# .742 (the merged core's tile test: point and spot lights out of a 32-vertex tile's reach left out of its groups): with it and without it
+# the packets' bytes must be the same. Meshes moved about by the world matrix, 3 to 8 point or spot lights of small to large range placed
+# near and far, with and without specular lighting, colour from the vertices or not.
+TON=U.in_dll(lib,'vx_d3d_tn_tile_on');TILE=(U*3).in_dll(lib,'vx_d3d_tn_tile');TALL=U.in_dll(lib,'vx_d3d_tn_tile_all')
+def tile_case(name,nl,spot,spec,cv,seed):
+ global fails
+ RR=random.Random(seed);vs,ix=mesh(14,14,-1.2,-1.2,2.4,2.4,.2,.9)
+ vb=b''.join(struct.pack('<6fI2f',*v,RR.uniform(-1,1),RR.uniform(-1,1),-1.0,RR.getrandbits(32),RR.random(),RR.random()) for v in vs)
+ mat=struct.pack('<17f',.9,.8,.7,1,.3,.3,.3,1,0,0,0,0,.6,.6,.6,0,12.0)
+ def lt(i,ty,pos,rng):return cmd(34,2,struct.pack('<II',i,2)+struct.pack('<I',ty)+struct.pack('<25f',RR.random(),RR.random(),RR.random(),1,.5,.5,.5,0,RR.choice((0,0,.1)),0,.1,1,*pos,RR.uniform(-1,1),RR.uniform(-1,1),RR.uniform(.2,1),rng,1,RR.choice((1,.5)),RR.choice((0,.3)),0,.4,.9)+struct.pack('<II',i,0))
+ pre=cmd(28,1,struct.pack('<4I',0,0,64,64))+cmd(36,2,struct.pack('<I',2)+ID+struct.pack('<I',3)+ID)+cmd(33,1,mat)
+ for i in range(nl):pre+=lt(i,2 if (spot and i%2) else 1,(RR.uniform(-6,6),RR.uniform(-6,6),RR.uniform(-3,6)),RR.choice((.3,1,2,4,1e30)))
+ pre+=rs((22,1),(136,1),(137,1),(139,0xFF202020),(141,cv),(145,1 if cv else 0),(29,spec),(28,0),(36,f2u(.1)),(37,f2u(.9)),(35,0))
+ draw=cmd(26,len(ix),struct.pack('<H',0)+b''.join(struct.pack('<3H',*x) for x in ix))
+ body=b''
+ for d in range(24):body+=cmd(36,1,struct.pack('<I',1)+struct.pack('<16f',1,0,0,0,0,1,0,0,0,0,1,0,RR.uniform(-.6,.6),RR.uniform(-.6,.6),RR.uniform(-.1,.1),1))+draw
+ out=[]
+ for on in (0,0,1):
+  TON.value=on;TILE[0]=TILE[1]=TILE[2]=0;TALL.value=0;t=ctx(1);rr=t.run_dp2(pre+body,vb,stride=36,fvf=0x152);out.append((rr,stream(t),list(TILE),TALL.value))
+ TON.value=1;a,b=out[1:]
+ ok=a[0]==(0,0)==b[0] and a[1]==b[1]
+ print(('ok   ' if ok else 'FAIL ')+name,'bytes',len(a[1]),len(b[1]),'tiles tested, lights dropped, tiles with none',b[2],'groups with every light dropped',b[3]);fails+=not ok
+ return b[2][1],b[3]
 # .648 (board, 3DMark 2001 on .647: 1,993,559 primitives left out for a non-finite vertex the driver's T&L made, none on .646): a draw
 # whose record size differs from the buffer's (a second stage turned on or off) is prepared, refused for room (tn_draw 2) and prepared
 # again after the flush: the second prepare found the set-up kept, and the group path used the frame of the draw before (the old record
@@ -277,6 +326,15 @@ for lit in (0,1):
   for point in (0,1):
    if not lit and (cv or point):continue
    keep_case('kept set-up: lit %d, colour from the vertices %d, a point light %d'%(lit,cv,point),lit,cv,point,647+lit*4+cv*2+point)
+TD=[0,0]
+for nl in (3,5,8):
+ for spot in (0,1):
+  for spec in (0,1):
+   for cv in (0,1):
+    d=tile_case('.742 tile test: %d lights, spot %d, specular %d, colour from the vertices %d'%(nl,spot,spec,cv),nl,spot,spec,cv,7420+nl*8+spot*4+spec*2+cv);TD[0]+=d[0];TD[1]+=d[1]
+ok=TD[0]>0 and TD[1]>0;print(('ok   ' if ok else 'FAIL ')+'.742 tile test dropped lights in these cases',TD);fails+=not ok
+for lit in (0,1):
+ for cv in (0,1):same_case('.740 same commands keep the set-up: lit %d, colour from the vertices %d'%(lit,cv),lit,cv,740+lit*2+cv)
 # the application's transformed vertices with an infinite z
 def zcase(name,z,want_drawn,want_z=None,x=48.0):
  global fails

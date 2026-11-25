@@ -42,7 +42,7 @@
 #define VXF_R_TIMEOUTS 13
 #define VXF_R_LAST_REQ 14
 #define VXF_R_LAST_V 15
-#define VXF_S_STATUS 1 /* 0 counter unavailable, 1 line valid, 2 vertical blank (no line), 3 counter outside the picture */
+#define VXF_S_STATUS 1 /* 0 counter unavailable, 1 line valid, 2 vertical blank (no line), 3 counter outside the picture, 4 (.737) no line for the unit showing the picture (IGA2): not handled */
 #define VXF_S_LINE 2
 #define VXF_S_RAW 3 /* the register as read */
 #define VXF_S_GATE 4 /* registry SCANLINE */

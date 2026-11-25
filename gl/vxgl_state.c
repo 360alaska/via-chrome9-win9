@@ -92,7 +92,7 @@ static void translate(vxgl_ctx *c) {
   c->front_hw=0;
   if((c->fallback&(VXGL_FB_NOHW|VXGL_FB_REGISTRY))||!vxgl_fbo_target(c,fb,1,&t,&z)){
    /* (review) the window's surfaces back on the core: they were left as the framebuffer object's (its depth tested by the next window draw) */
-   if(c->rtt){rtt_done(c);vxgl_hw_flush(c);c->core.target=c->fb->sback;c->core.depth=c->fb->sdepth;c->tex_changed=1;c->rtt=0;vx_d3d_gl_state();}
+   if(c->rtt){rtt_done(c);vxgl_hw_flush(c);if(c->fb){c->core.target=c->fb->sback;c->core.depth=c->fb->sdepth;}else{memset(&c->core.target,0,sizeof(c->core.target));memset(&c->core.depth,0,sizeof(c->core.depth));} /* E776 (outside audit, GL-17): no window's buffers to go back to */c->tex_changed=1;c->rtt=0;vx_d3d_gl_state();}
    vxgl_fallback(c,VXGL_FB_DRAWBUFFER,GL_TRUE);return;}
   if(!c->rtt||memcmp(&t,&c->core.target,sizeof(t))||memcmp(&z,&c->core.depth,sizeof(z))){rtt_done(c);vxgl_hw_flush(c);c->core.target=t;c->core.depth=z;c->tex_changed=1;}
   c->rtt=1;tw=(int32_t)t.width;th=(int32_t)t.height;}
@@ -187,11 +187,16 @@ static void translate(vxgl_ctx *c) {
  if(c->core.state.viewport.top<0)c->core.state.viewport.top=0;
  if(c->core.state.viewport.bottom>th)c->core.state.viewport.bottom=th;
  if(c->core.state.viewport.right>tw)c->core.state.viewport.right=tw;
+ /* .765 (audit of .757, 13): a scissor box wholly past one side (Mesa then gives _Xmax < _Xmin) reached the core inverted: every edge held
+  * to the surface, then an empty box where it was inverted (nothing drawn, as GL draws nothing) */
+ {vx3dn_rect *v=&c->core.state.viewport;if(v->left>tw)v->left=tw;if(v->top>th)v->top=th;if(v->right<0)v->right=0;if(v->bottom<0)v->bottom=0;
+  if(v->left>v->right)v->left=v->right;if(v->top>v->bottom)v->top=v->bottom;}
  /* not drawn by the engine yet */
  if(ctx->RenderMode!=GL_RENDER)fall|=VXGL_FB_RENDERMODE;
  /* v10.279 (review): GL_ARB_occlusion_query (GL 1.5) counts in swrast's fragment path; the engine's draws were not counted (a visible
   * triangle drew under a query and the query answered 0 samples). Software while a query counts. */
  if(ctx->Query.CurrentOcclusionObject&&!c->query_hw)fall|=VXGL_FB_QUERY; /* v10.315: unless the engine counts it (vxgl_mesa.c begin_query) */
+ if(rs[28]&&ctx->VertexProgram._Current)fall|=VXGL_FB_PROGRAM; /* E777 (outside audit of E768, GL-10): fog with a vertex program: tnl makes no fog factors then (the program's fog coordinate went to the engine as a blend factor): software */
  if(ctx->ATIFragmentShader._Enabled&&!ctx->FragmentProgram._Current){if(!vxgl_gl_fprog)fall|=VXGL_FB_PROGRAM;rs[29]=0;} /* v10.321: an ATI shader as stages too (no colour sum) */
  /* v10.321: a fragment program as stages (vxgl_fp.c, from vxgl_tex_state; ACCEL_OPENGL_FPROG). swrast adds no specular colour (the
   * program reads it) and fogs only with a fog option (s_context.c), from GL's fog state: the engine's per-vertex factors when GL_FOG is

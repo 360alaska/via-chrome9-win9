@@ -57,7 +57,14 @@ typedef struct vxgl_tex {
  vxgl_texmem spare[3];       /* v10.366: earlier copies of the same shape (ACCEL_OPENGL_TEXRING), each free again once vxgl_seq_done reaches */
  uint32_t spare_need[3];     /* its spare_need (the packets handed over when it stopped being the copy drawn with) */
  int no_ring;                /* v10.366: drawn into as a framebuffer object's texture (vxgl_fbo.c keeps &m): one copy only */
+ /* .736: glTexSubImage2D written into the copy as its rectangle only (the speed list's AA2). ver counts the image's changes, full_ver is
+  * the last one no rectangle describes (a new image, a mipmap made, a palette, a lost copy); sub[] the last 8 rectangles (their version,
+  * level, x0 y0 x1 y1). mver, sver[]: the version the copy and each ring copy hold (0: unknown). A copy at version v is brought up to
+  * date by the union of the rectangles after v when every change since v is one of them; otherwise it is written whole, as before. */
+ uint32_t ver,full_ver,mver,sver[3];
+ struct {uint32_t ver,level,x0,y0,x1,y1;} sub[8];
 } vxgl_tex;
+unsigned long vxgl_sub_stat[3]; /* .736: uploads by rectangle, their texels, uploads whole that a rectangle could not cover */
 static vxgl_tex *tex_tab[VXGL_MAX_TEX+1];
 static GLuint pal_gen=1;      /* the shared palette's changes */
 static GLuint tex_next=1;
@@ -85,7 +92,7 @@ int vxgl_gl_tex16=1;
  * not a framebuffer object's */
 int vxgl_gl_texring=3;
 unsigned long vxgl_ring_stat[4]; /* v10.366: uploads written into a free copy, after sending the queue, with a new copy, waited as before */
-static void spare_free(vxgl_tex *x) {int k;for(k=0;k<3;k++)if(x->spare[k].levels)vxgl_texmem_free(&x->spare[k]);memset(x->spare,0,sizeof(x->spare));} /* (the caller sent what reads them) */
+static void spare_free(vxgl_tex *x) {int k;for(k=0;k<3;k++)if(x->spare[k].levels)vxgl_texmem_free(&x->spare[k]);memset(x->spare,0,sizeof(x->spare));memset(x->sver,0,sizeof(x->sver));} /* (the caller sent what reads them) */
 
 static vxgl_tex *tex_of(struct gl_texture_object *t,int make) {
  vxgl_tex *x=(vxgl_tex*)t->DriverData;GLuint h,i;
@@ -106,7 +113,13 @@ static void tex_free(struct gl_texture_object *t) {
  if(x->m.levels){int f;vxgl_engine_lock();vxgl_hw_flush_all();vxgl_batch_flush();vxgl_texmem_free(&x->m);for(f=0;f<5;f++)if(x->cf[f].levels)vxgl_texmem_free(&x->cf[f]);spare_free(x);vxgl_engine_unlock();}
  tex_tab[x->handle]=0;_mesa_free(x);t->DriverData=0;
 }
-static void tex_dirty(struct gl_texture_object *t) {vxgl_tex *x;if(t&&(x=(vxgl_tex*)t->DriverData)!=0){x->dirty=1;x->failed=GL_FALSE;}}
+static void tex_dirty(struct gl_texture_object *t) {vxgl_tex *x;if(t&&(x=(vxgl_tex*)t->DriverData)!=0){x->dirty=1;x->failed=GL_FALSE;x->full_ver=++x->ver;}}
+/* .736: a glTexSubImage2D's rectangle at its level, logged for the next upload (tex_dirty's full change otherwise) */
+static void tex_dirty_sub(struct gl_texture_object *t,GLint level,GLint x0,GLint y0,GLint w,GLint h) {vxgl_tex *x;
+ if(!t||(x=(vxgl_tex*)t->DriverData)==0)return;
+ if(level<0||x0<0||y0<0||w<=0||h<=0){tex_dirty(t);return;}
+ x->dirty=1;x->failed=GL_FALSE;x->ver++;
+ {uint32_t k=x->ver&7;x->sub[k].ver=x->ver;x->sub[k].level=(uint32_t)level;x->sub[k].x0=(uint32_t)x0;x->sub[k].y0=(uint32_t)y0;x->sub[k].x1=(uint32_t)(x0+w);x->sub[k].y1=(uint32_t)(y0+h);}}
 /* v10.321: render to texture (vxgl_fbo.c). The engine (and swrast, through our renderbuffer) draws into the copy's level: Mesa's image is then
  * older than the copy (vnew) and is read back from it before anything reads or changes the image (a TexImage / TexSubImage / CopyTex, its
  * parameters, glGetTexImage, glGenerateMipmapEXT, swrast sampling it, a copy made again from the image). A copy lost meanwhile (a mode
@@ -170,7 +183,7 @@ static void tex_sub1d(GLcontext *ctx,GLenum target,GLint level,GLint x,GLint w,G
  {SYNC_OR_FAIL(t);_mesa_store_texsubimage1d(ctx,target,level,x,w,fmt,type,px,pk,t,ti);tex_dirty(t);}
 static void tex_sub2d(GLcontext *ctx,GLenum target,GLint level,GLint x,GLint y,GLint w,GLint h,GLenum fmt,GLenum type,const GLvoid *px,
  const struct gl_pixelstore_attrib *pk,struct gl_texture_object *t,struct gl_texture_image *ti)
- {SYNC_OR_FAIL(t);_mesa_store_texsubimage2d(ctx,target,level,x,y,w,h,fmt,type,px,pk,t,ti);tex_dirty(t);}
+ {SYNC_OR_FAIL(t);_mesa_store_texsubimage2d(ctx,target,level,x,y,w,h,fmt,type,px,pk,t,ti);if(target==GL_TEXTURE_2D)tex_dirty_sub(t,level,x,y,w,h);else tex_dirty(t);} /* .736: the rectangle (a cube face: whole) */
 /* v10.317: 3D textures (the engine's volumes) */
 static void tex_image3d(GLcontext *ctx,GLenum target,GLint level,GLint ifmt,GLint w,GLint h,GLint d,GLint border,GLenum fmt,GLenum type,const GLvoid *px,
  const struct gl_pixelstore_attrib *pk,struct gl_texture_object *t,struct gl_texture_image *ti)
@@ -276,7 +289,7 @@ static int fill_direct; /* v10.366: the copy is one no packet reads (the ring): 
 static int fill_level(vxgl_tex *x,vxgl_texmem *m,GLuint l,const struct gl_texture_image *li,uint32_t lw,uint32_t lh,const vxgl_plan *pl,const struct gl_texture_object *t) {
  uint32_t pitch=0;GLubyte *p=0;GLuint levels=pl->levels,fmt=pl->fmt;int locked=0;
  /* v10.317: a padded level's image is the source's size (sw x sh), the copy's the power of two around it */
- GLuint iw=pl->padS==3?lw/2:plain(pl)?lw:(l?lw:pl->sw),ih=pl->padT==3?lh/2:plain(pl)?lh:(l?lh:pl->sh); /* v10.353: a mirrored side's source half the copy's */
+ GLuint iw=pl->padS==3?(lw>1?lw/2:1):plain(pl)?lw:(l?lw:pl->sw),ih=pl->padT==3?(lh>1?lh/2:1):plain(pl)?lh:(l?lh:pl->sh); /* v10.353: a mirrored side's source half the copy's; .737 (review P19): a 1-texel level's source is 1, not 0 */
  if(!li||(!li->FetchTexelc&&!pl->dmode)||(pl->dmode&&!li->FetchTexelf)||li->Width!=iw||li->Height!=ih||(pl->vol&&li->Depth!=pl->sd)){static int n;if(n++<16)vxgl_log("texture %u level %u missing\n",t->Name,l);
   x->failed=GL_TRUE;x->fail_levels=levels;x->fail_format=fmt;x->fail_mem=GL_FALSE;return 0;} /* v10.287: until the texture changes */
  {VXGL_PROF_BEGIN;if(fill_direct)p=vxgl_texmem_direct(m,l,&pitch);if(!p){p=vxgl_texmem_lock(m,l,&pitch);locked=1;}VXGL_PROF_END(10);}
@@ -387,16 +400,44 @@ static int ring_take(vxgl_tex *x,const vxgl_plan *pl) {
  for(k=0;k<n;k++)if(ring_free_at(x,k)){if(pick<0||(int32_t)(x->spare_need[pick]-x->spare_need[k])>0)pick=k;}
  if(pick>=0)vxgl_ring_stat[0]++;
  else for(k=0;k<n;k++)if(!x->spare[k].levels){vxgl_texmem *m=&x->spare[k];unsigned long fr=vxgl_texmem_freed;
-  texmem_shape(m,pl);if(vxgl_texmem_alloc(m)){pick=k;vxgl_ring_stat[2]++;}else{memset(m,0,sizeof(*m));vxgl_texmem_freed=fr;}break;} /* new memory: nothing reads it */
+  texmem_shape(m,pl);if(vxgl_texmem_alloc(m)){pick=k;x->sver[k]=0;vxgl_ring_stat[2]++;}else{memset(m,0,sizeof(*m));vxgl_texmem_freed=fr;}break;} /* new memory: nothing reads it */
  if(pick<0){vxgl_batch_flush(); /* every copy still read: the queue sent (no wait); the call retires what the one before left drawing */
   for(k=0;k<n;k++)if(x->spare[k].levels&&(old<0||(int32_t)(x->spare_need[old]-x->spare_need[k])>0))old=k;
   if(old>=0&&ring_free_at(x,old)){pick=old;vxgl_ring_stat[1]++;}}
  if(pick<0){vxgl_ring_stat[3]++;return 0;}
- tmp=x->m;x->m=x->spare[pick];x->spare[pick]=tmp;x->spare_need[pick]=need;
+ tmp=x->m;x->m=x->spare[pick];x->spare[pick]=tmp;x->spare_need[pick]=need;{uint32_t v=x->mver;x->mver=x->sver[pick];x->sver[pick]=v;} /* .736: each copy keeps its version */
  return 1;
+}
+/* .736: the union of the rectangles changed since the copy's version (r: x0 y0 x1 y1, clamped to the level), or 0 when a change since
+ * then is not one of them (a whole change, one too old for the log, another level) */
+static int sub_rect(const vxgl_tex *x,const vxgl_plan *pl,uint32_t w,uint32_t h,uint32_t *r) {
+ uint32_t v;
+ if(!x->mver||x->mver<x->full_ver||x->mver>x->ver||x->ver-x->mver>8)return 0;
+ r[0]=r[1]=0xFFFFFFFFUL;r[2]=r[3]=0;
+ for(v=x->mver+1;v<=x->ver;v++){uint32_t k=v&7;
+  if(x->sub[k].ver!=v||x->sub[k].level!=pl->base)return 0;
+  if(x->sub[k].x0<r[0])r[0]=x->sub[k].x0;if(x->sub[k].y0<r[1])r[1]=x->sub[k].y0;if(x->sub[k].x1>r[2])r[2]=x->sub[k].x1;if(x->sub[k].y1>r[3])r[3]=x->sub[k].y1;}
+ if(x->mver==x->ver){r[0]=r[1]=r[2]=r[3]=0;return 1;} /* nothing changed since: nothing to write */
+ if(r[2]>w)r[2]=w;if(r[3]>h)r[3]=h;if(r[0]>=r[2]||r[1]>=r[3]){r[0]=r[1]=r[2]=r[3]=0;}
+ return 1;
+}
+/* .736: rectangle r of level 0 written from Mesa's image (fill_copy on a view of the image that starts at the rectangle) */
+static int fill_rect(vxgl_tex *x,vxgl_texmem *m,const struct gl_texture_image *li,const uint32_t *r,const vxgl_plan *pl,const struct gl_texture_object *t) {
+ uint32_t pitch=0,cb=pl->fmt==VX3DN_TEX_RGB565?2:4,tb;GLubyte *p=0;int locked=0,ok;struct gl_texture_image v;
+ if(!li||!li->Data||!li->TexFormat||li->IsCompressed||li->Width!=pl->w||li->Height!=pl->h||!(tb=li->TexFormat->TexelBytes)){static int n;if(n++<16)vxgl_log("texture %u: rectangle not written (image)\n",t->Name);return 0;}
+ {VXGL_PROF_BEGIN;if(fill_direct)p=vxgl_texmem_direct(m,0,&pitch);if(!p){p=vxgl_texmem_lock(m,0,&pitch);locked=1;}VXGL_PROF_END(10);}
+ if(!p){x->failed=GL_TRUE;x->fail_levels=1;x->fail_format=pl->fmt;x->fail_mem=GL_TRUE;x->fail_freed=vxgl_texmem_freed;return 0;}
+ v=*li;v.Data=(GLubyte*)li->Data+((size_t)r[1]*li->RowStride+r[0])*tb;v.Width=r[2]-r[0];v.Height=r[3]-r[1];
+ {VXGL_PROF_BEGIN;ok=fill_copy(&v,p+(size_t)r[1]*pitch+(size_t)r[0]*cb,pitch,r[2]-r[0],r[3]-r[1],pl->fmt);VXGL_PROF_END(11);}
+ if(locked){VXGL_PROF_BEGIN;vxgl_texmem_unlock(m,0);VXGL_PROF_END(12);}
+ return ok;
 }
 static int upload_(vxgl_ctx *c,struct gl_texture_object *t,vxgl_tex *x,const vxgl_plan *pl) {
  GLuint w=pl->w,h=pl->h,l,levels=pl->levels,fmt=pl->fmt;int cube=pl->cube,nf=cube?6:1,f,fresh=0;
+ /* .736: the copy as it stands holds texels of this plan (written the same way): a rectangle can bring it up to date (below) */
+ const int same=x->m.levels&&plain(pl)&&!cube&&!pl->vol&&levels==1&&!(fmt>=VX3DN_TEX_DXT1&&fmt<=VX3DN_TEX_DXT5)&&shape_same(x,pl)&&x->levels==1&&
+  x->format==fmt&&x->base==pl->base&&!x->cube&&!x->vol&&x->sw==pl->sw&&x->sh==pl->sh&&!x->padS&&!x->padT&&!x->dmode&&!x->ctab&&!x->vnew;
+ if(x->vnew){x->full_ver=++x->ver;} /* .736: read back from what was drawn: written whole */
  if(x->vnew&&!tex_sync_(&c->gl,t,x))return 0; /* v10.321: the copy is made from the images: what was drawn into it read back first; v10.329: not made from images still stale (software this time, tried again at the next) */
  if(x->m.levels&&!shape_same(x,pl)){vxgl_hw_flush_all();vxgl_batch_flush();free_copy(x);}
  if(!x->m.levels) {
@@ -418,9 +459,13 @@ static int upload_(vxgl_ctx *c,struct gl_texture_object *t,vxgl_tex *x,const vxg
  x->sw=pl->sw;x->sh=pl->sh;x->sd=pl->sd;x->padS=pl->padS;x->padT=pl->padT;x->ring=pl->ring;x->dmode=pl->dmode;x->ctab=pl->ctab;
  fill_direct=0;
  if(!fresh){VXGL_PROF_BEGIN;vx_d3d_cut_tag=9;if(ring_take(x,pl)){fill_direct=1;c->tex_changed=1;}else{vxgl_hw_flush_all();vxgl_batch_flush();}VXGL_PROF_END(9);} /* v10.366: or a copy nothing reads (ring_take) */ /* the batch may still sample the old copy; the lock waits for the engine; v10.275: and the queue; v10.302 (review): not for a copy made just now (nothing drawn can read it; freed memory was sent before it was given back) */
- for(f=0;f<nf;f++)for(l=0;l<levels;l++){uint32_t lw=w>>l,lh=h>>l;
-  if(!lw)lw=1;if(!lh)lh=1;
-  if(!fill_level(x,f?&x->cf[f-1]:&x->m,l,t->Image[f][pl->base+l],lw,lh,pl,t)){fill_direct=0;return 0;}}
+ {uint32_t r[4];int part=same&&!fresh&&sub_rect(x,pl,w,h,r);
+  if(part){if(r[2]>r[0]&&!fill_rect(x,&x->m,t->Image[0][pl->base],r,pl,t)){fill_direct=0;return 0;}vxgl_sub_stat[0]++;vxgl_sub_stat[1]+=(r[2]-r[0])*(r[3]-r[1]);}
+  else{if(same&&!fresh)vxgl_sub_stat[2]++;if(!same)x->full_ver=++x->ver; /* another plan: the ring's other copies written whole when next used (they hold texels of the old one) */
+   for(f=0;f<nf;f++)for(l=0;l<levels;l++){uint32_t lw=w>>l,lh=h>>l;
+    if(!lw)lw=1;if(!lh)lh=1;
+    if(!fill_level(x,f?&x->cf[f-1]:&x->m,l,t->Image[f][pl->base+l],lw,lh,pl,t)){fill_direct=0;return 0;}}}}
+ x->mver=x->ver; /* .736: the copy holds the image as it is now */
  fill_direct=0;
  x->dirty=0;x->failed=GL_FALSE;x->pal_gen=pal_gen;x->pal_shared=c->gl.Texture.SharedPalette;x->pal_src=c->gl.Texture.SharedPalette?(const void*)&c->gl.Texture.Palette:(const void*)&t->Palette;table_keep(x,pl->tab);
  c->tex_changed=1;
@@ -604,9 +649,11 @@ static GLuint prepare(vxgl_ctx *c,int unit,int stage,GLenum *base,vxgl_plan *pl)
   * is decoded into an A8R8G8B8 / X8R8G8B8 copy by Mesa's own texel fetch, as swrast reads it */
  if(vxgl_gl_s3tc&&!cube&&!vol&&plain(pl)&&!pl->npot&&ti->TexFormat&&ti->IsCompressed){int mf=ti->TexFormat->MesaFormat; /* (v10.321: DXT sets the power-of-two mode) */
   if(mf==MESA_FORMAT_RGBA_DXT1)fmt=VX3DN_TEX_DXT1;else if(mf==MESA_FORMAT_RGBA_DXT3)fmt=VX3DN_TEX_DXT3;else if(mf==MESA_FORMAT_RGBA_DXT5)fmt=VX3DN_TEX_DXT5;
-  else if(mf==MESA_FORMAT_RGB_DXT1&&ctx->Texture.Unit[unit].EnvMode!=GL_COMBINE)fmt=VX3DN_TEX_DXT1;}
+  else if(mf==MESA_FORMAT_RGB_DXT1&&ctx->Texture.Unit[unit].EnvMode!=GL_COMBINE&&!ctx->FragmentProgram._Enabled&&!ctx->ATIFragmentShader._Enabled)fmt=VX3DN_TEX_DXT1;} /* .728 (Fable's check of Gemini's review, #7): a fragment program or ATI shader reads the texture's alpha too */
  if(ti->IsCompressed&&fmt<VX3DN_TEX_DXT1&&!ti->FetchTexelc)PREPSW; /* nothing to decode it with */
- if(fmt==VX3DN_TEX_XRGB8888&&vxgl_gl_tex16&&!cube&&!vol&&plain(pl)&&!ti->IsCompressed)fmt=VX3DN_TEX_RGB565; /* v10.366: ACCEL_OPENGL_TEX16 */
+ if(fmt==VX3DN_TEX_XRGB8888&&vxgl_gl_tex16&&!cube&&!vol&&plain(pl)&&!ti->IsCompressed){const vxgl_tex *rt=tex_of(t,0); /* .729 (review of .723, #1): not a render target's
+  * (no_ring): vxgl_tex_rtt needs XRGB8888, so the copy was read back and made again at every switch between drawing into it and sampling it. tex_of(t, 0) only looks (x is found below) */
+  if(!rt||!rt->no_ring)fmt=VX3DN_TEX_RGB565;} /* v10.366: ACCEL_OPENGL_TEX16 */
  levels=1;
  if(mip){GLuint full=1,d=ti->Width>ti->Height?ti->Width:ti->Height;
   if(stage>0&&!vxgl_gl_unitmip)PREPSW; /* the core's units 1 and 2 have no mip chain; v10.304: they do (ACCEL_OPENGL_UNITMIP) */
@@ -623,12 +670,12 @@ static GLuint prepare(vxgl_ctx *c,int unit,int stage,GLenum *base,vxgl_plan *pl)
  if(!(x=tex_of(t,1)))PREPSW;
  /* v10.330 (review #18): and the context whose shared palette made it (a texture shared by two contexts with their own shared palettes) */
  if(ti->_BaseFormat==GL_COLOR_INDEX&&(x->pal_gen!=pal_gen||x->pal_shared!=ctx->Texture.SharedPalette||
-    x->pal_src!=(ctx->Texture.SharedPalette?(const void*)&ctx->Texture.Palette:(const void*)&t->Palette)))x->dirty=1;
+    x->pal_src!=(ctx->Texture.SharedPalette?(const void*)&ctx->Texture.Palette:(const void*)&t->Palette))){x->dirty=1;x->full_ver=++x->ver;} /* .736: a whole change */
  /* v10.287 (review): a lost copy (a mode change) is restored and each level's offset and pitch read again (DirectDraw may put it
   * elsewhere: the engine sampled the old offsets); restored or not (then freed, made again below) it is uploaded again, which
   * makes the core build its draws again (tex_changed). The batch's draws with the old offsets are sent first. */
  {int lost=x->m.levels&&vxgl_texmem_lost(&x->m),f;for(f=0;f<5&&x->m.levels;f++)if(x->cf[f].levels&&vxgl_texmem_lost(&x->cf[f]))lost=1;
-  if(lost){int bad;x->vnew=0; /* v10.321: what was drawn into it is gone */vxgl_hw_flush_all();vxgl_batch_flush();spare_free(x); /* v10.366: made again when needed */vxgl_texmem_restore(&x->m);for(f=0;f<5;f++)if(x->cf[f].levels)vxgl_texmem_restore(&x->cf[f]);x->dirty=1;x->failed=GL_FALSE;
+  if(lost){int bad;x->vnew=0;x->mver=0; /* .736: its texels unknown */ /* v10.321: what was drawn into it is gone */vxgl_hw_flush_all();vxgl_batch_flush();spare_free(x); /* v10.366: made again when needed */vxgl_texmem_restore(&x->m);for(f=0;f<5;f++)if(x->cf[f].levels)vxgl_texmem_restore(&x->cf[f]);x->dirty=1;x->failed=GL_FALSE;
    bad=!x->m.levels;for(f=0;f<5;f++)if(x->cube&&!x->cf[f].levels)bad=1;
    if(bad){if(x->m.levels)vxgl_texmem_free(&x->m);for(f=0;f<5;f++)if(x->cf[f].levels)vxgl_texmem_free(&x->cf[f]);memset(&x->m,0,sizeof(x->m));memset(x->cf,0,sizeof(x->cf));}}} /* v10.295: a face that could not be restored: all made again */
  if(x->m.levels&&x->cube!=cube)x->dirty=1; /* v10.295 */
@@ -901,7 +948,7 @@ int vxgl_tex_vertices_ok(vxgl_ctx *c,int set2) {
  if(c->tex_units>2&&set2!=c->tex_set2)return 0; /* v10.307: the third stage's coordinates match neither set (v10.309: set2, as run_pipeline scanned it) */
  for(s=0;s<(GLuint)c->tex_units;s++) {
   const GLvector4f *v=VB->AttribPtr[_TNL_ATTRIB_TEX0+c->tex_unit_of[s]];GLuint n;const GLubyte *p;
-  if(!v||v->size<4||c->tex_layout==2)continue; /* v10.295: projective: q goes to the engine */
+  if(!v||!v->data||v->size<4||c->tex_layout==2)continue; /* v10.295: projective: q goes to the engine; E776 (outside audit, GL-19): no data, nothing to test */
   for(n=0,p=(const GLubyte*)v->data;n<(v->stride?VB->Count:1);n++,p+=v->stride)if(((const GLfloat*)p)[3]!=1.0F)return 0;
  }
  return 1;

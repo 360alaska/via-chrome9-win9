@@ -210,7 +210,7 @@ static void aa_point(vxgl_ctx *c,const vxglVertex *v0) {
  if(c->point_atten){struct vertex_buffer *VB=&TNL_CONTEXT(ctx)->vb;const GLvector4f *ps=VB->AttribPtr[_TNL_ATTRIB_POINTSIZE];GLuint idx=(GLuint)(((const GLubyte*)v0-c->verts)/c->vertex_size);
   GLfloat s=size;if(ps&&ps->data&&idx<VB->Count)s=*(const GLfloat*)((const GLubyte*)ps->data+idx*ps->stride);
   size=CLAMP(s,ctx->Point.MinSize,ctx->Point.MaxSize);
-  if(ctx->Multisample.Enabled&&s<ctx->Point.Threshold){GLfloat f=s/ctx->Point.Threshold;atten=f*f;}}
+  if(ctx->Multisample.Enabled&&ctx->Point.Threshold>0.0F&&s<ctx->Point.Threshold){ /* E776 (outside audit, GL-20) */GLfloat f=s/ctx->Point.Threshold;atten=f*f;}}
  size=CLAMP(size,ctx->Const.MinPointSizeAA,ctx->Const.MaxPointSizeAA);
  radius=0.5F*size;rmin=radius-0.7071F;rmax=radius+0.7071F;rmin2=MAX2(0.0F,rmin*rmin);rmax2=rmax*rmax;cscale=1.0F/(rmax2-rmin2);
  xmin=(GLint)(wx-radius);xmax=(GLint)(wx+radius);ymin=(GLint)(wy-radius);ymax=(GLint)(wy+radius);
@@ -373,10 +373,12 @@ static void aa_triangle(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1,co
  {const GLfloat botDx=pMid[0]-pMin[0],botDy=pMid[1]-pMin[1],area=majDx*botDy-botDx*majDy;if(area==0.0F||IS_INF_OR_NAN(area))return;ar=area;}
  r.f=aa_tri_attr;r.d=&ti;r.open=0;r.flat=aa_flat(c);
  yMin=pMin[1];yMax=pMax[1];iyMin=(GLint)yMin;iyMax=(GLint)yMax+1;
+ if(iyMin<0)iyMin=0;if(iyMax>(GLint)ctx->DrawBuffer->Height)iyMax=(GLint)ctx->DrawBuffer->Height; /* E776 (outside audit, GL-11): rows of the buffer only */
  if(ar<0.0F) { /* the long edge on the left: scan left to right */
   const GLfloat dxdy=majDx/majDy,xAdj=dxdy<0.0F?-dxdy:0.0F;GLfloat x=pMin[0]-(yMin-(GLfloat)iyMin)*dxdy;
   for(iy=iyMin;iy<iyMax;iy++,x+=dxdy) {
    GLint ix,startX=(GLint)(x-xAdj);GLfloat cv=0.0F;
+   if(startX<0)startX=0; /* E776 (GL-11): a sliver's start far left of the buffer (or -2^31 from an infinite slope) walked every column up to it */
    while(startX<MAX_WIDTH){cv=aa_tri_cov(pMin,pMid,pMax,startX,iy);if(cv>0.0F)break;startX++;}
    for(ix=startX;cv>0.0F;){aa_pixel(c,&r,ix,iy,cv);ix++;cv=aa_tri_cov(pMin,pMid,pMax,ix,iy);}
   }
@@ -386,8 +388,8 @@ static void aa_triangle(vxgl_ctx *c,const vxglVertex *v0,const vxglVertex *v1,co
   for(iy=iyMin;iy<iyMax;iy++,x+=dxdy) {
    GLint ix,startX=(GLint)(x+xAdj);GLfloat cv=0.0F;
    if(startX>=ctx->DrawBuffer->_Xmax)startX=ctx->DrawBuffer->_Xmax-1;
-   while(startX>0){cv=aa_tri_cov(pMin,pMax,pMid,startX,iy);if(cv>0.0F)break;startX--;}
-   for(ix=startX;cv>0.0F;){aa_pixel(c,&r,ix,iy,cv);ix--;cv=aa_tri_cov(pMin,pMax,pMid,ix,iy);}
+   while(startX>=0){cv=aa_tri_cov(pMin,pMax,pMid,startX,iy);if(cv>0.0F)break;startX--;} /* .754 (outside review): column 0 too (was startX > 0) */
+   for(ix=startX;cv>0.0F;){aa_pixel(c,&r,ix,iy,cv);ix--;if(ix<0)break;cv=aa_tri_cov(pMin,pMax,pMid,ix,iy);} /* .754: never left of column 0 */
   }
  }
  aa_run(c,&r);quad_flush(c);
@@ -415,7 +417,7 @@ static void vxgl_draw_point(vxgl_ctx *c,vxglVertexPtr v0) {
   if(c->point_atten){struct vertex_buffer *VB=&TNL_CONTEXT(ctx)->vb;const GLvector4f *ps=VB->AttribPtr[_TNL_ATTRIB_POINTSIZE];GLuint idx=(GLuint)(((const GLubyte*)v0-c->verts)/c->vertex_size);
    if(ps&&ps->data&&idx<VB->Count)size=*(const GLfloat*)((const GLubyte*)ps->data+idx*ps->stride);
    size=CLAMP(size,ctx->Point.MinSize,ctx->Point.MaxSize);}
-  size=CLAMP(size,ctx->Const.MinPointSize,ctx->Const.MaxPointSize);
+  size=CLAMP(size,ctx->Const.MinPointSize,ctx->Const.MaxPointSize);if(!(size>0.0F))size=1.0F; /* E776 (GL-20): a NaN size passed the clamp */
   sz=(GLint)(size+0.5F);if(sz<1)sz=1;r=sz/2;
   if(sz&1){x0=(GLint)(wx-(GLfloat)r);x1=(GLint)(wx+(GLfloat)r);y0=(GLint)(wy-(GLfloat)r);y1=(GLint)(wy+(GLfloat)r);}
   else {x0=(GLint)(wx+0.5F)-r;x1=x0+sz-1;y0=(GLint)(wy+0.5F)-r;y1=y0+sz-1;}
@@ -1195,7 +1197,8 @@ static void run_pipeline_t(GLcontext *ctx) {
     if(ctx->Light.Enabled||!col)bad=1;
     else if(col->stride&&col->size>=4&&VB->Count>1){ /* (fewer than 4 components: the alpha is 1 throughout) */GLuint k;const GLubyte *p=(const GLubyte*)col->data;GLfloat a0=((const GLfloat*)p)[3];
      for(i=0;i<VB->PrimitiveCount&&!bad;i++){GLenum m=VB->Primitive[i].mode;if(m!=GL_LINES&&m!=GL_LINE_LOOP&&m!=GL_LINE_STRIP)continue;
-      for(k=VB->Primitive[i].start;k<VB->Primitive[i].start+VB->Primitive[i].count&&k<VB->Count;k++)if(((const GLfloat*)(p+k*col->stride))[3]!=a0){bad=1;break;}}}}
+      for(k=VB->Primitive[i].start;k<VB->Primitive[i].start+VB->Primitive[i].count;k++){const GLuint e=VB->Elts?VB->Elts[k]:k; /* .729 (review of .723, #3): an indexed draw's positions are places in Elts */
+       if(e<VB->Count&&((const GLfloat*)(p+e*col->stride))[3]!=a0){bad=1;break;}}}}}
    c->atest_off=!bad&&pl;}
   else c->atest_off=0;
   if(bad!=((c->fallback&VXGL_FB_PRIMSTATE)!=0))vxgl_fallback(c,VXGL_FB_PRIMSTATE,bad?GL_TRUE:GL_FALSE);}

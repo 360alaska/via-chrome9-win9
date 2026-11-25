@@ -169,9 +169,10 @@ static void fetch(GLcontext *ctx,const struct gl_program *prog,const struct prog
  for(c=0;c<4;c++) {
   GLuint sw=GET_SWZ(s->Swizzle,c);
   if(sw==SWIZZLE_ZERO)p_const(&o[c],0.0F);else if(sw==SWIZZLE_ONE)p_const(&o[c],1.0F);else if(sw<4)o[c]=v[sw];else{fp_bad=1;return;}
+  /* .754 (outside review): Mesa's order: NegateBase, then Abs, then NegateAbs (abs(-x) came out as -abs(x)) */
+  if(s->NegateBase&(1U<<c)){fp_poly z;z.nt=0;p_addto(&z,&o[c],-1.0F);o[c]=z;}
   if(s->Abs){float k;if(!p_isconst(&o[c],&k)){float lo,hi;p_range(&o[c],&lo,&hi);if(lo<0.0F){fp_bad=1;return;}}else p_const(&o[c],k<0.0F?-k:k);
    if(s->NegateAbs){fp_poly z;z.nt=0;p_addto(&z,&o[c],-1.0F);o[c]=z;}}
-  if(s->NegateBase&(1U<<c)){fp_poly z;z.nt=0;p_addto(&z,&o[c],-1.0F);o[c]=z;}
  }
 }
 /* a texel of texture index i as swrast returns it for the base format */
@@ -215,7 +216,8 @@ static int run(GLcontext *ctx,const struct gl_fragment_program *fp) {
    for(c=0;c<3;c++){fp_poly t,u;int i1=(c+1)%3,i2=(c+2)%3;p_mul(&t,&a[i1],&b[i2]);p_mul(&u,&a[i2],&b[i1]);p_lin(&r[c],&t,1.0F,&u,-1.0F);}p_const(&r[3],1.0F);break;
   case OPCODE_MIN:case OPCODE_MAX:case OPCODE_SGE:case OPCODE_SLT:case OPCODE_CMP: /* constants only (folded) */
    fetch(ctx,prog,&in->SrcReg[0],a);fetch(ctx,prog,&in->SrcReg[1],b);if(in->Opcode==OPCODE_CMP)fetch(ctx,prog,&in->SrcReg[2],d);
-   for(c=0;c<4;c++){float p=fconst(&a[c]),q;
+   for(c=0;c<4;c++){float p,q;if(!(in->DstReg.WriteMask&(1U<<c))){r[c].nt=0;continue;} /* .728 (Gemini review #20): as FLR / FRC, a channel the mask leaves out is not read (a non-constant one sent the program to software) */
+    p=fconst(&a[c]);
     if(in->Opcode==OPCODE_CMP){r[c]=p<0.0F?b[c]:d[c];continue;}
     q=fconst(&b[c]);p_const(&r[c],in->Opcode==OPCODE_MIN?(p<q?p:q):in->Opcode==OPCODE_MAX?(p>q?p:q):in->Opcode==OPCODE_SGE?(p>=q?1.0F:0.0F):(p<q?1.0F:0.0F));}
    break;
@@ -441,6 +443,7 @@ static int try_op(const fp_poly *E,int nc,int k,int alpha,const fp_half *h) {
  if(u){if(match(C,nc,k-1,alpha,0))return 1;} /* CURRENT: the stages before */
  else {pass_below(k,alpha);if(fp_done())return 1;}
 no:
+ if(fp_steps<=FP_STEPS)fp_bad=0; /* E777 (outside audit, GL-14): an overflow in this candidate ends this candidate, not the search (only the step budget ends that) */
  memcpy(tfv,tsave,sizeof(tfv));memcpy(tfs,ssave,sizeof(tfs));return 0;
 }
 /* Direct3D's DOTPRODUCT3 (into the colour; the alpha its own, VX_D3D_TSS_DOT3RGB): 4 sum (x - 0.5)(y - 0.5), both arguments known */
@@ -542,7 +545,7 @@ int vxgl_fp_compile(vxgl_ctx *c,unsigned proj,int flat_only) {
  for(u=0;u<8;u++)if(ctx->Texture._EnabledUnits&(1U<<u)) {
   const struct gl_texture_object *t=ctx->Texture.Unit[u]._Current;const struct gl_texture_image *im;GLenum b;
   why="more than three textures";if(tex_n>=3||u>=3)goto sw;
-  im=t?t->Image[0][t->BaseLevel]:0;why="no texture image";if(!im)goto sw;
+  im=t&&t->BaseLevel>=0&&t->BaseLevel<MAX_TEXTURE_LEVELS?t->Image[0][t->BaseLevel]:0;why="no texture image";if(!im)goto sw; /* .754 (outside review): a base level past the array is no image */
   b=im->_BaseFormat;if(b==GL_DEPTH_COMPONENT||b==GL_DEPTH_STENCIL_EXT)b=t->DepthMode;if(b==GL_COLOR_INDEX)b=GL_RGBA;
   tex_base[tex_n]=(int)b;tex_unit[tex_n]=u;tex_of_unit[u]=tex_n++;
  }
@@ -577,6 +580,7 @@ int vxgl_fp_compile(vxgl_ctx *c,unsigned proj,int flat_only) {
  why="an instruction or register not drawable";if(fp?!run(ctx,fp):!run_ati(ctx,ctx->ATIFragmentShader.Current))goto sw;
  /* TEX reads coordinates as they are: not where the engine divides them (projective) */
  why="TEX on projective coordinates";for(u=0;u<8;u++)if(tex_tex[u]&&(proj&(1U<<u)))goto sw;
+ why="TXP with a vertex program";for(u=0;u<8;u++)if(tex_txp[u]&&ctx->VertexProgram._Current&&!(proj&(1U<<u)))goto sw; /* E777 (outside audit, GL-12): a projective lookup of coordinates a vertex program wrote, where the engine does not divide */
  ntx=tex_n;lerp_ok=tex_n<=1&&flat_only;
  fp_steps=0; /* v10.337: one budget for every stage count */
  for(s=ntx;s<=3;s++) { /* the fewest stages */

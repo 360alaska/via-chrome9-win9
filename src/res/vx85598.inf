@@ -3,7 +3,7 @@
 Signature="$CHICAGO$"
 Class=DISPLAY
 Provider=%Provider%
-DriverVer=11/21/2026,10.723.0.0
+DriverVer=11/24/2026,10.793.0.0
 
 [Manufacturer]
 %Mfg%=VXModels
@@ -60,7 +60,7 @@ HKR,DEFAULT,minivdd,,CHROME9.VXD
 HKR,DEFAULT,vdd,,*vdd
 HKR,DEFAULT,Mode,,"16,800,600"
 HKR,DEFAULT,RefreshRate,,-1
-HKR,DEFAULT,DDC,,0
+HKR,DEFAULT,DDC,,1
 HKR,"MODES\4\640,480",drv,,vga.drv
 HKR,"MODES\4\640,480",vdd,,*vdd
 HKR,"MODES\8\640,480"

@@ -1519,6 +1519,36 @@ static int flock_check(void) {
  vxgl_ssepass_on=k0;return fails;
 }
 static int ring_check(void) {int f=0;vxgl_seq_ring=0;f+=ring_check1();vxgl_seq_ring=1;f+=ring_check1();vxgl_seq_ring=0;return f;}
+/* .736: glTexSubImage2D written into the copy as its rectangle only: a 64x64 RGB texture, 8x8 rectangles of their own colour written in
+ * turn between draws of the whole texture (each draw shows every rectangle written so far), on the engine (TEXRING as set: copies that
+ * fall behind are brought up by the union of what they missed) against software; the rectangle uploads counted (vxgl_sub_stat) */
+static uint8_t sr_img[2][W*H*4];
+static int subrect_check(void) {
+ extern unsigned long vxgl_sub_stat[3];int run,fails=0,i,f;unsigned long ss[3]={0,0,0};
+ for(run=0;run<2;run++){vxgl_ctx *c;GLuint tx;static GLubyte px[64*64*3],sp[8*8*3];
+  memset(vram,0x5A,sizeof(vram));memset(&thefb,0,sizeof(thefb));thefb.pf=1;thefb.hwnd=(HWND)1;thefb.cb=host_cbits;
+  vxgl_hw_enabled=run==0;memset(vxgl_sub_stat,0,sizeof(vxgl_sub_stat));
+  c=vxgl_create_context(1,(HDC)1,0);if(!c||!vxgl_make_current(c,(HDC)1)){printf("sub-rectangle check: no context\n");return 1;}
+  cur=c;glViewport(0,0,W,H);glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(0,W,0,H,-1,1);glMatrixMode(GL_MODELVIEW);glLoadIdentity();
+  glGenTextures(1,&tx);glBindTexture(GL_TEXTURE_2D,tx);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+  for(i=0;i<64*64*3;i++)px[i]=(GLubyte)(i*7);glPixelStorei(GL_UNPACK_ALIGNMENT,1);glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,64,64,0,GL_RGB,GL_UNSIGNED_BYTE,px);
+  glEnable(GL_TEXTURE_2D);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
+  for(f=0;f<2;f++){glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT);
+   for(i=0;i<12;i++){int k;float x=(float)((i%4)*64),y=(float)((i/4)*64); /* texel for pixel: NEAREST picks the same texel as software */
+    for(k=0;k<64;k++){sp[k*3]=(GLubyte)(20*i+f*9);sp[k*3+1]=(GLubyte)(250-17*i);sp[k*3+2]=(GLubyte)(f*100+i*3);}
+    glTexSubImage2D(GL_TEXTURE_2D,0,(i*13+f*5)%56,(i*29+f*3)%56,8,8,GL_RGB,GL_UNSIGNED_BYTE,sp);
+    if(i%3==2)glTexSubImage2D(GL_TEXTURE_2D,0,(i*7)%56,(i*11)%56,8,8,GL_RGB,GL_UNSIGNED_BYTE,sp); /* two rectangles between some draws */
+    glBegin(GL_QUADS);glTexCoord2f(0,0);glVertex2f(x,y);glTexCoord2f(1,0);glVertex2f(x+64,y);glTexCoord2f(1,1);glVertex2f(x+64,y+64);glTexCoord2f(0,1);glVertex2f(x,y+64);glEnd();}
+   if(f<1)vxgl_swap(c,(HDC)1);}
+  glFinish();if(!run)memcpy(ss,vxgl_sub_stat,sizeof(ss));
+  glReadBuffer(GL_BACK);glPixelStorei(GL_PACK_ALIGNMENT,1);glReadPixels(0,0,W,H,GL_RGBA,GL_UNSIGNED_BYTE,sr_img[run]);
+  glDeleteTextures(1,&tx);vxgl_make_current(0,0);vxgl_destroy_context(c);vxgl_fb_release(&thefb);}
+ vxgl_hw_enabled=1;
+ {extern int vxgl_gl_tex16;int d=0,ch,tol=host_cbits==16?9:vxgl_gl_tex16?5:1;for(i=0;i<W*H;i++)for(ch=0;ch<3;ch++){int a=sr_img[0][i*4+ch],b=sr_img[1][i*4+ch];if(a-b>tol||b-a>tol){d++;break;}}
+  printf("sub-rectangle check: %lu uploads by rectangle (%lu texels), %lu written whole; %d pixels differ from software%s\n",ss[0],ss[1],ss[2],d,(d||ss[0]<10)?"  FAIL":"");
+  if(d||ss[0]<10)fails++;}
+ return fails;
+}
 static int ring_check1(void) {
  extern int vxgl_gl_texring,vxgl_gl_tex16;int run,fails=0,i,f,keep=vxgl_gl_texring;unsigned long st[4],bad0=host_direct_bad,dw0=host_direct_writes;
  for(run=0;run<2;run++){vxgl_ctx *c;GLuint tx;static GLubyte px[16*16*3];
@@ -1922,6 +1952,7 @@ int main(int argc,char **argv) {
  if(only<0)fails+=feat_check(); /* v10.353 */
  if(only<0)fails+=guard_check(); /* v10.358 */
  if(only<0)fails+=ring_check(); /* v10.366 */
+ if(only<0)fails+=subrect_check(); /* .736 */
  if(only<0)fails+=qscene_check(); /* v10.500 */
  if(only<0)fails+=defer_check(); /* .503 */
  if(only<0)fails+=flock_check(); /* .639 */

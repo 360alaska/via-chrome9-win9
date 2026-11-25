@@ -88,6 +88,7 @@ unsigned long VX_cache_type_at(unsigned long phys) {
   vxc_rdmsr(0x200UL+2*i,b); vxc_rdmsr(0x200UL+2*i+1,m);
   if(!(m[0]&0x800UL)) continue;
   if((phys&m[0]&0xFFFFF000UL)!=(b[0]&m[0]&0xFFFFF000UL)) continue;
+  if(b[1]&m[1]) continue; /* .728 (Gemini review #21): the range's bits above 4 GB (phys is below 4 GB: its are 0) */
   if((b[0]&0xFF)==0) return 0;
   if(t==0xFFFFUL||((b[0]&0xFF)==4&&t==6)) t=b[0]&0xFF;
  }

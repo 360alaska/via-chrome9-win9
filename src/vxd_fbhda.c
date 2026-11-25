@@ -95,8 +95,11 @@ FBHDA_t *FBHDA_setup()
 void FBHDA_clean()
 {
 	dbg_printf("FBHDA_clean\n");
+	/* .765 (outside audit of .757, 13): no hda or mapping yet: nothing to clear; the screen's surface (hda->surface), not the start of
+	 * video memory, and never past the memory's end */
+	if(!hda || !hda->vram_pm32 || hda->surface >= hda->vram_size || hda->stride > hda->vram_size - hda->surface) return;
 	FBHDA_access_begin(0);
-	memset(hda->vram_pm32, 0, hda->stride);
+	memset((BYTE*)hda->vram_pm32 + hda->surface, 0, hda->stride);
 	FBHDA_access_end(0);
 	dbg_printf("FBHDA_clean done\n");
 }
@@ -253,7 +256,7 @@ BOOL FBHDA_gamma_set(VOID FBPTR ramp, DWORD buffer_size)
 
 #define TEST_PATTERN 0xAAAAAAAAUL
 
-static BOOL fbhda_lock_valid;
+/* .765 (audit VXD-H8): FBHDA_unlock and its flag deleted: nothing called it (FBHDA_release pairs each lock with its own answer) */
 
 int vx_lock_owned(void); /* .515 (vx855_2d.c) */
 BOOL FBHDA_lock()
@@ -261,20 +264,9 @@ BOOL FBHDA_lock()
 	if(!Get_Crit_Section_Status(NULL, NULL) && !vx_lock_owned()) /* .515: the engine lock's owner as the critical section's */
 	{
 		Wait_Semaphore(hda_sem, 0);
-		fbhda_lock_valid = TRUE;
 		return TRUE;
 	}
-	
-	fbhda_lock_valid = FALSE;
 	return FALSE;
-}
-
-void FBHDA_unlock()
-{
-	if(fbhda_lock_valid)
-	{
-		Signal_Semaphore(hda_sem);
-	}
 }
 
 /* v10.319 (audit V1): the release paired with its own FBHDA_lock's answer. The one global flag of FBHDA_unlock is overwritten by any other

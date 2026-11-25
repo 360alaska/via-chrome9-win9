@@ -872,7 +872,7 @@ int pe_modify_section(const char *file, const char *name, int type, section_modi
 								if(read_header(f, sizeof(PE_header_t), PE32, &pe))
 								{
 									size_t dir_size = sizeof(PE_image_directory_t) * pe.NumberOfRvaAndSizes;
-									if(read_block(f, dir_size, &image_dir))
+									if(pe.NumberOfRvaAndSizes <= 16 && read_block(f, dir_size, &image_dir)) /* E781 (outside audit, DRV-10): the directory array holds 16 */
 									{
 										unsigned int i;
 										/* skip extra space which not in PE_header_t */
@@ -1525,7 +1525,7 @@ int main(int argc, char *argv[])
 				} else rc = ERROR_NEED_2_AND_MORE_FILES;
 				break;
 			case MODE_HINT:
-				if(dlltable.cnt >= 1)
+				if(dlltable.cnt >= 1 && dlltable.cnt <= MAX_REPLACE_DLLS) /* E781 (outside audit, DRV-12): no more names than the table holds */
 				{
 					int x, rc2;
 					dlltable.dofix = dofix;

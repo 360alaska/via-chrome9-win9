@@ -17,6 +17,8 @@ void __far *drv_malloc(DWORD dwSize, DWORD __far *lpLinear)
 	WORD    wSel;
 	DWORD   dwLin;
 
+	if(!dwSize || !lpLinear) /* E776 (outside audit, DRV-17): no size gave a limit of FFFFFFFF; no place for the address */
+		return NULL;
 	wSel = DPMI_AllocLDTDesc(1);
 	if(!wSel)
 		return NULL;
@@ -26,7 +28,7 @@ void __far *drv_malloc(DWORD dwSize, DWORD __far *lpLinear)
 	if(dwLin)
 	{
 		DPMI_SetSegBase(wSel, dwLin);
-		DPMI_SetSegLimit(wSel, dwSize - 1);
+		DPMI_SetSegLimit(wSel, dwSize > 0x100000UL ? ((dwSize - 1) | 0xFFFUL) : (dwSize - 1)); /* E776 (DRV-17): past 1 MB a limit is in pages */
     
     *lpLinear = dwLin;
     

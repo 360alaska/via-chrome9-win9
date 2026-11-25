@@ -215,9 +215,9 @@ static DWORD fl_seq;
 static void fl_wait_taken(void) {
  unsigned short p=st1_port(); DWORD t0=Get_System_Time(),s=fl_seq;
  if(vx_flip_ring_pend) {VX3DN_ring_flip_wait(); if(fl_seq!=s) return; if(VX3DN_ring_flip_lost()) fl_ring_lost(); else {fl_pend=0; vx_flip_ring_pend=0; vx_flip_old_front=0xFFFFFFFFUL; return;}} /* v10.417; .532: a lost one waits as a CPU flip (B1) */
- while(!fl_taken()) {
-  if(vb_wait(p,1,1)) {fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; break;}
-  if((DWORD)(Get_System_Time()-t0)>=60) {fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; fl_timeouts++; break;}
+ while(fl_seq==s&&!fl_taken()) { /* .765 (audit VXD-H3): the CPU-flip wait also leaves a newer flip's pending state to it (.706 covered the ring branch only) */
+  if(vb_wait(p,1,1)) {if(fl_seq==s){fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL;} break;}
+  if((DWORD)(Get_System_Time()-t0)>=60) {if(fl_seq==s){fl_pend=0; vx_flip_old_front=0xFFFFFFFFUL; fl_timeouts++;} break;}
  }
 }
 void VX_flip_front_wait(uint32_t off) {
@@ -393,9 +393,13 @@ static void scan_sample(uint32_t *r) {
  r[VXF_R_RESULT]=VXF_OK; r[VXF_S_STATUS]=0; r[VXF_S_GATE]=vx_scan_enable; r[VXF_S_HEIGHT]=hda->height;
  for(i=0;i<4;i++) {
   r[VXF_S_TRIES]=i+1;
-  if(inp(p)&8) {r[VXF_S_STATUS]=2; return;}
+  /* .728 (Fable's check of Gemini's review, #6): the blank of the unit that shows the picture (in_blank: IGA2's 204h bit 2 when
+   * fl_blank2); 1290h counts IGA1's lines, so with the picture on IGA2 no line is given (status 3, as a line never in range) */
+  if(in_blank(p)) {r[VXF_S_STATUS]=2; return;}
+  if(fl_blank2) {r[VXF_S_STATUS]=4; return;} /* .737 (fourth review #14): no line for IGA2 (status 4); it left the loop as 3, which the HAL
+  * answers as "vertical blank in progress", so a program polling for the blank's end during scan-out never saw it end */
   raw=VX2D_mmio_read(0x1290UL); r[VXF_S_RAW]=raw;
-  if(inp(p)&8) {r[VXF_S_STATUS]=2; return;}
+  if(in_blank(p)) {r[VXF_S_STATUS]=2; return;}
   if(raw==0xFFFFFFFFUL) return;
   line=raw>>16;
   if(line<hda->height) {r[VXF_S_LINE]=line; r[VXF_S_STATUS]=1; return;}

@@ -93,7 +93,7 @@ BOOL VESA_init_hw()
  }
  vx_base_modes=vesa_modes_cnt;
  /* v10.37: read the monitor EDID, then look through the BIOS mode list for extra linear 16/32bpp modes the monitor can show.
-  * Registry EDID_MODES=0 (read later) hides them again. Without an EDID modes up to 1280x1024 are offered. */
+  * Registry EDID_MODES=0 (read later) hides them again. Without an EDID: up to 1024x768 (VESA_configure_noedid; NOEDIDHIGHRES=1 every size). */
  vx_bios_n=0;
  VX_edid_probe();
  if(!vx_edid_ok) {
@@ -141,7 +141,7 @@ BOOL VESA_init_hw()
       for(j=0;j<vesa_modes_cnt;j++) if(storage[j].width==w && storage[j].height==h && storage[j].bpp==b) break;
       if(j<vesa_modes_cnt) v=7;
       else if(vx_edid_ok ? !VX_edid_mode_ok(w,h) : 0) {
-       v=vx_edid_ok?8:9;   /* no EDID: offer up to 1280x1024, the most the XP driver shows on the same VGA adapter; EDID_MODES=2 offers the rest */
+       v=8;   /* .765 (audit P3-VXD-H1: the comment was stale, 9 never came): the EDID does not list it. Without an EDID every mode is taken here, and VESA_configure_noedid (vxd_vesa.c) hides those above 1024x768 after the scan unless NOEDIDHIGHRES=1; EDID_MODES=2 offers these held ones too */
        if(vx_held_n<24) {   /* kept aside: registry EDID_MODES=2 offers these too */
         vesa_mode_t *m=&vx_held[vx_held_n++];
         memset(m,0,sizeof(*m));
@@ -228,8 +228,7 @@ BOOL VESA_init_hw()
  vx_status.shadow_linear=(DWORD)hda->vram_pm32;
  vx_status.shadow_bytes=hda->vram_size_virt;
  vesa_pal=(vesa_palette_entry_t*)((BYTE*)vesa_buf+PAL_OFFSET);
- /* No BIOS PM table, custom refresh, MTRR change or hardware page flipping. */
- conf_hw_double_buf=0;
+ /* No BIOS PM table, custom refresh, MTRR change or hardware page flipping (.728: the VBE path's page flipping code is gone). */
  conf_mtrr=0;
  wblit.num_changes=0;
  timer_set=async_blit_init(&wblit,VESA_draw);

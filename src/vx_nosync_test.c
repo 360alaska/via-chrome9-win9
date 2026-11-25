@@ -1,4 +1,5 @@
-/* VXNOSYNC v2.3 (driver .716): pass 9 says "kept off on this chip (as designed)" when the driver refuses the tear flip, not WRONG.
+/* VXNOSYNC v2.5 (driver .733): passes 6-7 on the VX900 judged as CPU flips (its VxD now reports ring flips off). VXNOSYNC v2.4 (driver .729): pass 9 draws 5 s before it measures (the monitor resyncs after the mode change), then measures 8 s, not 120 frames (the VX900 ran them in 2 s, gone before a monitor showed them).
+ * VXNOSYNC v2.3 (driver .716): pass 9 says "kept off on this chip (as designed)" when the driver refuses the tear flip, not WRONG.
  * VXNOSYNC v2.2 (driver .698): no questions unless asked (ASK): the run needs no one at the machine; pass 9 is judged by its counts and
  * frame rates alone. VXNOSYNC v2.1 (driver .698): pass 9's 20 ms is the engine's work (20 blended full-screen quads), not the CPU held: v2.0 (T697, board B)
  * gave 49.4 fps with both settings, as the old flip's wait for the blank is in the ring and only costs when the engine is behind it.
@@ -85,6 +86,8 @@ static void say_two(const DWORD *c0,const DWORD *c1) {
 static int counts2(DWORD *c) {DWORD a[8];if(!texdbg2(0xBC,0x447,a)||(a[1]&0xFFF)!=0x447)return 0;c[0]=a[2];c[1]=a[3];c[2]=a[4];return 1;}
 static LRESULT CALLBACK wp(HWND h,UINT m,WPARAM w,LPARAM l) {return DefWindowProc(h,m,w,l);}
 static void *d3d;static HWND wnd;static U32 deskfmt;static int stop;
+#define TEAR_SETTLE_S 5 /* v2.4: seconds drawn before measuring (the monitor's resync) */
+#define TEAR_MEASURE_S 8 /* v2.4: seconds measured and watched */
 #define TEAR_QUADS 20 /* v2.1: alpha-blended full-screen quads a frame (pass 6's 150 take 136-190 ms on the boards: these about 18-25 ms) */
 static int tear_get(DWORD *o) {return texdbg2(0xBC,0x44B0003UL,o)&&(o[0]&0xFF)==0xBC;}
 static void tear_set(DWORD v) {DWORD o[8];texdbg2(0xBC,0x44B0000UL|(v&3),o);}
@@ -98,10 +101,14 @@ static int tear_run(DWORD set,double *fps,DWORD *ring,DWORD *cpu,DWORD *kept,DWO
  q[0].x=0;q[0].y=0;q[1].x=640;q[1].y=0;q[2].x=0;q[2].y=480;q[3].x=640;q[3].y=480;
  r[0].x=0;r[0].y=210;r[1].x=640;r[1].y=210;r[2].x=0;r[2].y=270;r[3].x=640;r[3].y=270;
  for(k=0;k<4;k++){q[k].z=r[k].z=0.5f;q[k].w=r[k].w=1.0f;q[k].c=0xFFFFFFFFUL;r[k].c=0xFFFF0000UL;h[k]=q[k];h[k].c=0x10808080UL;}
- ht=tear_get(t0);hc=counts(c0);
- QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);
- for(k=0;k<120;k++){MSG m;
+ /* v2.4 (.729): the monitor first: a full-screen mode change takes a monitor a few seconds to show a picture (the VX900's 120 frames were
+  * over before it did), so the same frames are drawn for 5 s unmeasured, then measured for 8 s: the time, not a frame count, at any speed */
+ QueryPerformanceFrequency(&f);QueryPerformanceCounter(&a);ht=hc=0;
+ for(k=0;;k++){MSG m;int measuring;
   QueryPerformanceCounter(&s);
+  measuring=f.QuadPart&&(s.QuadPart-a.QuadPart)>=f.QuadPart*TEAR_SETTLE_S;
+  if(measuring&&!done&&!ht&&!hc){ht=tear_get(t0);hc=counts(c0);QueryPerformanceCounter(&a);a.QuadPart-=f.QuadPart*TEAR_SETTLE_S;}
+  if(!f.QuadPart||(s.QuadPart-a.QuadPart)>=f.QuadPart*(TEAR_SETTLE_S+TEAR_MEASURE_S))break;
   while(PeekMessage(&m,0,0,0,PM_REMOVE)){TranslateMessage(&m);DispatchMessage(&m);}
   if(GetAsyncKeyState(VK_ESCAPE)&0x8000){stop=1;break;}
   ((F0)VT(dev,DEV_BEGIN))(dev);
@@ -113,8 +120,8 @@ static int tear_run(DWORD set,double *fps,DWORD *ring,DWORD *cpu,DWORD *kept,DWO
   ((F2)VT(dev,DEV_SETRS))(dev,27,0);
   ((FDPUP)VT(dev,DEV_DPUP))(dev,5,2,q,sizeof(TL));((FDPUP)VT(dev,DEV_DPUP))(dev,5,2,r,sizeof(TL));
   ((F0)VT(dev,DEV_END))(dev);
-  ((HRESULT(__stdcall*)(void*,void*,void*,void*,void*))VT(dev,DEV_PRESENT))(dev,0,0,0,0);done++;}
- QueryPerformanceCounter(&b);
+  ((HRESULT(__stdcall*)(void*,void*,void*,void*,void*))VT(dev,DEV_PRESENT))(dev,0,0,0,0);if(measuring)done++;}
+ QueryPerformanceCounter(&b);a.QuadPart+=f.QuadPart*TEAR_SETTLE_S; /* the measured part only */
  if(ht)ht=tear_get(t1);if(hc)hc=counts(c1);
  ((F0)VT(dev,D3D_REL))(dev);
  *fps=done&&b.QuadPart>a.QuadPart?done*(double)f.QuadPart/(double)(b.QuadPart-a.QuadPart):0.0;
@@ -131,7 +138,7 @@ static int tear_pass(int no) { /* v2.0 */
  tear_set(1);if(tear_get(o)&&o[2]!=1){tear_set(keep);say("pass %d (the tear flip): the driver keeps it off on this chip (as designed): not tested\n",no);return 1;}
  tear_set(keep);
  for(set=0;set<=n&&!stop;set++){
-  say("pass %d, ACCEL_FLIP_TEAR %lu: 120 frames of about 20 ms of drawing without vsync, a red bar across the middle: ",no,set);
+  say("pass %d, ACCEL_FLIP_TEAR %lu: 5 s for the monitor, then 8 s of frames of about 20 ms of drawing without vsync, a red bar across the middle: ",no,set);
   ran=tear_run(set,&fps,&ring,&cpu,&kept,&two);
   if(!ran){ok=0;break;}
   if(set==0){f0=fps;if(!(two&1)||(two&2))n=1;} /* setting 2 differs from 1 only with IGA2 mirroring */
@@ -218,7 +225,7 @@ static int heavy(int no,int vsync) {
  if(have2)say("; waits past 100 ms with the engine moving %lu; ring flips %s",g1[0]-g0[0],g1[2]?"GIVEN UP for this boot":"still on");
  else say("; the .667 counts: not read (an older VxD)");
  if(have&&!c1[4]){ /* v1.7: ring flips off (ACCEL_3D_RINGFLIP 0): every flip by the CPU is right; none may have gone into the ring or run out */
-  ok=c1[0]==c0[0]&&c1[2]==c0[2];say("\n   %s\n",ok?"RIGHT: ring flips off (ACCEL_3D_RINGFLIP 0), every flip by the CPU, none ran out":"WRONG: ring flips are off but a flip went into the ring or ran out");return ok;}
+  ok=c1[0]==c0[0]&&c1[2]==c0[2];say("\n   %s\n",ok?"RIGHT: ring flips off (ACCEL_3D_RINGFLIP 0, or the VX900: its flips are the CPU's), every flip by the CPU, none ran out":"WRONG: ring flips are off but a flip went into the ring or ran out");return ok;}
  if(have&&c1[5]!=0xFFFFFFFFUL&&(c1[5]&2)){ /* v1.9: IGA2 alone: the ring is not used */
   ok=c1[0]==c0[0]&&c1[2]==c0[2];say("\n   %s\n",ok?"RIGHT: IGA2 alone (a panel), every flip by the CPU, none ran out":"WRONG: IGA2 alone but a flip went into the ring or ran out");return ok;}
  if(have&&(c1[2]!=c0[2]||c1[0]-c0[0]<(DWORD)done))ok=0;
@@ -322,8 +329,8 @@ int main(int argc,char **argv) {
  {int k;for(k=1;k<argc;k++)if(!lstrcmpi(argv[k],"ASK"))g_ask=1;} /* v2.2 */
  GetModuleFileName(0,path,sizeof(path));s=strrchr(path,'\\');if(s)strcpy(s+1,"VXNOSYNC.LOG");logf=fopen(path,"w");
  if(argc>1&&!lstrcmpi(argv[1],"STRETCH")){say("VXNOSYNC v2.2 (driver .698) STRETCH: ");}
- else if(argc>1&&!lstrcmpi(argv[1],"TEAR")){say("VXNOSYNC v2.3 (driver .716) TEAR: the tear flip alone (pass 9)\n");}
- else say("VXNOSYNC v2.3 (driver .716): flips with and without vsync, with and without a lock of the back buffer (passes 1-5: the screen must stay white); flips after more than 100 ms of drawing (passes 6-7); a stretched windowed Present with a clip list (pass 8); the tear flip (pass 9; its questions only with ASK).\n");
+ else if(argc>1&&!lstrcmpi(argv[1],"TEAR")){say("VXNOSYNC v2.5 (driver .733) TEAR: the tear flip alone (pass 9)\n");}
+ else say("VXNOSYNC v2.5 (driver .733): flips with and without vsync, with and without a lock of the back buffer (passes 1-5: the screen must stay white); flips after more than 100 ms of drawing (passes 6-7); a stretched windowed Present with a clip list (pass 8); the tear flip (pass 9; its questions only with ASK).\n");
  vxd=CreateFileA("\\\\.\\VX85598",0,0,0,OPEN_EXISTING,0,0);
  d8=LoadLibrary("d3d8.dll");create=d8?(void*(__stdcall*)(U32))GetProcAddress(d8,"Direct3DCreate8"):0;
  if(!create){say("d3d8.dll / Direct3DCreate8 not found (DirectX 8 or later is needed)\n");return 1;}
